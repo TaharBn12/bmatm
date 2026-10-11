@@ -46,6 +46,11 @@ supabase: {
   يطلب الاسم فقط ولا يوجد تسجيل دخول.
 - يمنح الصلاحيات اللازمة لدور `anon`.
 
+> ℹ️ **لا تنشئ أي جدول داخل مخطط `realtime`** — جدول `realtime.messages` موجود تلقائياً
+> في كل مشروع، وإنشاؤه يدوياً يعطي الخطأ
+> `42501: permission denied for schema realtime`.
+> (النسخة الحالية من `schema.sql` لا تحتوي هذا المقطع إطلاقاً — إن كان لديك نسخة قديمة فحدّثها.)
+
 ---
 
 ## 3) تحقّق أن كل شيء جاهز
@@ -61,10 +66,27 @@ select tablename, policyname, cmd, roles from pg_policies where schemaname = 'pu
 وللتحقق من Realtime:
 
 ```sql
-select * from pg_publication_tables where pubname = 'supabase_realtime';
+select tablename from pg_publication_tables
+ where pubname = 'supabase_realtime' and schemaname = 'public';
 ```
 
-يجب أن ترى `public.rooms` و `public.messages`.
+يجب أن ترى `rooms` و `messages`. إن لم تَرهما:
+
+```sql
+alter publication supabase_realtime add table public.rooms;
+alter publication supabase_realtime add table public.messages;
+```
+
+أو من **Dashboard → Database → Replication → supabase_realtime** وفعّل الجدولين.
+
+وللتأكد أن جدول البث موجود في مشروعك (لا تنشئه — فقط تحقق):
+
+```sql
+select exists (
+  select 1 from information_schema.tables
+  where table_schema = 'realtime' and table_name = 'messages'
+) as realtime_messages_exists;   -- يجب أن تكون true
+```
 
 ---
 
@@ -122,7 +144,8 @@ $$);
 |---------|-------|------|
 | الشارة «وضع محلي» | فشل الاتصال بـ Supabase | تحقّق من `url` و `anonKey`، ومن أن الموقع يعمل بـ **https** |
 | الرسائل لا تصل | الجدول غير مضاف لـ Realtime | أعد تنفيذ قسم Realtime في `schema.sql` |
-| `42501 permission denied` | سياسات RLS ناقصة | أعد تنفيذ `schema.sql` كاملاً |
+| `42501 permission denied for schema realtime` | نسخة قديمة من `schema.sql` تحاول إنشاء `realtime.messages` | حدّث الملف من المستودع وأعد التنفيذ — الجدول موجود تلقائياً |
+| `42501 permission denied` (على `public`) | سياسات RLS أو الصلاحيات ناقصة | أعد تنفيذ `schema.sql` كاملاً |
 | `42P01 relation does not exist` | الجداول غير منشأة | نفّذ `schema.sql` |
 | الحالة تتأخر | اتصال ضعيف | قلّل `heartbeatMs` في `config.js` إلى 2500 |
 

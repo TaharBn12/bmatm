@@ -77,6 +77,8 @@ PORT=3000 java -cp out com.watchtogether.Main
 
 1. ارفع **محتوى مجلد `watch_together/`** إلى `public_html` (أو اسحب المستودع في Netlify).
 2. افتح Supabase → **SQL Editor** → الصق [`docs/schema.sql`](docs/schema.sql) → **Run**.
+   > الملف آمن لإعادة التشغيل (`if not exists` + `drop policy if exists`)،
+   > ولا يلمس مخطط `realtime` إطلاقاً.
 3. انتهى ✅ — المزامنة والدردشة تعملان عبر Supabase Realtime بين كل المستخدمين.
 
 تفاصيل أكثر: [`docs/supabase-setup.md`](docs/supabase-setup.md) و [`docs/deployment.md`](docs/deployment.md).

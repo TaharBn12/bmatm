@@ -54,29 +54,34 @@ create index if not exists presence_room_idx on public.presence (room_id);
 
 -- =====================================================================
 --  4) Realtime: تفعيل البث المباشر للتغييرات
+-- ---------------------------------------------------------------------
+--  ملاحظة: لا حاجة لإنشاء أي جدول في مخطط `realtime` —
+--  جدول `realtime.messages` موجود مسبقاً في كل مشروع Supabase،
+--  وإنشاء جداول هناك ممنوع على دور postgres (خطأ 42501).
+--  المطلوب فقط إضافة جدولينا إلى منشور `supabase_realtime`.
 -- =====================================================================
 do $$
 begin
   begin
     alter publication supabase_realtime add table public.rooms;
-  exception when duplicate_object then null; end;
+  exception
+    when duplicate_object      then null;   -- مُضاف مسبقاً
+    when insufficient_privilege then null;  -- أضِفها يدوياً (انظر أدناه)
+  end;
 
   begin
     alter publication supabase_realtime add table public.messages;
-  exception when duplicate_object then null; end;
+  exception
+    when duplicate_object      then null;
+    when insufficient_privilege then null;
+  end;
 end $$;
 
--- جدول البث مطلوب لقنوات Realtime (يُنشأ تلقائياً عادةً، هذا احتياط)
-create table if not exists realtime.messages (
-  topic text not null,
-  extension text not null,
-  payload jsonb,
-  event text,
-  private boolean default false,
-  updated_at timestamp not null default now(),
-  id uuid default gen_random_uuid(),
-  primary key (id, updated_at)
-);
+-- إن ظهر أن الجدولين غير مُضافين (استعلام التحقّق في الأسفل)،
+-- أضِفهما من Dashboard → Database → Replication → supabase_realtime
+-- أو نفّذ هذين السطرين وحدهما:
+--   alter publication supabase_realtime add table public.rooms;
+--   alter publication supabase_realtime add table public.messages;
 
 -- =====================================================================
 --  5) الصلاحيات + سياسات RLS (وصول الزائر المجهول anon)
@@ -119,6 +124,24 @@ create policy presence_all_anon on public.presence
 --     $$);
 -- =====================================================================
 
--- ---------- تحقق سريع ----------
--- select * from public.rooms limit 5;
+-- =====================================================================
+--  7) تحقّق سريع بعد التنفيذ (نفّذ كل استعلام على حدة)
+-- =====================================================================
+
+-- أ) هل Realtime مفعّل لجدولينا؟ (يجب أن ترى صفّين: rooms و messages)
+-- select tablename from pg_publication_tables
+--  where pubname = 'supabase_realtime' and schemaname = 'public';
+
+-- ب) هل جدول بث Realtime موجود في مشروعك؟ (يجب أن يعيد true — لا تنشئه يدوياً)
+-- select exists (
+--   select 1 from information_schema.tables
+--   where table_schema = 'realtime' and table_name = 'messages'
+-- ) as realtime_messages_exists;
+
+-- ج) هل سياسات RLS الثلاث موجودة؟
+-- select tablename, policyname, cmd from pg_policies
+--  where schemaname = 'public' order by tablename;
+
+-- د) هل الجداول أُنشئت؟
+-- select * from public.rooms    limit 5;
 -- select * from public.messages order by created_at desc limit 5;
