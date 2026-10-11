@@ -41,6 +41,12 @@
     let done = false;
     const finish = (txt, cls) => { if (!done) { done = true; set(txt, cls); } };
 
+    /* ?local=1 → اعرض الوضع المحلي مباشرة بدون انتظار مهلات السيرفرات */
+    if (window.WTTransport && WTTransport.forceLocal && WTTransport.forceLocal()) {
+      finish('وضع محلي (?local=1)', 'badge--host');
+      return;
+    }
+
     /* 1) هل يوجد سيرفر Java؟ */
     if (cfg.javaServer && cfg.javaServer.enabled) {
       try {

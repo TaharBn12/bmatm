@@ -446,21 +446,30 @@
    * جرّب الأوضاع بالترتيب وأعد أول واحد ينجح.
    * @returns {Promise<{transport, result}>}
    */
+  /** هل طُلب الوضع المحلي صراحةً (?local=1) ؟ — مفيد للمعاينة السريعة والعرض */
+  function forceLocal() {
+    try {
+      return /[?&]local=1\b/.test(global.location.search) ||
+             global.localStorage.getItem('wt:forceLocal') === '1';
+    } catch (e) { return false; }
+  }
+
   function connectRoom(roomId, meta, onStatus) {
     const cfg = global.WT_CONFIG;
     meta = meta || {};
     meta.clientId = meta.clientId || U.uid('client');
 
     const candidates = [];
+    const skipServers = forceLocal();
 
-    if (cfg.javaServer && cfg.javaServer.enabled) {
+    if (!skipServers && cfg.javaServer && cfg.javaServer.enabled) {
       candidates.push({
         tag: 'ws',
         make: () => new WsTransport(wsUrlForRoom(cfg.javaServer)),
         timeout: cfg.javaServer.timeoutMs || 2500
       });
     }
-    if (cfg.supabase && cfg.supabase.url && cfg.supabase.anonKey && cfg.supabase.ready !== false) {
+    if (!skipServers && cfg.supabase && cfg.supabase.url && cfg.supabase.anonKey && cfg.supabase.ready !== false) {
       candidates.push({
         tag: 'supabase',
         make: () => new SupabaseTransport(cfg.supabase),
@@ -492,6 +501,6 @@
   }
 
   global.WTTransport = {
-    WsTransport, SupabaseTransport, LocalTransport, connectRoom
+    WsTransport, SupabaseTransport, LocalTransport, connectRoom, forceLocal
   };
 })(window);
