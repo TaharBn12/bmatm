@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#06070f">
+  <title>WatchTogether — أنشئ غرفة مشاهدة مشتركة</title>
+  <meta name="description" content="أنشئ غرفة، الصق رابط الفيديو، وشارك الرابط مع أصدقائك لتشاهدوا معاً في نفس اللحظة مع دردشة مباشرة ومزامنة كاملة.">
+
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='24' fill='%237c5cff'/%3E%3Cpath d='M40 32l28 18-28 18z' fill='white'/%3E%3C/svg%3E">
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+
+  <link rel="stylesheet" href="assets/css/app.css">
+</head>
+<body>
+  <div class="bg-fx"></div>
+  <div class="blob blob--a"></div>
+  <div class="blob blob--b"></div>
+  <div class="blob blob--c"></div>
+
+  <!-- ===== الشريط العلوي ===== -->
+  <header class="nav">
+    <div class="container nav__inner">
+      <a class="brand" href="index.html">
+        <span class="brand__logo" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none"><path d="M8 5.5v13l11-6.5-11-6.5z" fill="#0a0715"/></svg>
+        </span>
+        <span>
+          <span class="brand__name">WatchTogether</span>
+          <span class="brand__sub">شاهدوا معاً • نفس اللحظة</span>
+        </span>
+      </a>
+      <div style="display:flex;gap:8px;align-items:center">
+        <span class="badge" id="modeBadge"><span class="dot"></span> جارٍ الفحص…</span>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <!-- ===== الواجهة الرئيسية ===== -->
+    <section class="hero container">
+      <span class="hero__eyebrow">🎬 مشاهدة جماعية متزامنة + دردشة مباشرة</span>
+      <h1 class="hero__title">الصق رابط الفيديو… <span class="grad-text">وشاهدوه معاً</span></h1>
+      <p class="hero__lead">
+        أنشئ غرفة في ثانية واحدة، انسخ رابطها وأرسله لأصدقائك.
+        أي شخص يفتح الرابط يُطلب منه إدخال اسمه ثم يدخل الغرفة —
+        والتشغيل والإيقاف والتقديم يتزامن عند الجميع لحظة بلحظة، مع دردشة في أسفل الغرفة.
+      </p>
+
+      <!-- بطاقة إنشاء الغرفة -->
+      <div class="creator glass" id="creator">
+        <div class="creator__head">
+          <span class="creator__step">1</span>
+          <div>
+            <h2 class="creator__title">أضف رابط المشاهدة</h2>
+            <p class="creator__hint">يوتيوب • MP4/WebM • بث HLS (m3u8) • أي رابط تضمين</p>
+          </div>
+        </div>
+
+        <form id="createForm" autocomplete="off" novalidate>
+          <div class="url-row">
+            <input class="input input--ltr" id="videoUrl" type="url" inputmode="url" spellcheck="false"
+                   placeholder="https://www.youtube.com/watch?v=..." required>
+            <button class="btn btn--ghost" type="button" id="pasteBtn" title="لصق من الحافظة">📋 لصق</button>
+          </div>
+
+          <!-- معاينة الرابط -->
+          <div class="preview" id="preview">
+            <div class="preview__thumb" id="previewThumb">🎞️</div>
+            <div class="preview__meta">
+              <p class="preview__kind" id="previewKind">—</p>
+              <p class="preview__url" id="previewUrl">—</p>
+            </div>
+          </div>
+
+          <div class="name-row">
+            <div>
+              <label class="label" for="hostName">اسمك (يظهر للمشاركين)</label>
+              <input class="input" id="hostName" type="text" maxlength="24" placeholder="مثال: طهـار">
+            </div>
+            <div>
+              <label class="label" for="roomTitle">اسم الغرفة <span style="color:var(--muted-2);font-weight:600">(اختياري)</span></label>
+              <input class="input" id="roomTitle" type="text" maxlength="40" placeholder="مثال: سهرة الجمعة 🍿">
+            </div>
+          </div>
+
+          <div style="margin-top:18px;display:flex;gap:10px;flex-wrap:wrap">
+            <button class="btn btn--primary btn--lg" type="submit" id="createBtn" style="flex:1;min-width:220px">
+              ✨ إنشاء الغرفة وبدء المشاهدة
+            </button>
+          </div>
+
+          <div class="chips">
+            <button type="button" class="chip" data-demo="https://www.youtube.com/watch?v=aqz-KE-bpKQ">🎥 تجربة: فيلم Big Buck Bunny</button>
+            <button type="button" class="chip" data-demo="https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8">📡 تجربة: بث HLS</button>
+            <button type="button" class="chip" data-demo="https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4">🎞️ تجربة: ملف MP4</button>
+          </div>
+        </form>
+
+        <div class="divider">أو ادخل غرفة موجودة</div>
+
+        <form id="joinForm" autocomplete="off" novalidate>
+          <div class="join-row">
+            <input class="input" id="joinCode" maxlength="10" placeholder="كود الغرفة  مثال: 8F3K2Q" spellcheck="false">
+            <button class="btn btn--ok btn--lg" type="submit">🚪 دخول</button>
+          </div>
+        </form>
+      </div>
+    </section>
+
+    <!-- ===== المزايا ===== -->
+    <section class="features container">
+      <h2 class="section-title">كل ما تحتاجه <span class="grad-text">للمشاهدة الجماعية</span></h2>
+      <p class="section-sub">مزامنة كاملة في كل الحالات — تشغيل، إيقاف، تقديم، تبديل الفيديو، وحتى الدردشة.</p>
+
+      <div class="grid-3">
+        <article class="card glass">
+          <div class="card__icon">⚡</div>
+          <h3 class="card__title">مزامنة فورية</h3>
+          <p class="card__text">أي ضغط على التشغيل/الإيقاف أو التقديم يصل للجميع خلال أجزاء من الثانية، مع تصحيح تلقائي لانحراف الوقت.</p>
+        </article>
+        <article class="card glass">
+          <div class="card__icon">👤</div>
+          <h3 class="card__title">دخول بالاسم</h3>
+          <p class="card__text">عند فتح رابط الغرفة يُطلب من الزائر إدخال اسمه قبل الدخول، فيظهر اسمه في قائمة المشاركين وفي الدردشة.</p>
+        </article>
+        <article class="card glass">
+          <div class="card__icon">💬</div>
+          <h3 class="card__title">دردشة أسفل الغرفة</h3>
+          <p class="card__text">منطقة دردشة أنيقة أسفل الشاشة مع رسائل النظام (دخل/خرج/غيّر الفيديو)، إيموجي سريع، ومؤشر «يكتب الآن…».</p>
+        </article>
+        <article class="card glass">
+          <div class="card__icon">🎛️</div>
+          <h3 class="card__title">تحكّم المضيف</h3>
+          <p class="card__text">المضيف يتحكم بالتشغيل، والضيوف يتابعون. يمكن لأي مشارك تولّي التحكم بضغطة واحدة إذا غاب المضيف.</p>
+        </article>
+        <article class="card glass">
+          <div class="card__icon">🔌</div>
+          <h3 class="card__title">يعمل على أي استضافة</h3>
+          <p class="card__text">ارفع المجلد على cPanel أو Netlify ويعمل مع Supabase، أو شغّل سيرفر Java المرفق (Tomcat/VPS) — الاختيار تلقائي.</p>
+        </article>
+        <article class="card glass">
+          <div class="card__icon">📱</div>
+          <h3 class="card__title">تصميم متجاوب</h3>
+          <p class="card__text">يعمل بشكل ممتاز على الهاتف والحاسوب، مع زر دردشة عائم على الشاشات الصغيرة وواجهة عربية كاملة RTL.</p>
+        </article>
+      </div>
+    </section>
+
+    <!-- ===== خطوات ===== -->
+    <section class="container">
+      <h2 class="section-title">ثلاث خطوات فقط</h2>
+      <p class="section-sub">بدون تسجيل، بدون حساب، بدون تثبيت.</p>
+      <div class="steps">
+        <article class="step glass">
+          <div class="step__num">1</div>
+          <h3 class="card__title">الصق رابط الفيديو</h3>
+          <p class="card__text">يوتيوب أو ملف MP4 أو بث HLS — الموقع يتعرّف على النوع تلقائياً.</p>
+        </article>
+        <article class="step glass">
+          <div class="step__num">2</div>
+          <h3 class="card__title">انسخ رابط الغرفة</h3>
+          <p class="card__text">رابط قصير مثل <span style="direction:ltr;display:inline-block">room.html?id=8F3K2Q</span> أرسله لمن تريد.</p>
+        </article>
+        <article class="step glass">
+          <div class="step__num">3</div>
+          <h3 class="card__title">شاهدوا وتحدّثوا</h3>
+          <p class="card__text">الفيديو متزامن عند الجميع، والدردشة تعمل في الأسفل مباشرة.</p>
+        </article>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="container">
+      WatchTogether — مشروع مشاهدة جماعية متزامنة •
+      <a href="README.md" title="دليل المشروع">الدليل</a> •
+      <a href="docs/deployment.md" title="النشر على الاستضافات">النشر</a> •
+      <a href="docs/supabase-setup.md" title="إعداد Supabase">إعداد Supabase</a>
+    </div>
+  </footer>
+
+  <!-- ===== سكربتات ===== -->
+  <script src="assets/vendor/hls.min.js" defer></script>
+  <script src="assets/vendor/qrcode.min.js" defer></script>
+  <script src="assets/js/config.js"></script>
+  <script src="assets/js/util.js"></script>
+  <script src="assets/js/transport.js"></script>
+  <script src="assets/js/player.js"></script>
+  <script src="assets/js/home.js"></script>
+</body>
+</html>

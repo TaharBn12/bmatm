@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#06070f">
+  <title>الغرفة — WatchTogether</title>
+
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='24' fill='%237c5cff'/%3E%3Cpath d='M40 32l28 18-28 18z' fill='white'/%3E%3C/svg%3E">
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+
+  <link rel="stylesheet" href="assets/css/app.css">
+</head>
+<body>
+  <div class="bg-fx"></div>
+  <div class="blob blob--a"></div>
+  <div class="blob blob--b"></div>
+
+  <!-- ==================== نافذة إدخال الاسم (تظهر لصاحب الرابط) ==================== -->
+  <div class="gate" id="gate">
+    <div class="gate__card glass">
+      <div class="gate__logo" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none"><path d="M8 5.5v13l11-6.5-11-6.5z" fill="#0a0715"/></svg>
+      </div>
+      <h1 class="gate__title">تمت دعوتك لمشاهدة جماعية 🍿</h1>
+      <div class="gate__room">
+        <span class="badge">كود الغرفة</span>
+        <span class="gate__code" id="gateCode">------</span>
+      </div>
+      <p class="gate__text">أدخل اسمك للدخول إلى الغرفة — سيظهر اسمك للمشاركين وفي الدردشة.</p>
+
+      <div class="avatar-preview" id="avatarPreview">؟</div>
+
+      <form id="gateForm" autocomplete="off" novalidate>
+        <label class="label" for="gateName" style="text-align:right">اسمك</label>
+        <input class="input" id="gateName" type="text" maxlength="24" placeholder="مثال: أمين" autofocus>
+        <p class="gate__error" id="gateError"></p>
+        <button class="btn btn--primary btn--lg btn--block" type="submit" id="gateSubmit" style="margin-top:6px">
+          🚪 ادخل الغرفة
+        </button>
+      </form>
+
+      <p style="color:var(--muted-2);font-size:12px;margin:16px 0 0">
+        بالدخول أنت توافق على مشاهدة محتوى الغرفة والمشاركة في الدردشة باحترام.
+      </p>
+    </div>
+  </div>
+
+  <!-- ==================== الغرفة ==================== -->
+  <div class="room" id="room" hidden>
+
+    <!-- الشريط العلوي -->
+    <div class="rtopbar">
+      <div class="rtopbar__main">
+        <a class="brand" href="index.html" title="الصفحة الرئيسية" style="gap:9px">
+          <span class="brand__logo" style="width:38px;height:38px;border-radius:12px" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none"><path d="M8 5.5v13l11-6.5-11-6.5z" fill="#0a0715"/></svg>
+          </span>
+        </a>
+        <div style="min-width:0">
+          <h1 class="rtopbar__title" id="roomTitle">غرفة مشاهدة</h1>
+          <p class="rtopbar__sub" id="roomSub">جارٍ الاتصال…</p>
+        </div>
+      </div>
+
+      <div class="rtopbar__spacer"></div>
+
+      <div class="rtopbar__actions">
+        <button class="room-code-pill" id="copyCodeBtn" title="نسخ كود الغرفة">
+          <span id="roomCodeText">------</span> 📋
+        </button>
+        <span class="badge badge--live" id="statusBadge"><span class="dot dot--pulse"></span> <span id="statusText">جارٍ الاتصال</span></span>
+        <span class="badge" id="membersBadge">👥 <span id="membersCount">1</span></span>
+        <button class="btn btn--sm btn--ghost" id="copyLinkBtn" title="نسخ رابط الغرفة">🔗 نسخ الرابط</button>
+        <button class="btn btn--sm btn--ghost" id="shareBtn" title="مشاركة" hidden>↗️ مشاركة</button>
+        <button class="btn btn--sm btn--danger" id="leaveBtn" title="مغادرة الغرفة">🚪 خروج</button>
+      </div>
+    </div>
+
+    <!-- التخطيط -->
+    <div class="layout">
+
+      <!-- ===== العمود الرئيسي ===== -->
+      <div class="col-main">
+
+        <!-- المشغّل -->
+        <section class="stage glass">
+          <div class="player" id="player">
+            <div class="player__placeholder" id="playerPlaceholder">
+              <div class="player__placeholder-icon">🎬</div>
+              <p class="player__placeholder-text">لا يوجد فيديو في هذه الغرفة بعد.<br>الصق رابطاً في الأسفل لبدء المشاهدة معاً.</p>
+            </div>
+          </div>
+
+          <!-- شريط التحكم -->
+          <div class="controls">
+            <div class="controls__group">
+              <button class="ctrl-btn ctrl-btn--big" id="playPauseBtn" title="تشغيل / إيقاف (مسافة)" aria-label="تشغيل أو إيقاف">
+                <svg id="iconPlay" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.5v13l11-6.5-11-6.5z"/></svg>
+                <svg id="iconPause" viewBox="0 0 24 24" fill="currentColor" hidden><path d="M7 5h3.5v14H7zM13.5 5H17v14h-3.5z"/></svg>
+              </button>
+              <button class="ctrl-btn" id="backBtn" title="رجوع 10 ثوانٍ (←)" aria-label="رجوع 10 ثوانٍ">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M11 5L6 10l5 5"/><path d="M6 10h7a5 5 0 1 1 0 10h-2"/></svg>
+              </button>
+              <button class="ctrl-btn" id="fwdBtn" title="تقديم 10 ثوانٍ (→)" aria-label="تقديم 10 ثوانٍ">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M13 5l5 5-5 5"/><path d="M18 10h-7a5 5 0 1 0 0 10h2"/></svg>
+              </button>
+              <button class="ctrl-btn" id="muteBtn" title="كتم الصوت (M)" aria-label="كتم الصوت">
+                <svg id="iconSound" viewBox="0 0 24 24" fill="currentColor"><path d="M4 9v6h4l5 4V5L8 9H4zm11.5 3a3.5 3.5 0 0 0-2-3.16v6.32A3.5 3.5 0 0 0 15.5 12z"/></svg>
+                <svg id="iconMuted" viewBox="0 0 24 24" fill="currentColor" hidden><path d="M4 9v6h4l5 4V5L8 9H4zm15.5 3l2-2-1.4-1.4-2 2-2-2L14.7 10l2 2-2 2 1.4 1.4 2-2 2 2 1.4-1.4-2-2z"/></svg>
+              </button>
+              <button class="ctrl-btn" id="fullBtn" title="ملء الشاشة (F)" aria-label="ملء الشاشة">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 9V4h5M20 15v5h-5M15 4h5v5M9 20H4v-5"/></svg>
+              </button>
+            </div>
+
+            <div class="progress">
+              <span class="progress__time" id="curTime">00:00</span>
+              <div class="progress__bar" id="progressBar" role="slider" tabindex="0" aria-label="شريط التقدم">
+                <div class="progress__fill" id="progressFill"></div>
+              </div>
+              <span class="progress__time" id="durTime">00:00</span>
+            </div>
+
+            <div class="controls__spacer"></div>
+
+            <div class="controls__group">
+              <span class="badge" id="hostBadge" hidden>👑 أنت المضيف</span>
+              <button class="btn btn--sm btn--ghost" id="takeoverBtn" hidden>👑 تولّي التحكم</button>
+              <button class="btn btn--sm btn--ghost" id="resyncBtn" title="مزامنة الآن مع المضيف">🔄 مزامنة</button>
+              <button class="btn btn--sm btn--ghost" id="changeUrlBtn" title="تغيير رابط الفيديو">🎞️ تغيير الفيديو</button>
+            </div>
+          </div>
+
+          <!-- تنبيه وضع المتابعة -->
+          <div class="sync-note" id="syncNote" hidden>
+            <span>🔒 أنت في وضع المتابعة — التحكم بيد <b id="syncHost">المضيف</b></span>
+            <span class="sync-note__spacer"></span>
+            <button class="btn btn--sm btn--ghost" id="syncNoteTakeover">تولّي التحكم</button>
+          </div>
+        </section>
+
+        <!-- تغيير الرابط -->
+        <section class="change-bar glass" id="changeBar" hidden>
+          <div class="change-bar__row">
+            <input class="input input--ltr" id="newUrl" type="url" placeholder="الصق رابط الفيديو الجديد… (يوتيوب / mp4 / m3u8)" spellcheck="false">
+            <button class="btn btn--primary" id="applyUrlBtn">✓ تطبيق للجميع</button>
+            <button class="btn btn--ghost" id="cancelUrlBtn">إلغاء</button>
+          </div>
+        </section>
+
+        <!-- ===== الدردشة (أسفل الصفحة) ===== -->
+        <section class="chat glass" id="chat">
+          <div class="chat__head">
+            <h2 class="chat__title">💬 دردشة الغرفة</h2>
+            <span class="badge" id="chatCount">0 رسالة</span>
+            <span class="chat__spacer"></span>
+            <button class="btn btn--sm btn--ghost" id="clearChatBtn" title="مسح الشاشة عندك فقط">🧹 مسح</button>
+            <button class="btn btn--sm btn--ghost" id="chatToggleBtn" title="تصغير" style="display:none">▾</button>
+          </div>
+
+          <div class="chat__body" id="chatBody">
+            <div class="chat__empty" id="chatEmpty">
+              <span>💬</span>
+              لا توجد رسائل بعد.<br>ابدأ الحديث مع أصدقائك الآن 👋
+            </div>
+          </div>
+
+          <div class="chat__foot">
+            <div class="emoji-row" id="emojiRow">
+              <button type="button" class="emoji-btn">😂</button>
+              <button type="button" class="emoji-btn">❤️</button>
+              <button type="button" class="emoji-btn">👏</button>
+              <button type="button" class="emoji-btn">🔥</button>
+              <button type="button" class="emoji-btn">😮</button>
+              <button type="button" class="emoji-btn">🍿</button>
+              <button type="button" class="emoji-btn">👍</button>
+              <button type="button" class="emoji-btn">😢</button>
+            </div>
+            <form class="chat__form" id="chatForm" autocomplete="off">
+              <textarea class="chat__input" id="chatInput" rows="1" maxlength="600"
+                        placeholder="اكتب رسالتك هنا… (Enter للإرسال، Shift+Enter لسطر جديد)"></textarea>
+              <button class="chat__send" type="submit" id="chatSend" title="إرسال" aria-label="إرسال">
+                <svg viewBox="0 0 24 24" fill="currentColor"><path d="M3.4 20.4l17.4-7.5c.8-.35.8-1.45 0-1.8L3.4 3.6c-.65-.3-1.35.25-1.2.95L3.6 11c.05.5.45.9.95.95L15 12 4.55 12.05c-.5.05-.9.45-.95.95l-1.4 6.45c-.15.7.55 1.25 1.2.95z"/></svg>
+              </button>
+            </form>
+            <div class="typing" id="typing"></div>
+          </div>
+        </section>
+      </div>
+
+      <!-- ===== العمود الجانبي ===== -->
+      <aside class="col-side">
+        <section class="panel glass">
+          <div class="panel__head">
+            <h2 class="panel__title">👥 المشاركون</h2>
+            <span class="badge" id="sideMembersCount">1</span>
+          </div>
+          <div class="members" id="membersList"></div>
+        </section>
+
+        <section class="panel glass">
+          <div class="panel__head">
+            <h2 class="panel__title">ℹ️ معلومات الغرفة</h2>
+          </div>
+          <div class="info-list">
+            <div class="info-item"><span class="info-item__k">الكود</span><span class="info-item__v" id="infoCode">—</span></div>
+            <div class="info-item"><span class="info-item__k">المصدر</span><span class="info-item__v" id="infoProvider">—</span></div>
+            <div class="info-item"><span class="info-item__k">المضيف</span><span class="info-item__v" id="infoHost" style="direction:rtl">—</span></div>
+            <div class="info-item"><span class="info-item__k">وضعي</span><span class="info-item__v" id="infoRole" style="direction:rtl">—</span></div>
+            <div class="info-item"><span class="info-item__k">المزامنة</span><span class="info-item__v" id="infoSync" style="direction:rtl">—</span></div>
+          </div>
+          <div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap">
+            <button class="btn btn--sm btn--ghost" id="sideCopyLink" style="flex:1">🔗 نسخ رابط الدعوة</button>
+            <button class="btn btn--sm btn--ghost" id="sideQr" style="flex:1" title="عرض كود QR">▦ QR</button>
+          </div>
+        </section>
+
+        <section class="panel glass">
+          <div class="panel__head">
+            <h2 class="panel__title">⌨️ اختصارات</h2>
+          </div>
+          <div class="info-list" style="gap:8px;font-size:12.5px">
+            <div class="info-item"><kbd>مسافة</kbd><span style="color:var(--muted);margin-inline-start:8px">تشغيل / إيقاف</span></div>
+            <div class="info-item"><kbd>→</kbd><span style="color:var(--muted);margin-inline-start:8px">تقديم 10 ثوانٍ</span></div>
+            <div class="info-item"><kbd>←</kbd><span style="color:var(--muted);margin-inline-start:8px">رجوع 10 ثوانٍ</span></div>
+            <div class="info-item"><kbd>M</kbd><span style="color:var(--muted);margin-inline-start:8px">كتم الصوت</span></div>
+            <div class="info-item"><kbd>F</kbd><span style="color:var(--muted);margin-inline-start:8px">ملء الشاشة</span></div>
+            <div class="info-item"><kbd>C</kbd><span style="color:var(--muted);margin-inline-start:8px">نسخ رابط الغرفة</span></div>
+          </div>
+        </section>
+      </aside>
+    </div>
+
+    <!-- شريط الحالة -->
+    <div class="statusbar">
+      <span id="sbMode">الوضع: —</span>
+      <span>•</span>
+      <span id="sbSync">آخر مزامنة: —</span>
+      <span class="statusbar__spacer"></span>
+      <span id="sbMe">أنت: —</span>
+    </div>
+  </div>
+
+  <!-- زر دردشة عائم (جوال) -->
+  <button class="chat-fab" id="chatFab" aria-label="الدردشة">
+    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 3C6.5 3 2 6.9 2 11.7c0 2.7 1.4 5.1 3.7 6.7-.1.9-.6 2.3-1.5 3.4 1.9-.2 3.5-1 4.6-1.8 1 .3 2.1.4 3.2.4 5.5 0 10-3.9 10-8.7S17.5 3 12 3z"/></svg>
+    <span class="chat-fab__count" id="chatFabCount" hidden>0</span>
+  </button>
+
+  <!-- نافذة QR -->
+  <div class="gate" id="qrModal" hidden>
+    <div class="gate__card glass" style="max-width:360px">
+      <h2 class="gate__title" style="font-size:18px">رابط الدعوة</h2>
+      <div id="qrBox" style="display:grid;place-items:center;padding:10px;background:#fff;border-radius:14px;margin:14px 0"></div>
+      <p class="gate__text" id="qrUrl" style="direction:ltr;word-break:break-all;font-size:12px"></p>
+      <button class="btn btn--ghost btn--block" id="qrClose">إغلاق</button>
+    </div>
+  </div>
+
+  <!-- ===== سكربتات ===== -->
+  <script src="assets/vendor/hls.min.js"></script>
+  <script src="assets/vendor/qrcode.min.js"></script>
+  <script src="assets/js/config.js"></script>
+  <script src="assets/js/util.js"></script>
+  <script src="assets/js/transport.js"></script>
+  <script src="assets/js/player.js"></script>
+  <script src="assets/js/room.js"></script>
+</body>
+</html>
