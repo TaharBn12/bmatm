@@ -185,7 +185,9 @@
       .then(rows => (rows && rows[0]) || null);
     const pMsgs = this._fetch(`/rest/v1/messages?room_id=eq.${encodeURIComponent(roomId)}&select=*&order=created_at.desc,id.desc&limit=100`)
       .then(rows => (rows || []).reverse().map(r => ({
-        id: String(r.id), name: r.name, text: r.body, ts: Date.parse(r.created_at) || Date.now(), kind: r.kind || 'chat'
+        id: String(r.id), name: r.name, text: r.body,
+        ts: Date.parse(r.created_at) || Date.now(),
+        kind: r.kind || 'chat', client: r.client_id || null
       })));
 
     return Promise.all([pState, pMsgs]).then(([roomRow, messages]) => {
@@ -197,7 +199,8 @@
           room_id: roomId,
           video_url: (self.meta.videoUrl || null),
           host_name: self.meta.name || 'مضيف',
-          state: null
+          state: null,
+          updated_at: new Date().toISOString()
         }
       }).then(rows => (rows && rows[0]) || null);
 
@@ -275,7 +278,8 @@
             if (c.type === 'DELETE') return;
             self.emit('chat', {
               id: String(rec.id), name: rec.name, text: rec.body,
-              ts: Date.parse(rec.created_at) || Date.now(), kind: rec.kind || 'chat'
+              ts: Date.parse(rec.created_at) || Date.now(),
+              kind: rec.kind || 'chat', client: rec.client_id || null
             });
           } else if (c.table === 'rooms' && c.type === 'UPDATE') {
             if (rec.state) self.emit('state', rec.state);
@@ -304,8 +308,9 @@
       body: {
         room_id: this.roomId,
         state,
+        video_url: (state && state.url) || this.meta.videoUrl || null,
         updated_at: new Date().toISOString(),
-        host_name: this.meta.name || 'مضيف'
+        host_name: (state && state.updatedByName) || this.meta.name || 'مضيف'
       }
     }).catch((err) => {
       this.emit('error', { message: 'تعذّر حفظ حالة الغرفة: ' + (err.message || err) });
@@ -325,7 +330,8 @@
         name: String(message.name || 'زائر').slice(0, 30),
         body: String(message.text || '').slice(0, 1000),
         kind: message.kind || 'chat',
-        client_id: this.meta.clientId || null
+        client_id: this.meta.clientId || null,
+        user_id: this.meta.userId || null
       }
     }).catch((err) => {
       this.emit('error', { message: 'تعذّر إرسال الرسالة: ' + (err.message || err) });

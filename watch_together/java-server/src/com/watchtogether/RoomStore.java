@@ -2,6 +2,10 @@ package com.watchtogether;
 
 import com.watchtogether.WebSocketServer.WsConnection;
 
+import java.io.File;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -45,10 +49,12 @@ public final class RoomStore implements WebSocketServer.Listener {
         final String id;
         final Set<WsConnection> members = Collections.newSetFromMap(new ConcurrentHashMap<>());
         final List<Map<String, Object>> history = Collections.synchronizedList(new ArrayList<>());
-        /** آخر حالة مزامنة (من المضيف) */
+        /** آخر حالة مزامنة (من أي مشارك يتحكم) */
         volatile Map<String, Object> state;
         volatile String hostId;
         volatile String hostName;
+        /** متى حُفظت الحالة آخر مرة (لحساب الوقت عند انضمام متأخر) */
+        volatile long lastSavedAt = 0L;
         final AtomicLong messagesCount = new AtomicLong();
 
         Room(String id) { this.id = id; }
@@ -56,8 +62,13 @@ public final class RoomStore implements WebSocketServer.Listener {
 
     private final Map<String, Room> rooms = new ConcurrentHashMap<>();
     private final ScheduledExecutorService janitor;
+    /** ملف حفظ حالات الغرف حتى لا تضيع عند إعادة تشغيل الخادم */
+    private final File storeFile;
 
-    public RoomStore() {
+    public RoomStore() { this(new File(System.getProperty("wt.data", "data"), "rooms.json")); }
+
+    public RoomStore(File storeFile) {
+        this.storeFile = storeFile;
         janitor = Executors.newSingleThreadScheduledExecutor(r -> {
             Thread t = new Thread(r, "room-janitor");
             t.setDaemon(true);
@@ -65,6 +76,71 @@ public final class RoomStore implements WebSocketServer.Listener {
         });
         /* كل 10 ثوانٍ: احذف الحضور المنتهي والغرف الفارغة */
         janitor.scheduleAtFixedRate(this::sweep, 10, 10, TimeUnit.SECONDS);
+        loadFromDisk();
+    }
+
+    /* =========================================================
+       حفظ/استرجاع حالة الغرف (آخر مستخدم يخرج → حفظ فوري)
+       ========================================================= */
+    @SuppressWarnings("unchecked")
+    private void loadFromDisk() {
+        try {
+            if (storeFile == null || !storeFile.isFile()) return;
+            String raw = new String(Files.readAllBytes(storeFile.toPath()), StandardCharsets.UTF_8);
+            Map<String, Object> root = Json.parseObject(raw);
+            if (root == null) return;
+            Object roomsObj = root.get("rooms");
+            if (!(roomsObj instanceof Map)) return;
+            for (Map.Entry<String, Object> e : ((Map<String, Object>) roomsObj).entrySet()) {
+                Map<String, Object> rec = Json.asMap(e.getValue());
+                if (rec == null) continue;
+                Room r = new Room(e.getKey());
+                r.state = Json.asMap(rec.get("state"));
+                Object hist = rec.get("messages");
+                if (hist instanceof List) {
+                    for (Object o : (List<Object>) hist) {
+                        Map<String, Object> m = Json.asMap(o);
+                        if (m != null) r.history.add(m);
+                    }
+                }
+                rooms.put(e.getKey(), r);
+            }
+            System.out.println("[Rooms] تم استرجاع " + rooms.size() + " غرفة من " + storeFile.getName());
+        } catch (Exception e) {
+            System.err.println("[Rooms] تعذّر استرجاع الحالات: " + e.getMessage());
+        }
+    }
+
+    /** احفظ كل الحالات على القرص (آمن: لا يرمي استثناءات) */
+    public synchronized void persist() {
+        try {
+            if (storeFile == null) return;
+            File parent = storeFile.getParentFile();
+            if (parent != null && !parent.isDirectory() && !parent.mkdirs()) return;
+
+            Map<String, Object> out = new LinkedHashMap<>();
+            for (Map.Entry<String, Room> e : rooms.entrySet()) {
+                Room r = e.getValue();
+                Map<String, Object> rec = new LinkedHashMap<>();
+                rec.put("state", r.state);
+                rec.put("savedAt", System.currentTimeMillis());
+                synchronized (r.history) { rec.put("messages", new ArrayList<>(r.history)); }
+                out.put(e.getKey(), rec);
+            }
+            Map<String, Object> root = new LinkedHashMap<>();
+            root.put("version", 1);
+            root.put("savedAt", System.currentTimeMillis());
+            root.put("rooms", out);
+
+            File tmp = new File(storeFile.getAbsolutePath() + ".tmp");
+            Files.write(tmp.toPath(), Json.stringify(root).getBytes(StandardCharsets.UTF_8));
+            if (storeFile.isFile() && !storeFile.delete()) { /* تجاهل */ }
+            if (!tmp.renameTo(storeFile)) {
+                Files.write(storeFile.toPath(), Json.stringify(root).getBytes(StandardCharsets.UTF_8));
+            }
+        } catch (Exception e) {
+            System.err.println("[Rooms] تعذّر الحفظ: " + e.getMessage());
+        }
     }
 
     private Room room(String id) {
@@ -129,15 +205,35 @@ public final class RoomStore implements WebSocketServer.Listener {
         conn.attrs.put("name", name);
         conn.attrs.put("host", Boolean.FALSE);
         conn.attrs.put("lastSeen", System.currentTimeMillis());
+
+        /* هل كانت الغرفة فارغة (أي أن الحالة محفوظة من جلسة سابقة)؟ */
+        boolean rejoinedSavedRoom = r.members.isEmpty() && r.state != null && r.lastSavedAt > 0;
         r.members.add(conn);
+
+        /* التحاق متأخر: حدّث الطابع الزمني للحالة المحفوظة حتى يأخذ الداخل
+           الجديد الوقت الحالي المحسوب — لا يبدأ من لحظة الحفظ القديمة */
+        Map<String, Object> stateOut = r.state;
+        if (rejoinedSavedRoom) {
+            long ageMs = System.currentTimeMillis() - r.lastSavedAt;
+            if (ageMs > 0) {
+                stateOut = new LinkedHashMap<>(stateOut);
+                Object t = stateOut.get("t");
+                long base = (t instanceof Number) ? ((Number) t).longValue() : r.lastSavedAt;
+                stateOut.put("t", base + ageMs);
+                stateOut.put("resumedAfter", ageMs);
+                r.state = stateOut;
+                r.lastSavedAt = System.currentTimeMillis();
+            }
+        }
 
         Map<String, Object> welcome = new LinkedHashMap<>();
         welcome.put("type", "welcome");
         welcome.put("room", roomId);
-        welcome.put("state", r.state);
+        welcome.put("state", stateOut);
+        welcome.put("serverTime", System.currentTimeMillis());
         welcome.put("messages", snapshotHistory(r));
         welcome.put("members", memberList(r));
-        welcome.put("serverTime", System.currentTimeMillis());
+        welcome.put("lastSavedAt", r.lastSavedAt);
         conn.send(welcome);
 
         /* أشعر البقية */
@@ -155,22 +251,14 @@ public final class RoomStore implements WebSocketServer.Listener {
         String hostId = Json.str(state, "hostId", selfId);
         String hostName = Json.str(state, "hostName", Json.str(conn.attrs, "name", "مضيف"));
 
-        boolean first = (r.state == null);
-        boolean noHost = (r.hostId == null);
-        boolean iAmHost = selfId.equals(r.hostId);
-        boolean takeover = hostId.equals(selfId);   // العميل يعلن نفسه مضيفاً (تولّي التحكم)
-
-        if (first || noHost || iAmHost || takeover) {
-            r.state = state;
-            r.hostId = hostId;
-            r.hostName = hostName;
-            conn.attrs.put("host", Boolean.valueOf(takeover || iAmHost || first || noHost));
-            conn.attrs.put("name", hostName);
-        } else {
-            /* حالة قادمة من غير المضيف الحالي → تُتجاهل حفاظاً على مرجعية واحدة */
-            conn.attrs.put("lastSeen", System.currentTimeMillis());
-            return;
-        }
+        /* التحكم متاح لأي مشارك: آخر إجراء يفوز (last-write-wins)
+           والترتيب يُحسم في العميل عبر الرقم التسلسلي rev */
+        r.state = state;
+        r.hostId = hostId;
+        r.hostName = hostName;
+        r.lastSavedAt = System.currentTimeMillis();
+        conn.attrs.put("host", Boolean.TRUE);
+        conn.attrs.put("name", hostName);
         conn.attrs.put("lastSeen", System.currentTimeMillis());
 
         Map<String, Object> out = Json.map("type", "state", "state", state, "sender", conn.attrs.get("clientId"));
@@ -252,18 +340,28 @@ public final class RoomStore implements WebSocketServer.Listener {
             broadcast(r, Json.map("type", "system", "text", name + " غادر الغرفة 👋"), null);
             sendMembers(r);
         }
-        /* إذا غادر المضيف → حرّر الملكية حتى يتولاها شخص آخر */
+        /* آخر مشارك خرج → ارفع/احفظ وقت الغرفة تلقائياً */
+        if (r.members.isEmpty()) {
+            r.lastSavedAt = System.currentTimeMillis();
+            if (r.state != null) {
+                Map<String, Object> s = new LinkedHashMap<>(r.state);
+                s.put("t", r.lastSavedAt);           /* ختم زمني دقيق لوقت الخروج */
+                s.put("savedOnExit", Boolean.TRUE);
+                r.state = s;
+            }
+            persist();
+            System.out.println("[Rooms] آخر مشارك غادر الغرفة " + r.id + " — تم حفظ الحالة ("
+                    + (r.state == null ? "بلا فيديو" : "الثانية " + r.state.get("pos")) + ")");
+            return;
+        }
+
+        /* من يتحكم غادر لكن بقي آخرون → حرّر الملكية ليتولاها أي مشارك */
         Object clientId = conn.attrs.get("clientId");
         if (clientId != null && clientId.equals(r.hostId)) {
             r.hostId = null;
             r.hostName = null;
-            if (r.state != null) {
-                Map<String, Object> s = new LinkedHashMap<>(r.state);
-                s.remove("hostId");
-                s.remove("hostName");
-                r.state = s;
-            }
-            broadcast(r, Json.map("type", "system", "text", "غادر المضيف — يمكن لأي مشارك تولّي التحكم 👑"), null);
+            broadcast(r, Json.map("type", "system",
+                    "text", "غادر من كان يتحكم — يمكن لأي مشارك التحكم الآن"), null);
         }
     }
 
@@ -336,5 +434,17 @@ public final class RoomStore implements WebSocketServer.Listener {
         return latest;
     }
 
-    public void shutdown() { janitor.shutdownNow(); }
+    /** حفظ احتياطي دوري (يضمن عدم ضياع الحالة لو انقطع الخادم فجأة) */
+    public void startAutoPersist(long periodMs) {
+        janitor.scheduleAtFixedRate(() -> {
+            if (!rooms.isEmpty()) persist();
+        }, periodMs, periodMs, TimeUnit.MILLISECONDS);
+    }
+
+    public File getStoreFile() { return storeFile; }
+
+    public void shutdown() {
+        persist();
+        janitor.shutdownNow();
+    }
 }

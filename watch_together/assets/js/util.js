@@ -179,6 +179,26 @@
 
     clamp(n, min, max) { return Math.min(max, Math.max(min, n)); },
 
+    /**
+     * الوقت المتوقع «الآن» انطلاقاً من آخر حالة مزامنة محفوظة.
+     * بهذه الطريقة من ينضم متأخراً (أو من يعود بعد غياب) يأخذ وقت الموجودين
+     * ولا يبدأ من الصفر.
+     *
+     * @param {number} pos   الموضع المحفوظ (ثوانٍ)
+     * @param {boolean} playing هل كان الفيديو يعمل؟
+     * @param {number} stateT الختم الزمني للحالة المحفوظة (مللي ثانية)
+     * @param {number} now    الوقت الحالي (مللي ثانية)
+     * @param {number} [maxAgeSec] أقصى انقضاء يُحتسب (افتراضي 3 ساعات)
+     * @returns {number} الموضع المتوقع بالثواني
+     */
+    expectedPosition(pos, playing, stateT, now, maxAgeSec) {
+      const p0 = Math.max(0, Number.isFinite(+pos) ? +pos : 0);
+      if (!playing) return p0;
+      const cap = Number.isFinite(+maxAgeSec) ? +maxAgeSec : 3 * 3600;
+      const ageSec = Math.max(0, ((+now || 0) - (+stateT || 0)) / 1000);
+      return p0 + Math.min(ageSec, cap);
+    },
+
     /* تنظيف اسم المستخدم */
     cleanName(name) {
       return String(name || '').replace(/\s+/g, ' ').trim().slice(0, 24);

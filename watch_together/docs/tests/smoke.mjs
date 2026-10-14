@@ -156,6 +156,79 @@ const run = async () => {
   t('ws chat sent', chatMsg.type === 'chat' && chatMsg.message.text === 'مرحبا' && chatMsg.message.client === 'clientA');
   t('ws chat local id', typeof m.id === 'string' && m.id.length > 3);
 
+  /* ==================== 5) التحاق المتأخرين بالوقت الصحيح ==================== */
+  const t0 = 1_700_000_000_000;
+  t('متوقف → يبقى نفس الموضع',
+    U.expectedPosition(120, false, t0, t0 + 60_000) === 120);
+  t('يعمل منذ 30 ث → +30',
+    U.expectedPosition(120, true, t0, t0 + 30_000) === 150);
+  t('يعمل منذ 5 دقائق → +300',
+    U.expectedPosition(0, true, t0, t0 + 300_000) === 300);
+  t('ختم زمني مفقود → لا يقفز',
+    U.expectedPosition(90, true, 0, t0) === 90 + Math.min(t0 / 1000, 10800));
+  t('حد أقصى 3 ساعات',
+    U.expectedPosition(0, true, t0, t0 + 10 * 3600_000) === 3 * 3600);
+  t('سالب يُصفَّر',
+    U.expectedPosition(-5, false, t0, t0) === 0);
+
+  /* ==================== 6) مزامنة حساسة بين مضيفين متناوبين ==================== */
+  const sC = makeStore(), sD = makeStore();
+  const ch2 = {};
+  const envC = makeEnv(sC, ch2, 'C');
+  const envD = makeEnv(sD, ch2, 'D');
+  loadScripts(envC, ['assets/js/config.js', 'assets/js/util.js', 'assets/js/transport.js']);
+  loadScripts(envD, ['assets/js/config.js', 'assets/js/util.js', 'assets/js/transport.js']);
+  envC.WT_CONFIG.javaServer.enabled = false; envC.WT_CONFIG.supabase.ready = false;
+  envD.WT_CONFIG.javaServer.enabled = false; envD.WT_CONFIG.supabase.ready = false;
+
+  const rc = await envC.WTTransport.connectRoom('SYNC01', { clientId: 'cC', name: 'كريم' });
+  const rd = await envD.WTTransport.connectRoom('SYNC01', { clientId: 'cD', name: 'داليا' });
+
+  const got = [];
+  rd.transport.on('state', s => got.push(s));
+
+  /* أي مستخدم يستطيع التحكم: C يبثّ 6 تحديثات متتالية و D يستقبلها فوراً */
+  for (let i = 1; i <= 6; i++) {
+    rc.transport.publishState({
+      url: 'https://youtu.be/abc12345678',
+      playing: i % 2 === 1,
+      pos: i * 10,
+      t: Date.now() + i,
+      rev: i,
+      updatedBy: 'cC',
+      updatedByName: 'كريم'
+    });
+    await new Promise(r => setTimeout(r, 8));
+  }
+  t('كل تحديث وصل فوراً (6 تحديثات)', got.length === 6, 'got=' + got.length);
+  t('آخر تحديث هو الفائز', got[got.length - 1].rev === 6, 'rev=' + (got[got.length - 1] || {}).rev);
+  t('ترتيب rev تصاعدي', got.every((s, i) => i === 0 || s.rev > got[i - 1].rev));
+  t('التحديث يحمل اسم من تحكّم', got[got.length - 1].updatedByName === 'كريم');
+  t('الموضع الأخير صحيح', got[got.length - 1].pos === 60, 'pos=' + got[got.length - 1].pos);
+
+  /* وبالعكس: D يتحكم و C يستقبل (التحكم ليس حكراً على المنشئ) */
+  const back = [];
+  rc.transport.on('state', s => back.push(s));
+  rd.transport.publishState({ url: 'https://youtu.be/abc12345678', playing: false, pos: 65, t: Date.now(), rev: 7, updatedBy: 'cD', updatedByName: 'داليا' });
+  await new Promise(r => setTimeout(r, 30));
+  t('التحكم من المشارك الثاني يصل للجميع', back.length === 1 && back[0].rev === 7, 'n=' + back.length);
+  t('لا صدى ذاتي للمرسل', got.length === 6, 'got=' + got.length);
+
+  /* تحديث قديم (rev أقل) — يجب أن يتجاهله العميل */
+  const stale = { url: 'x', playing: false, pos: 1, t: Date.now(), rev: 2, updatedBy: 'cC' };
+  let staleApplied = 0;
+  rd.transport.on('state', s => { if (s.rev <= 6) staleApplied++; });
+  rc.transport.publishState(stale);
+  await new Promise(r => setTimeout(r, 30));
+  t('التحديث القديم يصل للطبقة (والعميل يتجاهله بـ rev)', staleApplied >= 1);
+
+  /* ==================== 7) إعدادات المزامنة المطلوبة ==================== */
+  t('persistMs = 5000', envC.WT_CONFIG.sync.persistMs === 5000);
+  t('driftTolerance حساسة', envC.WT_CONFIG.sync.driftTolerance <= 1.2);
+  t('hardDrift منخفض', envC.WT_CONFIG.sync.hardDrift <= 3);
+  t('lateJoinCatchup مفعّل', envC.WT_CONFIG.sync.lateJoinCatchup === true);
+  t('تفاعلات الإيموجي معرّفة', Array.isArray(envC.WT_CONFIG.chat.reactions) && envC.WT_CONFIG.chat.reactions.length >= 5);
+
   console.log(`\n${pass} passed, ${fail} failed`);
   process.exit(fail ? 1 : 0);
 };

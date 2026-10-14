@@ -1,10 +1,12 @@
 /* =========================================================
-   WatchTogether — الصفحة الرئيسية (home.js)
+   WatchTogether — الصفحة الرئيسية (home.js) — الإصدار 2
    ========================================================= */
 (function () {
   'use strict';
 
   const U = window.WTUtil;
+  const IC = window.WTIcons;
+  const Auth = window.WTAuth;
   const $ = (id) => document.getElementById(id);
 
   const els = {
@@ -20,20 +22,56 @@
     createBtn: $('createBtn'),
     joinForm: $('joinForm'),
     joinCode: $('joinCode'),
-    modeBadge: $('modeBadge')
+    modeBadge: $('modeBadge'),
+    navAuth: $('navAuth'),
+    footerMode: $('footerMode')
   };
 
-  /* ---------- استرجاع اسم المستخدم السابق ---------- */
-  els.name.value = U.store.get('name', '') || '';
-  els.title.value = U.store.get('lastRoomTitle', '') || '';
+  /* ============================== الحساب في الشريط العلوي ============================== */
+  function renderNavAuth() {
+    if (!els.navAuth) return;
+    const user = Auth && Auth.currentUser ? Auth.currentUser() : null;
 
-  /* ---------- فحص وضع الاتصال لعرضه في الشارة ---------- */
+    if (user && user.name) {
+      els.navAuth.innerHTML =
+        '<button class="user-chip" id="navUser" title="حسابي">' +
+        '<span class="user-chip__av" style="background:' + U.colorFor(user.name) + '">' + U.esc(U.initials(user.name)) + '</span>' +
+        U.esc(user.name) +
+        '</button>' +
+        '<a class="btn btn--sm btn--ghost" href="auth.html" id="navAuthBtn">' +
+        '<span class="ic">' + IC.html('login', 16) + '</span> ' + (user.guest ? 'تسجيل الدخول' : 'حسابي') + '</a>';
+
+      if (!els.name.value) els.name.value = user.name;
+      $('navUser').addEventListener('click', () => { location.href = 'auth.html'; });
+    } else {
+      els.navAuth.innerHTML =
+        '<a class="btn btn--sm btn--primary" href="auth.html">' +
+        '<span class="ic">' + IC.html('login', 16) + '</span> إنشاء حساب / دخول</a>';
+    }
+  }
+
+  /* ============================== استرجاع البيانات المحفوظة ============================== */
+  (function prefill() {
+    const user = Auth && Auth.currentUser ? Auth.currentUser() : null;
+    els.name.value = (user && user.name) || U.store.get('name', '') || '';
+    els.title.value = U.store.get('lastRoomTitle', '') || '';
+    renderNavAuth();
+  })();
+
+  /* ============================== فحص وضع الاتصال ============================== */
   (function detectMode() {
     const cfg = window.WT_CONFIG;
+    const finishTxt = [];
     const set = (txt, cls) => {
       els.modeBadge.className = 'badge ' + (cls || '');
-      els.modeBadge.innerHTML = '<span class="dot ' + (cls ? 'dot--pulse' : '') + '"></span> ' + txt;
+      els.modeBadge.innerHTML = '<span class="dot ' + (cls ? 'dot--pulse' : '') + '"></span> ' + U.esc(txt);
+      if (els.footerMode) els.footerMode.textContent = 'الخادم: ' + txt;
     };
+
+    if (window.WTTransport && WTTransport.forceLocal && WTTransport.forceLocal()) {
+      set('وضع محلي (?local=1)', 'badge--host');
+      return;
+    }
 
     const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
     const wsUrl = (cfg.javaServer && cfg.javaServer.url) || (proto + '//' + location.host + '/ws');
@@ -41,20 +79,12 @@
     let done = false;
     const finish = (txt, cls) => { if (!done) { done = true; set(txt, cls); } };
 
-    /* ?local=1 → اعرض الوضع المحلي مباشرة بدون انتظار مهلات السيرفرات */
-    if (window.WTTransport && WTTransport.forceLocal && WTTransport.forceLocal()) {
-      finish('وضع محلي (?local=1)', 'badge--host');
-      return;
-    }
-
-    /* 1) هل يوجد سيرفر Java؟ */
     if (cfg.javaServer && cfg.javaServer.enabled) {
       try {
         const ws = new WebSocket(wsUrl);
         const to = setTimeout(() => { try { ws.close(); } catch (e) { } }, cfg.javaServer.timeoutMs || 2500);
-        ws.onopen = () => { clearTimeout(to); try { ws.close(); } catch (e) { } finish('سيرفر Java متاح ✓', 'badge--live'); };
+        ws.onopen = () => { clearTimeout(to); try { ws.close(); } catch (e) { } finish('سيرفر Java متاح', 'badge--live'); };
         ws.onerror = () => { clearTimeout(to); next(); };
-        ws.onclose = () => { clearTimeout(to); };
       } catch (e) { next(); }
     } else next();
 
@@ -62,7 +92,6 @@
     function next() {
       if (checked) return;
       checked = true;
-      /* 2) هل Supabase مضبوط وي reachable؟ */
       if (cfg.supabase && cfg.supabase.url && cfg.supabase.anonKey && cfg.supabase.ready !== false) {
         const ctrl = ('AbortController' in window) ? new AbortController() : null;
         const t = ctrl && setTimeout(() => ctrl.abort(), 5000);
@@ -73,20 +102,19 @@
           clearTimeout(t);
           let body = {};
           try { body = await r.json(); } catch (e) { body = {}; }
-          if (r.ok) finish('Supabase متصل ✓', 'badge--live');
-          else if (body && (body.code === '42P01' || r.status === 404))
-            finish('Supabase: أنشئ الجداول من docs/schema.sql', 'badge--host');
-          else if (body && body.code === '42501')
-            finish('Supabase: فعّل صلاحيات RLS (schema.sql)', 'badge--host');
+          if (r.ok) finish('Supabase متصل', 'badge--live');
+          else if (body && (body.code === '42P01' || r.status === 404)) finish('أنشئ الجداول (docs/schema.sql)', 'badge--host');
+          else if (body && body.code === '42501') finish('فعّل صلاحيات RLS', 'badge--host');
           else finish('Supabase: ' + (body.message || r.status), 'badge--host');
         }).catch(() => { clearTimeout(t); finish('وضع محلي (بدون سيرفر)', ''); });
       } else {
         finish('وضع محلي (بدون سيرفر)', '');
       }
     }
+    void finishTxt;
   })();
 
-  /* ---------- معاينة الرابط أثناء الكتابة ---------- */
+  /* ============================== معاينة الرابط ============================== */
   const updatePreview = U.debounce(function () {
     const raw = els.url.value.trim();
     const parsed = U.parseWatchUrl(raw);
@@ -94,51 +122,52 @@
     els.preview.classList.add('is-on');
 
     if (!parsed) {
-      els.previewKind.textContent = '⚠️ رابط غير مدعوم';
+      els.previewKind.innerHTML = '<span class="ic" style="color:var(--warn)">' + IC.html('alert', 14) + '</span> رابط غير مدعوم';
       els.previewUrl.textContent = raw;
-      els.previewThumb.textContent = '⚠️';
       els.previewThumb.style.backgroundImage = '';
+      els.previewThumb.innerHTML = '<span class="ic">' + IC.html('alert', 22) + '</span>';
       return;
     }
-    els.previewKind.textContent = '✓ ' + parsed.label + ' — ' + parsed.provider;
+
+    els.previewKind.innerHTML = '<span class="ic" style="color:var(--ok)">' + IC.html('check', 14) + '</span> ' +
+      U.esc(parsed.label) + ' • ' + U.esc(parsed.provider);
     els.previewUrl.textContent = raw;
 
     const thumb = parsed.kind === 'youtube' ? window.WTPlayer.thumbFor(parsed.id) : null;
     if (thumb) {
-      els.previewThumb.textContent = '';
-      els.previewThumb.style.backgroundImage = `url("${thumb}")`;
+      els.previewThumb.innerHTML = '';
+      els.previewThumb.style.backgroundImage = 'url("' + thumb + '")';
       els.previewThumb.style.backgroundSize = 'cover';
       els.previewThumb.style.backgroundPosition = 'center';
     } else {
       els.previewThumb.style.backgroundImage = '';
-      els.previewThumb.textContent = parsed.kind === 'hls' ? '📡' : parsed.kind === 'file' ? '🎞️' : '🔗';
+      els.previewThumb.innerHTML = '<span class="ic">' +
+        IC.html(parsed.kind === 'hls' ? 'broadcast' : parsed.kind === 'file' ? 'film' : 'link', 22) + '</span>';
     }
-  }, 260);
+  }, 240);
 
   els.url.addEventListener('input', updatePreview);
   els.url.addEventListener('paste', () => setTimeout(updatePreview, 30));
 
-  /* ---------- زر اللصق ---------- */
   els.paste.addEventListener('click', async () => {
     try {
       const text = await navigator.clipboard.readText();
-      if (text) { els.url.value = text.trim(); updatePreview(); U.toast('تم لصق الرابط ✓', 'success', 1800); }
+      if (text) { els.url.value = text.trim(); updatePreview(); U.toast('تم لصق الرابط', 'success', 1700); }
     } catch (e) {
       U.toast('متصفحك يمنع القراءة من الحافظة — الصق يدوياً (Ctrl+V)', 'warn');
     }
   });
 
-  /* ---------- أزرار التجربة ---------- */
+  /* ============================== روابط التجربة ============================== */
   document.querySelectorAll('[data-demo]').forEach(btn => {
     btn.addEventListener('click', () => {
       els.url.value = btn.getAttribute('data-demo');
       updatePreview();
       els.url.focus();
-      U.toast('تم وضع رابط تجريبي — اضغط إنشاء الغرفة', 'info', 2200);
     });
   });
 
-  /* ---------- إنشاء الغرفة ---------- */
+  /* ============================== إنشاء الغرفة ============================== */
   els.form.addEventListener('submit', function (e) {
     e.preventDefault();
 
@@ -154,13 +183,13 @@
     if (!name) {
       name = 'مضيف-' + U.randomCode(3);
       els.name.value = name;
-      U.toast('لم تدخل اسمك — استخدمنا اسماً مؤقتاً، يمكنك تغييره في الغرفة', 'warn');
+      U.toast('لم تدخل اسمك — استخدمنا اسماً مؤقتاً، يمكنك تغييره من الغرفة', 'warn');
     }
 
     const code = U.randomCode(window.WT_CONFIG.room.codeLength);
     U.store.set('name', name);
     U.store.set('lastRoomTitle', els.title.value.trim());
-    /* نمرّر البيانات عبر sessionStorage لتقرأها صفحة الغرفة */
+
     try {
       sessionStorage.setItem('wt:create:' + code, JSON.stringify({
         videoUrl: parsed.src,
@@ -174,11 +203,12 @@
     els.createBtn.disabled = true;
     els.createBtn.innerHTML = '<span class="spinner" style="width:18px;height:18px;border-width:2px"></span> جارٍ إنشاء الغرفة…';
 
-    const params = new URLSearchParams({ id: code, host: '1', v: parsed.src, name });
-    setTimeout(() => { location.href = 'room.html?' + params.toString(); }, 220);
+    const q = new URLSearchParams({ id: code, host: '1', v: parsed.src, name });
+    if (new URLSearchParams(location.search).get('local') === '1') q.set('local', '1');
+    setTimeout(() => { location.href = 'room.html?' + q.toString(); }, 200);
   });
 
-  /* ---------- الدخول لغرفة موجودة ---------- */
+  /* ============================== الدخول بكود ============================== */
   els.joinForm.addEventListener('submit', function (e) {
     e.preventDefault();
     const code = els.joinCode.value.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
@@ -187,7 +217,11 @@
       els.joinCode.focus();
       return;
     }
-    location.href = 'room.html?id=' + encodeURIComponent(code);
+    const name = U.cleanName(els.name.value);
+    const q = new URLSearchParams({ id: code });
+    if (name) q.set('auto', '1');
+    if (new URLSearchParams(location.search).get('local') === '1') q.set('local', '1');
+    location.href = 'room.html?' + q.toString();
   });
 
   els.joinCode.addEventListener('input', function () {
@@ -196,10 +230,10 @@
     try { this.setSelectionRange(p, p); } catch (e) { }
   });
 
-  /* ---------- دعم: فتح الموقع برابط يحتوي ?id= ---------- */
+  /* ============================== تحويل ?id= تلقائياً ============================== */
   (function autoRedirect() {
     const id = U.qs('id') || U.qs('room');
-    if (id) location.replace('room.html?id=' + encodeURIComponent(id));
+    if (id) location.replace('room.html?' + location.search.replace(/^\?/, ''));
   })();
 
 })();

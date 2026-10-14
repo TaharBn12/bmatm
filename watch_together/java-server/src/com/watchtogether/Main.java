@@ -52,6 +52,7 @@ public final class Main {
         if (rootEnv != null && !rootEnv.trim().isEmpty()) root = new File(rootEnv.trim()).getAbsoluteFile();
 
         roomStore = new RoomStore();
+        roomStore.startAutoPersist(5000);      /* حفظ احتياطي كل 5 ثوانٍ */
         wsServer = new WebSocketServer(roomStore);
         StaticFileServer files = new StaticFileServer(root);
 
@@ -105,6 +106,7 @@ public final class Main {
         m.put("totalConnections", wsServer.getTotalConnections());
         m.put("messages", roomStore.getMessageCount());
         m.put("serverTime", System.currentTimeMillis());
+        m.put("store", roomStore.getStoreFile().getName());
         return m;
     }
 
@@ -145,6 +147,7 @@ public final class Main {
         sb.append("  مجلد الموقع : ").append(root.getAbsolutePath()).append('\n');
         sb.append("  الاستماع على : ").append(host).append(':').append(port).append('\n');
         sb.append("  WebSocket    : /ws\n");
+        sb.append("  حفظ الحالات  : ").append(roomStore.getStoreFile().getAbsolutePath()).append('\n');
         sb.append("  الحالة       : /api/stats\n\n");
         sb.append("  افتح في المتصفح:\n");
         sb.append("    ▸ http://localhost:").append(port).append("/\n");

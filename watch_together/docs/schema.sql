@@ -17,10 +17,13 @@ create table if not exists public.rooms (
   title      text,
   video_url  text,
   host_name  text,
-  -- حالة المزامنة الكاملة: { url, kind, playing, pos, t, hostId, hostName, seq }
+  -- حالة المزامنة الكاملة:
+  -- { url, kind, playing, pos, t, rev, updatedBy, updatedByName }
+  -- t  = ختم زمني (مللي ثانية) لآخر تحديث، ويُستخدم لحساب الوقت لمن ينضم لاحقاً
+  -- rev= رقم تسلسلي يمنع تطبيق تحديث قديم
   state      jsonb,
   created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
+  updated_at timestamptz not null default now()   -- آخر رفع للحالة (كل 5 ثوانٍ)
 );
 
 comment on table  public.rooms       is 'غرف المشاهدة المشتركة';
@@ -32,8 +35,9 @@ create table if not exists public.messages (
   room_id    text not null,
   name       text not null,
   body       text not null,
-  kind       text not null default 'chat',          -- chat | system
+  kind       text not null default 'chat',          -- chat | system | react
   client_id  text,
+  user_id    uuid,                                  -- الحساب إن كان مسجّل الدخول
   created_at timestamptz not null default now()
 );
 
@@ -123,6 +127,22 @@ create policy presence_all_anon on public.presence
 --       delete from public.rooms    where updated_at < now() - interval '30 days';
 --     $$);
 -- =====================================================================
+
+-- =====================================================================
+--  6ب) ترقية مشروع قائم (إن كنت نفّذت نسخة أقدم من هذا الملف)
+--      نفّذها فقط إذا ظهر خطأ "column does not exist"
+-- =====================================================================
+do $$
+begin
+  begin alter table public.messages add column if not exists user_id uuid;
+  exception when others then null; end;
+  begin alter table public.messages add column if not exists client_id text;
+  exception when others then null; end;
+  begin alter table public.messages add column if not exists kind text not null default 'chat';
+  exception when others then null; end;
+  begin alter table public.rooms add column if not exists updated_at timestamptz not null default now();
+  exception when others then null; end;
+end $$;
 
 -- =====================================================================
 --  7) تحقّق سريع بعد التنفيذ (نفّذ كل استعلام على حدة)

@@ -1,46 +1,59 @@
 /* =========================================================
-   WatchTogether — إعدادات الموقع
-   عدّل القيم هنا فقط. كل شيء آخر يعمل تلقائياً.
+   WatchTogether — الإعدادات (config.js)
+   عدّل هذا الملف فقط؛ كل شيء آخر يعمل تلقائياً.
    ========================================================= */
 window.WT_CONFIG = {
-  /* اسم التطبيق الظاهر في الواجهات */
   appName: 'WatchTogether — شاهدوا معاً',
 
-  /* ---------- 1) إعدادات Supabase (للاستضافة العادية: cPanel / Netlify / GitHub Pages) ----------
+  /* ---------- 1) Supabase (للاستضافة العادية: cPanel / Netlify / GitHub Pages) ----------
      Dashboard → Project Settings → API
-     اتركها كما هي (تم وضع مفاتيحك) أو استبدلها بمشروعك. */
+     الجدول يجب أن يكون منشأً من docs/schema.sql */
   supabase: {
     url: 'https://cazwkhcbkzhnsluuafwz.supabase.co',
     anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNhendraGNia3pobnNsdXVhZnd6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njc5NDQ3ODIsImV4cCI6MjA4MzUyMDc4Mn0.u1l9BrzI7ZA9P3CSdXN0tYkHu1TUNTGsqczByNSPUN0',
-    /* هل أنشأت الجداول من ملف supabase/schema.sql ؟ إذا لا → اتركها false */
-    ready: true
+    ready: true,      /* هل نفّذت docs/schema.sql ؟ إذا لا اجعلها false */
+    auth: true        /* تفعيل تسجيل الدخول/إنشاء الحساب عبر Supabase Auth */
   },
 
-  /* ---------- 2) إعدادات سيرفر Java (للاستضافة التي تدعم Java: Tomcat / VPS) ----------
-     إذا فتحت الموقع عبر سيرفر Java المرفق في مجلد java-server/
-     سيتم اكتشافه تلقائياً على ws(s)://نفس-النطاق/ws — لا حاجة للتعديل. */
+  /* ---------- 2) المصادقة ---------- */
+  auth: {
+    /* true  = يجب تسجيل الدخول قبل إنشاء غرفة (صفحة auth.html)
+       false = الدخول بالاسم فقط كافٍ (الوضع الأبسط) */
+    required: false,
+    allowGuest: true,          /* السماح بالدخول كضيف بدون حساب */
+    rememberName: true         /* تذكّر الاسم في المتصفح */
+  },
+
+  /* ---------- 3) سيرفر Java (للاستضافة التي تدعم Java: Tomcat / VPS) ----------
+     يُكتشف تلقائياً على ws(s)://نفس-النطاق/ws عند فتح الموقع عبر السيرفر */
   javaServer: {
     enabled: true,
-    /* اتركه null للاستخدام التلقائي (نفس النطاق)، أو ضع رابطاً صريحاً:
-       url: 'wss://example.com/ws' */
-    url: null,
+    url: null,          /* null = اكتشاف تلقائي، أو 'wss://example.com/ws' */
     timeoutMs: 2500
   },
 
-  /* ---------- 3) المزامنة ---------- */
+  /* ---------- 4) المزامنة (حساسة جداً) ---------- */
   sync: {
-    heartbeatMs: 4000,     /* نبضة المضيف كل كم ميلي ثانية */
-    driftTolerance: 1.2,   /* فرق الثواني المسموح قبل التصحيح التلقائي */
-    hardDrift: 3.0         /* فرق كبير → قفزة فورية بدون تدريج */
+    persistMs: 5000,        /* ⏱ رفع حالة الغرفة إلى قاعدة البيانات كل 5 ثوانٍ */
+    heartbeatMs: 5000,      /* نبضة المزامنة الدورية */
+    driftTolerance: 0.8,    /* فرق الثواني المسموح قبل التصحيح الناعم */
+    hardDrift: 2.5,         /* فرق كبير → قفزة فورية إلى الوقت الصحيح */
+    driftCheckMs: 2000,     /* كم مرة نفحص الانحراف */
+    lateJoinCatchup: true   /* من ينضم لاحقاً يأخذ الوقت الحالي من آخر حالة محفوظة */
   },
 
+  /* ---------- 5) الرسائل ---------- */
   chat: {
     maxLength: 600,
-    historyLimit: 200,
-    cooldownMs: 400        /* حماية من الإغراق */
+    historyLimit: 250,
+    cooldownMs: 350,
+    reactions: ['👍', '❤️', '😂', '😮', '🔥', '👏', '🍿']   /* الإيموجي هنا فقط */
   },
 
+  /* ---------- 6) الغرف ---------- */
   room: {
-    codeLength: 6          /* طول كود الغرفة، مثال: 8F3K2Q */
+    codeLength: 6,           /* طول كود الغرفة، مثال: 8F3K2Q */
+    presenceMs: 3000,        /* نبضة الحضور (المنضمون الحقيقيون) */
+    presenceTimeoutMs: 12000 /* اعتبار المشارك منقطعاً بعد هذه المدة */
   }
 };
