@@ -34,8 +34,9 @@ const run = async () => {
     'copyLinkBtn', 'shareBtn', 'qrBtn', 'diagBtn', 'leaveBtn', 'drawerOpenBtn', 'drawerCloseBtn',
     'drawerScrim', 'roomDrawer', 'organizerList', 'organizerCount', 'membersList', 'membersCount',
     'sideMembersCount', 'stage', 'player', 'playerPlaceholder', 'ctrlbar', 'playPauseBtn',
+    'centerPlayBtn', 'skipBackBtn', 'skipFwdBtn',
     'iconPlay', 'iconPause', 'muteBtn', 'iconSound', 'iconMuted', 'fullBtn', 'volRange',
-    'progressBar', 'progressFill', 'progressBuffer', 'progressKnob', 'curTime', 'durTime',
+    'progressBar', 'progressFill', 'progressBuffer', 'progressKnob', 'progressTip', 'curTime', 'durTime',
     'addVideoBtn', 'messagesBtn', 'messagesCount', 'playlistBtn', 'playlistCount',
     'changeBar', 'newUrl', 'newTitle', 'applyUrlBtn', 'cancelUrlBtn', 'chat', 'chatBody',
     'chatEmpty', 'chatCount', 'clearChatBtn', 'reactRow', 'chatForm', 'chatInput', 'chatSend',
@@ -131,7 +132,7 @@ const run = async () => {
   byId.get('playlistCloseBtn').dispatch('click', {});
   t('زر إغلاق قائمة التشغيل يعمل', byId.get('playlistModal').hidden);
 
-  const clickIds = ['playPauseBtn', 'muteBtn', 'fullBtn', 'progressBar', 'addVideoBtn', 'messagesBtn', 'playlistBtn',
+  const clickIds = ['playPauseBtn', 'centerPlayBtn', 'skipBackBtn', 'skipFwdBtn', 'muteBtn', 'fullBtn', 'progressBar', 'addVideoBtn', 'messagesBtn', 'playlistBtn',
     'drawerOpenBtn', 'drawerCloseBtn', 'copyCodeBtn', 'copyLinkBtn', 'qrBtn', 'leaveBtn', 'clearChatBtn',
     'sbMeBtn', 'meClose', 'meSave', 'meSignout', 'cancelUrlBtn', 'applyUrlBtn', 'playlistCloseBtn'];
   clickIds.forEach(id => {
