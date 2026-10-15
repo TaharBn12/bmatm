@@ -113,7 +113,7 @@
     addVideoBtn: $('addVideoBtn'), messagesBtn: $('messagesBtn'), messagesCount: $('messagesCount'),
     playlistBtn: $('playlistBtn'), playlistCount: $('playlistCount'),
     changeBar: $('changeBar'), newUrl: $('newUrl'), newTitle: $('newTitle'), applyUrlBtn: $('applyUrlBtn'), cancelUrlBtn: $('cancelUrlBtn'),
-    membersPanel: $('membersPanel'), membersList: $('membersList'), sideMembersCount: $('sideMembersCount'),
+    collapseBtn: $('collapseBtn'), membersPanel: $('membersPanel'), membersList: $('membersList'), sideMembersCount: $('sideMembersCount'),
     chat: $('chat'), chatBody: $('chatBody'), chatEmpty: $('chatEmpty'), chatCount: $('chatCount'),
     clearChatBtn: $('clearChatBtn'), reactRow: $('reactRow'), chatForm: $('chatForm'),
     chatInput: $('chatInput'), chatSend: $('chatSend'), typing: $('typing'), backToVideoBtn: $('backToVideoBtn'),
@@ -1318,6 +1318,15 @@
         player.setMuted(v === 0);
         el.iconSound.hidden = v === 0;
         el.iconMuted.hidden = v !== 0;
+      });
+    }
+
+    /* ---- طيّ الفيديو وإظهاره (يبقى الصوت والتحكم يعملان) ---- */
+    if (el.collapseBtn) {
+      el.collapseBtn.addEventListener('click', () => {
+        const collapsed = el.room.classList.toggle('is-media-collapsed');
+        el.collapseBtn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+        el.collapseBtn.classList.toggle('is-on', collapsed);
       });
     }
 
