@@ -74,11 +74,11 @@ node tools/sbctl.mjs create --name wt-test --org-id 000 --db-password x --dry-ru
 النتيجة المطلوبة في آخر الاستعلام:
 
 ```
-rooms | messages | presence | realtime_tables | policies
-   0  |         0 |        0 |              3 |        3
+rooms | messages | presence | room_members | room_queue | realtime_tables | policies
+   0  |         0 |        0 |            0 |          0 |              5 |        5
 ```
 
-(`realtime_tables = 3` تعني أن `rooms` و `messages` و `presence` مربوطة ببث Realtime.)
+`realtime_tables` يتضمن الجداول الخمسة العامة التي يهيئها المخطط.
 
 ### 3) فعّل تسجيل الدخول (اختياري — لصفحة `auth.html`)
 
@@ -139,7 +139,7 @@ node tools/sbctl.mjs doctor
 زر **«تشخيص»** في شريط الغرفة العلوي يفحص المشروع **من متصفح المستخدم** ويعرض:
 
 - هل REST يستجيب وكم استغرق؟ (مللي ثانية)
-- هل الجداول الثلاثة موجودة؟
+- هل الجداول المطلوبة (`rooms`, `messages`, `presence`, `room_members`, `room_queue`) موجودة؟
 - هل Realtime يقبل الانضمام؟
 - ما **السبب الدقيق** لأي خطأ + **الحل** (بلقطة واحدة).
 - زر **«إعادة الاتصال»** + **«نسخ التقرير»** (ترسله لصديقك أو للمطوّر).
@@ -190,7 +190,7 @@ node tools/sbctl.mjs set --url "https://cazwkhcbkzhnsluuafwz.supabase.co" --key 
 | `✗ جدول rooms مفقود` | لم يُنفَّذ `bootstrap.sql` | SQL Editor → الصق `docs/bootstrap.sql` → Run |
 | `✗ صلاحيات RLS ناقصة` | نُسخة قديمة من المخطط | أعد تنفيذ `bootstrap.sql` كاملاً |
 | `✗ مفتاح anon غير صالح` | مفتاح مقلَّم/مستبدَل | انسخ `anon public key` من Project Settings → API، ثم `sbctl set` |
-| `! Realtime لا يعمل` | الجداول غير مربوطة بالمنشور | `alter publication supabase_realtime add table public.rooms;` (نفسها لـ messages و presence) |
+| `! Realtime لا يعمل` | الجداول غير مربوطة بالمنشور | أعد تنفيذ `bootstrap.sql`، أو أضف `rooms`, `messages`, `room_members`, `room_queue`, `presence` إلى `supabase_realtime` |
 | `✗ المشروع متوقف` | مشروع مجاني خامل | Dashboard → Project Settings → **Resume**، أو أنشئ مشروعاً جديداً |
 | `الدردشة لا تعمل` لكن الفيديو متزامن | جدول `messages` مفقود | نفّذ `bootstrap.sql` |
 | الأصدقاء لا يدخلون نفس الغرفة | كود مختلف أو الرابط القديم | انسخ «رابط الدعوة» من الغرفة (يحمل الكود + رابط الفيديو) |
@@ -201,8 +201,8 @@ node tools/sbctl.mjs set --url "https://cazwkhcbkzhnsluuafwz.supabase.co" --key 
 
 - `config.js` يحتوي **مفتاح anon عام** — هذا مقصود (يُقرأ من المتصفح).
 - لا تضع `service_role key` في أي ملف داخل المستودع.
-- سياسات RLS مفتوحة عمداً لأن الموقع يعمل بالاسم بلا حساب؛ لو أردت تقييداً أقوى
-  اربطها بـ `auth.uid()` (العمود `messages.user_id` جاهز).
+- القراءة العامة مخصصة للغرف والأدوار والقائمة؛ كتابة حالة المشاهدة وإدارة الأدوار تمر عبر RPC تتحقق من المفتاح الخاص. الرسائل والحضور يسمحان للضيوف بالإضافة وفق RLS.
+- لا يخرج مفتاح المنشئ من المتصفح ولا يدخل في رابط الدعوة؛ من يحصل على رابط الغرفة يدخل كمشاهد فقط.
 - رمز الوصول (`SUPABASE_ACCESS_TOKEN`) يُقرأ من متغيّر البيئة فقط.
 
 ---

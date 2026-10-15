@@ -68,7 +68,7 @@ class El {
   set innerHTML(v) {
     this._html = String(v);
     this.children = [];
-    const re = /<([a-zA-Z][a-zA-Z0-9]*)((?:[^>](?!\/>))*?)>/g;
+    const re = /<([a-zA-Z][a-zA-Z0-9-]*)([^>]*)>/g;
     let m;
     while ((m = re.exec(this._html))) {
       const c = new El(m[1]);
@@ -157,17 +157,23 @@ export function buildRoomDom() {
     byId.set(m[1], e);
   }
 
-  Array.from(html.matchAll(/<([a-zA-Z][^>]*?)\bid="([A-Za-z0-9_-]+)"([^>]*?)>/g)).forEach(mm => {
-    const el2 = byId.get(mm[2]);
+  const ID_TAG_RE = /<([a-zA-Z][a-zA-Z0-9-]*)\b([^>]*)\bid="([A-Za-z0-9_-]+)"([^>]*)>/g;
+  Array.from(html.matchAll(ID_TAG_RE)).forEach(mm => {
+    const tag = mm[1];
+    const el2 = byId.get(mm[3]);
     if (!el2) return;
-    el2.tagName = mm[1].toUpperCase();
-    const all = ' ' + mm[1] + ' ' + mm[3] + ' ';
+    el2.tagName = tag.toUpperCase();
+    const all = ' ' + mm[2] + ' ' + mm[4] + ' ';
+    const attrPairs = Array.from(all.matchAll(/([a-zA-Z-]+)="([^"]*)"/g));
+    attrPairs.forEach(pair => { el2.attrs[pair[1]] = pair[2]; });
     if (/\shidden(\s|=|>|$)/.test(all)) el2.hidden = true;
     const cm = all.match(/\sclass="([^"]*)"/);
     if (cm) el2.className = cm[1];
-    const inner = html.slice(mm.index + mm[0].length, html.indexOf('</' + mm[1] + '>', mm.index));
+    const innerStart = mm.index + mm[0].length;
+    const closeAt = html.indexOf('</' + tag + '>', innerStart);
+    const inner = closeAt < 0 ? '' : html.slice(innerStart, closeAt);
     if (inner && inner.length < 4000 && !/<(section|main|aside|form|div)\b/.test(inner)) {
-      Array.from(inner.matchAll(/<([a-zA-Z][^>]*?)>/g)).forEach(sm => {
+      Array.from(inner.matchAll(/<([a-zA-Z][a-zA-Z0-9-]*)([^>]*)>/g)).forEach(sm => {
         const c = new El(sm[1]);
         const attrs = sm[2] || '';
         const scm = attrs.match(/class="([^"]*)"/);

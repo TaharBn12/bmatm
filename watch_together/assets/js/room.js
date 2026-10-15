@@ -3,9 +3,9 @@
    ---------------------------------------------------------
    الترتيب: مشغّل ← أدوات تحكم ← المنضمون ← الرسائل
    المزامنة:
-     • أي مستخدم يستطيع التحكم (تشغيل/إيقاف/تقديم/تأخير/تغيير الفيديو)
-     • كل إجراء يُبثّ فوراً (بدون انتظار)
-     • الحالة تُرفع إلى قاعدة بيانات الغرفة كل 5 ثوانٍ
+     • التحكم لمنشئ الغرفة والمنظّمين الذين يعيّنهم
+     • الخادم يتحقق من الدور ويرقّم كل تغيير؛ الحالة المحلية ليست مرجعاً
+     • الحالة تُرفع إلى قاعدة بيانات الغرفة دورياً، مع إعادة اتصال واستطلاع احتياطي
      • من ينضم لاحقاً يأخذ الوقت المحسوب من آخر حالة (يلحق بالجميع)
      • عند خروج آخر مستخدم تُرفع الحالة فوراً (Java: خادم / Supabase: beacon)
      • رقم تسلسلي rev يمنع تطبيق تحديث قديم
@@ -28,9 +28,29 @@
   let createInfo = null;
   try { createInfo = JSON.parse(sessionStorage.getItem('wt:create:' + roomId) || 'null'); } catch (e) { createInfo = null; }
 
+  /* هوية تبويب ثابتة عند إعادة التحميل، ومفتاح تحكم خاص لا يوضع في رابط الدعوة. */
+  const storedOwnerToken = U.store.get('owner:' + roomId, '') || '';
+  const ownerToken = (createInfo && createInfo.ownerToken) || storedOwnerToken || '';
+  if (ownerToken && !storedOwnerToken) U.store.set('owner:' + roomId, ownerToken);
+  let roomIdentity = null;
+  try { roomIdentity = JSON.parse(sessionStorage.getItem('wt:identity:' + roomId) || 'null'); } catch (e) { roomIdentity = null; }
+  const clientId = (roomIdentity && roomIdentity.clientId) || U.uid('c');
+  let memberToken = ownerToken || (roomIdentity && roomIdentity.memberToken) || '';
+  if (!memberToken) {
+    try { memberToken = U.randomToken(32); }
+    catch (e) { location.replace('index.html?secure=required'); return; }
+  }
+  try { sessionStorage.setItem('wt:identity:' + roomId, JSON.stringify({ clientId, memberToken })); } catch (e) { }
+
   /* ============================== الجلسة ============================== */
   const session = {
-    clientId: U.uid('c'),
+    clientId,
+    memberToken,
+    ownerToken,
+    role: 'viewer',
+    isOwner: false,
+    queue: [],
+    roles: {},
     name: '',
     userId: null,
     isGuest: true,
@@ -82,29 +102,22 @@
     codeText: $('roomCodeText'), copyCodeBtn: $('copyCodeBtn'),
     statusBadge: $('statusBadge'), statusText: $('statusText'),
     copyLinkBtn: $('copyLinkBtn'), shareBtn: $('shareBtn'), qrBtn: $('qrBtn'), leaveBtn: $('leaveBtn'),
-    stage: $('stage'), player: $('player'), placeholder: $('playerPlaceholder'),
-    ctrlbar: $('ctrlbar'),
+    drawer: $('roomDrawer'), drawerScrim: $('drawerScrim'), drawerOpenBtn: $('drawerOpenBtn'), drawerCloseBtn: $('drawerCloseBtn'),
+    membersCount: $('membersCount'), organizerList: $('organizerList'), organizerCount: $('organizerCount'), organizerEmpty: $('organizerEmpty'),
+    stage: $('stage'), player: $('player'), placeholder: $('playerPlaceholder'), ctrlbar: $('ctrlbar'),
     playPause: $('playPauseBtn'), iconPlay: $('iconPlay'), iconPause: $('iconPause'),
-    backBtn: $('backBtn'), fwdBtn: $('fwdBtn'), muteBtn: $('muteBtn'),
-    iconSound: $('iconSound'), iconMuted: $('iconMuted'), fullBtn: $('fullBtn'), volRange: $('volRange'),
+    muteBtn: $('muteBtn'), iconSound: $('iconSound'), iconMuted: $('iconMuted'), fullBtn: $('fullBtn'), volRange: $('volRange'),
     progressBar: $('progressBar'), progressFill: $('progressFill'), progressBuffer: $('progressBuffer'),
     progressKnob: $('progressKnob'), curTime: $('curTime'), durTime: $('durTime'),
-    changeUrlBtn: $('changeUrlBtn'), resyncBtn: $('resyncBtn'),
-    focusToggleBtn: $('focusToggleBtn'), focusToggleLabel: $('focusToggleLabel'),
-    membersBadge: $('membersBadge'), membersCount: $('membersCount'),
-    syncBadge: $('syncBadge'), syncBadgeText: $('syncBadgeText'),
-    syncNote: $('syncNote'), syncNoteText: $('syncNoteText'),
-    changeBar: $('changeBar'), newUrl: $('newUrl'), applyUrlBtn: $('applyUrlBtn'), cancelUrlBtn: $('cancelUrlBtn'),
-    membersPanel: $('membersPanel'), membersList: $('membersList'), membersToggle: $('membersToggle'),
-    sideMembersCount: $('sideMembersCount'), infoGrid: $('infoGrid'),
-    infoCode: $('infoCode'), infoProvider: $('infoProvider'), infoController: $('infoController'),
-    infoSync: $('infoSync'), infoRole: $('infoRole'), infoTransport: $('infoTransport'),
+    addVideoBtn: $('addVideoBtn'), messagesBtn: $('messagesBtn'), messagesCount: $('messagesCount'),
+    playlistBtn: $('playlistBtn'), playlistCount: $('playlistCount'),
+    changeBar: $('changeBar'), newUrl: $('newUrl'), newTitle: $('newTitle'), applyUrlBtn: $('applyUrlBtn'), cancelUrlBtn: $('cancelUrlBtn'),
+    membersPanel: $('membersPanel'), membersList: $('membersList'), sideMembersCount: $('sideMembersCount'),
     chat: $('chat'), chatBody: $('chatBody'), chatEmpty: $('chatEmpty'), chatCount: $('chatCount'),
     clearChatBtn: $('clearChatBtn'), reactRow: $('reactRow'), chatForm: $('chatForm'),
-    chatInput: $('chatInput'), chatSend: $('chatSend'), typing: $('typing'),
-    backToVideoBtn: $('backToVideoBtn'), chatFab: $('chatFab'), chatFabCount: $('chatFabCount'),
-    sbMode: $('sbMode'), sbSync: $('sbSync'), sbMe: $('sbMe'), sbMeBtn: $('sbMeBtn'),
-    qrModal: $('qrModal'), qrBox: $('qrBox'), qrUrl: $('qrUrl'), qrClose: $('qrClose'), qrCopy: $('qrCopy'),
+    chatInput: $('chatInput'), chatSend: $('chatSend'), typing: $('typing'), backToVideoBtn: $('backToVideoBtn'),
+    playlistModal: $('playlistModal'), playlistCloseBtn: $('playlistCloseBtn'), queueList: $('queueList'), queueEmpty: $('queueEmpty'),
+    sbMeBtn: $('sbMeBtn'), qrModal: $('qrModal'), qrBox: $('qrBox'), qrUrl: $('qrUrl'), qrClose: $('qrClose'), qrCopy: $('qrCopy'),
     meModal: $('meModal'), meClose: $('meClose'), meAvatar: $('meAvatar'), meName: $('meName'),
     meMail: $('meMail'), meNameInput: $('meNameInput'), meSave: $('meSave'), meSignout: $('meSignout'),
     diagBtn: $('diagBtn'), diagModal: $('diagModal'), diagBody: $('diagBody'),
@@ -114,7 +127,6 @@
 
   el.gateCode.textContent = roomId;
   el.codeText.textContent = roomId;
-  el.infoCode.textContent = roomId;
   document.title = 'غرفة ' + roomId + ' — WatchTogether';
   if (el.gateAuthLink) el.gateAuthLink.href = 'auth.html?room=' + encodeURIComponent(roomId);
 
@@ -130,6 +142,10 @@
     },
     onStateChange: (d) => {
       if (session.applyingRemote) return;
+      if (!canControl()) {
+        applyState(st, { initial: false });
+        return;
+      }
       if (d.playing === true && !st.playing) { st.playing = true; localControl('play'); }
       else if (d.playing === false && st.playing) { st.playing = false; localControl('pause'); }
       updatePlayIcon();
@@ -282,7 +298,11 @@
         sb.tables && sb.tables.rooms ? 'is-good' : 'is-bad') +
       diagRow('chat', 'جدول الرسائل (messages)', sb.tables && sb.tables.messages ? 'موجود ✓' : 'مفقود ✕',
         sb.tables && sb.tables.messages ? 'is-good' : 'is-warn') +
-      diagRow('users', 'جدول الحضور (presence)', sb.tables && sb.tables.presence ? 'موجود ✓' : 'مفقود ✕',
+      diagRow('users', 'جدول الأدوار (room_members)', sb.tables && sb.tables.room_members ? 'موجود ✓' : 'مفقود ✕',
+        sb.tables && sb.tables.room_members ? 'is-good' : 'is-bad') +
+      diagRow('playlist', 'قائمة التشغيل (room_queue)', sb.tables && sb.tables.room_queue ? 'موجود ✓' : 'مفقود ✕',
+        sb.tables && sb.tables.room_queue ? 'is-good' : 'is-bad') +
+      diagRow('users', 'جدول الحضور القديم (presence)', sb.tables && sb.tables.presence ? 'موجود ✓' : 'اختياري',
         sb.tables && sb.tables.presence ? 'is-good' : 'is-warn') +
       diagRow('broadcast', 'Realtime', sb.realtime && sb.realtime.ok ? 'يعمل ✓' : ('لا يعمل ✕ ' + U.esc((sb.realtime && sb.realtime.error) || '')),
         sb.realtime && sb.realtime.ok ? 'is-good' : 'is-warn') +
@@ -363,8 +383,6 @@
     el.roomTitle.textContent = title || ('غرفة ' + roomId);
     if (title) U.store.set('roomTitle:' + roomId, title);
 
-    el.infoRole.textContent = session.isGuest ? 'ضيف' : 'مسجّل';
-    el.sbMe.textContent = session.name;
     paintMe();
     addMember(session.clientId, session.name, { me: true });
     renderPlayerPlaceholder();
@@ -391,9 +409,12 @@
         name: session.name,
         userId: session.userId,
         videoUrl: st.url || null,
+        title: (createInfo && createInfo.title) || el.roomTitle.textContent || 'غرفة مشاهدة',
         /* من أنشأ الغرفة هو من يملك الحق في إنشاء صفّها في قاعدة البيانات؛
            البقية ينتظرونها ولا ينشئون غرفة فارغة تحمل نفس الكود */
-        host: !!(createInfo && createInfo.host) || params.get('host') === '1'
+        host: !!(createInfo && createInfo.host) || params.get('host') === '1',
+        ownerToken: ownerToken || '',
+        memberToken: memberToken || ownerToken || ''
       }, (s) => {
         if (s && s.state === 'failed') {
           /* فشل وضع معيّن — نحتفظ بالسبب لعرضه في نافذة التشخيص */
@@ -405,9 +426,15 @@
 
       session.transport = transport;
       session.mode = transport.label;
-      el.sbMode.textContent = transport.label;
-      el.infoTransport.textContent = transport.label;
-      if (typeof transport.serverTime === 'number') session.clockOffset = transport.serverTime - Date.now();
+      session.role = (result && result.role) || (transport.kind === 'local' && ownerToken ? 'owner' : 'viewer');
+      session.isOwner = session.role === 'owner';
+      session.queue = Array.isArray(result && result.queue) ? result.queue : [];
+      if (Array.isArray(result && result.roles)) updateRoles(result.roles);
+      if (Array.isArray(result && result.members)) mergeMembers(result.members);
+      updateControlAccess();
+      renderQueue();
+      const serverTime = (result && result.serverTime) || transport.serverTime;
+      if (typeof serverTime === 'number') session.clockOffset = serverTime - Date.now();
 
       /* استرجاع الحالة المحفوظة في قاعدة بيانات الغرفة */
       if (result && result.state && typeof result.state === 'object') {
@@ -466,6 +493,28 @@
     }
   }
 
+  function restoreServerState(raw) {
+    if (!raw || typeof raw !== 'object') return;
+    const incoming = normalizeState(raw);
+    const previousUrl = st.url;
+    st = incoming;
+    session.revClock = Math.max(session.revClock, incoming.rev || 0);
+    session.lastAppliedRev = incoming.rev || 0;
+    session.lastApplied = { rev: incoming.rev || 0, by: incoming.updatedBy || '' };
+    session.lastAppliedAt = Date.now();
+    session.lastRemoteAt = Date.now();
+    session.controllerName = incoming.updatedByName || '—';
+    if (incoming.url && incoming.url !== previousUrl) {
+      const parsed = U.parseWatchUrl(incoming.url);
+      if (parsed) { loadVideo(parsed, { autoplay: incoming.playing, remote: true }); return; }
+    }
+    if (player.isReady()) applyState(incoming, { initial: true });
+    else if (incoming.url) {
+      const parsed = U.parseWatchUrl(incoming.url);
+      if (parsed) loadVideo(parsed, { autoplay: incoming.playing, remote: true });
+    }
+  }
+
   function bindTransport(t) {
     t.on('state', onRemoteState);
     t.on('chat', (m) => {
@@ -473,14 +522,29 @@
       if (m.sender === session.clientId || m.client === session.clientId) return;
       if (m.text && session.recentSent[m.text]) { delete session.recentSent[m.text]; return; }
       addChatMessage(m);
-      if (!isChatVisible()) { session.unread++; updateFab(); }
+      if (!isChatVisible()) { session.unread++; updateMessagesBadge(); }
     });
     t.on('system', (m) => { if (m && m.text) sysMessage(m.text); });
     t.on('status', (s) => setStatus(s.state, s.detail));
+    t.on('serverTime', (time) => { if (typeof time === 'number') session.clockOffset = time - Date.now(); });
     t.on('members', (list) => { if (Array.isArray(list)) mergeMembers(list); });
+    t.on('roles', updateRoles);
+    t.on('queue', setQueue);
     t.on('presence', handlePresence);
     t.on('typing', handleTyping);
-    t.on('error', (e) => { if (e && e.message) U.toast(e.message, 'error'); });
+    t.on('error', (e) => {
+      if (!e) return;
+      if (e.permission) {
+        U.toast(e.message || 'لا تملك صلاحية تنفيذ هذا الإجراء', 'warn', 2800);
+        if (e.action === 'state') {
+          if (session.role === 'organizer') { session.role = 'viewer'; updateControlAccess(); }
+          if (e.state) restoreServerState(e.state);
+        }
+      } else {
+        session.lastError = e.diag || session.lastError;
+        if (e.transient) setStatus('offline', 'الاتصال متقطع — تتم إعادة المحاولة تلقائياً');
+      }
+    });
   }
 
   /* ============================== الحالة: توحيد الشكل ============================== */
@@ -506,7 +570,35 @@
     return U.expectedPosition(st.pos, st.playing, refT, serverNow());
   }
 
-  /* ============================== النشر (أي مستخدم) ============================== */
+  /* ============================== صلاحيات التحكم ============================== */
+  function canControl() { return session.role === 'owner' || session.role === 'organizer'; }
+  function canManageRoles() { return session.role === 'owner'; }
+
+  function updateControlAccess() {
+    const locked = !canControl();
+    if (el.playPause) el.playPause.disabled = locked;
+    if (el.progressBar) {
+      el.progressBar.setAttribute('aria-disabled', locked ? 'true' : 'false');
+      el.progressBar.classList.toggle('is-locked', locked);
+      el.progressBar.title = locked ? 'التحكم بالمنشئ والمنظّمين فقط' : 'اسحب للتقديم أو الترجيع';
+    }
+    if (el.player) el.player.classList.toggle('player--view-only', locked);
+    if (player && player._video) player._video.controls = !locked;
+    if (el.room) el.room.classList.toggle('room--viewer', locked);
+    renderMembers();
+  }
+
+  function requireControl() {
+    if (canControl()) return true;
+    U.toast('التحكم متاح لمنشئ الغرفة والمنظّمين فقط', 'warn', 2600);
+    return false;
+  }
+
+  function roleName(role) {
+    return role === 'owner' ? 'منشئ الغرفة' : role === 'organizer' ? 'منظّم' : 'مشاهد';
+  }
+
+  /* ============================== النشر (المعتمد عبر السيرفر) ============================== */
   let publishTimer = null;
 
   /**
@@ -515,7 +607,7 @@
    */
   function publish(o) {
     o = o || {};
-    if (!session.ready || !session.transport) return;
+    if (!session.ready || !session.transport || !canControl()) return Promise.resolve(false);
 
     let pos = st.pos || 0;
     let playing = !!st.playing;
@@ -544,42 +636,55 @@
     session.lastAppliedAt = Date.now();
     session.lastSyncAt = Date.now();
     session.controllerName = session.name;
-    el.infoController.textContent = session.name;
 
     const snapshot = Object.assign({}, st);
-    session.transport.publishState(snapshot);
+    const sent = session.transport.publishState(snapshot);
+    if (sent && typeof sent.then === 'function') {
+      return sent.then((canonical) => {
+        const accepted = canonical && canonical.state ? canonical.state : canonical;
+        if (accepted && Number.isFinite(+accepted.rev)) {
+          st = normalizeState(accepted);
+          session.revClock = Math.max(session.revClock, st.rev);
+          session.lastAppliedRev = st.rev;
+          session.lastApplied = { rev: st.rev, by: st.updatedBy };
+        }
+        session.lastPersistAt = Date.now();
+        return true;
+      }).catch((err) => {
+        if (err && (err.status === 401 || err.status === 403 || err.code === '42501')) {
+          session.role = 'viewer';
+          session.isOwner = false;
+          updateControlAccess();
+          U.toast('لم يقبل السيرفر هذا التحكم — تم تحديث الصلاحيات', 'warn', 3500);
+        }
+        return false;
+      });
+    }
     session.lastPersistAt = Date.now();
-    updateSyncBadge();
+    return true;
   }
 
-  /** إجراء محلي (تشغيل/إيقاف/تقديم…) → بثّ فوري للجميع */
+  /** إجراء محلي (تشغيل/إيقاف/تقديم…) → يرسل للسيرفر للتحقق ثم يبثه */
   function localControl(reason) {
-    if (!session.ready) return;
+    if (!session.ready || !requireControl()) return;
     clearTimeout(publishTimer);
-    /* تأخير ضئيل جداً لتجميع النقرات المزدوجة، ثم بثّ */
     publishTimer = setTimeout(() => publish({ immediate: true }), reason === 'seek' ? 140 : 35);
-    flashControlNote();
-  }
-
-  function flashControlNote() {
-    if (!el.syncNote) return;
-    el.syncNoteText.innerHTML = 'آخر تحكّم من <b>' + U.esc(session.controllerName || session.name) + '</b> • الجميع على نفس اللحظة';
-    el.syncNote.hidden = false;
   }
 
   /* ============================== الاستقبال ============================== */
   function onRemoteState(raw) {
     if (!raw) return;
     const incoming = normalizeState(raw);
+    const authoritative = raw.authoritative === true;
 
     /* صدى ذاتي (سيرفر Java يعيد الحالة لصاحبها بعد ترقيمها) → نحدّث الساعة فقط */
-    if (incoming.updatedBy === session.clientId) {
+    if (incoming.updatedBy === session.clientId && !authoritative) {
       if (Number.isFinite(+incoming.rev) && +incoming.rev > session.revClock) session.revClock = +incoming.rev;
       return;
     }
     /* تحديث قديم أو مكرر → تجاهله (يمنع ارتداد الفيديو للخلف).
        عند تساوي rev يفوز صاحب المعرّف الأكبر — نفس القرار عند الجميع */
-    if (!U.stateWins(incoming, session.lastApplied)) return;
+    if (!authoritative && !U.stateWins(incoming, session.lastApplied)) return;
     if (Number.isFinite(+incoming.rev) && +incoming.rev > session.revClock) session.revClock = +incoming.rev;
     session.lastApplied = { rev: +incoming.rev, by: incoming.updatedBy };
 
@@ -591,7 +696,6 @@
     session.lastSyncAt = Date.now();
     session.lastRemoteAt = Date.now();
     session.controllerName = incoming.updatedByName || session.controllerName;
-    el.infoController.textContent = session.controllerName || '—';
 
     const prevUrl = st.url;
     st = incoming;
@@ -635,7 +739,6 @@
 
       if (opts.initial || abs > (CFG.sync.hardDrift || 3)) {
         player.seek(Math.max(0, expected));
-        if (!opts.initial) U.toast('تمت المزامنة (فرق ' + abs.toFixed(1) + ' ث)', 'success', 1700);
       } else if (abs > (CFG.sync.driftTolerance || 1.2)) {
         nudge(drift > 0 ? 1.35 : 0.75, 1500);
       } else if (abs > 0.35) {
@@ -662,16 +765,11 @@
 
   function updateSyncBadge() {
     const d = session.pendingDrift || 0;
-    const label = !player.isReady() ? '—'
-      : d <= 0.35 ? 'متزامن'
-        : d <= 1.2 ? 'فارق ' + d.toFixed(1) + ' ث'
-          : 'تصحيح ' + d.toFixed(1) + ' ث';
-    el.syncBadgeText.textContent = label;
-    el.syncBadge.className = 'badge ' + (d <= 0.35 ? 'badge--live' : d <= 1.2 ? 'badge--brand' : 'badge--host');
-    el.infoSync.textContent = label;
-    el.sbSync.textContent = session.lastPersistAt
-      ? 'حُفظت الحالة ' + U.fmtClock(session.lastPersistAt)
-      : 'لم تُحفظ بعد';
+    /* تفاصيل الانحراف لا تُعرض باستمرار لتبقى الواجهة هادئة؛ تصحيحها يعمل في الخلفية. */
+    if (el.statusBadge) {
+      el.statusBadge.title = !player.isReady() ? 'حالة اتصال الغرفة' :
+        (d <= 0.35 ? 'المشاهدة متزامنة' : 'يُصحّح الانحراف تلقائياً (' + d.toFixed(1) + ' ث)');
+    }
   }
 
   /* ============================== الفيديو ============================== */
@@ -682,10 +780,9 @@
     session.videoParsed = parsed;
     st.url = parsed.src;
     st.kind = parsed.kind;
-    el.infoProvider.textContent = parsed.label;
 
     try {
-      await player.load(parsed, { autoplay: !!opts.autoplay, controls: true });
+      await player.load(parsed, { autoplay: !!opts.autoplay, controls: canControl() });
       if (el.placeholder) { el.placeholder.remove(); el.placeholder = null; }
 
       /* الموضع: عند الانضمام نحسب الوقت المتوقع، وإلا نستخدم الموضع المحفوظ */
@@ -746,7 +843,7 @@
     clearInterval(session._persistTimer);
     const persistMs = (CFG.sync && CFG.sync.persistMs) || 5000;
     session._persistTimer = setInterval(() => {
-      if (!session.ready || !session.transport) return;
+      if (!session.ready || !session.transport || !canControl()) return;
       if (!player.isReady()) return;
       const mine = !st.updatedBy || st.updatedBy === session.clientId;
       const lastRemote = session.lastRemoteAt || session.lastAppliedAt || 0;
@@ -787,9 +884,10 @@
     if (!id) return;
     const prev = session.members[id];
     session.members[id] = Object.assign({
-      id, name: name || 'زائر', host: false, me: false,
+      id, name: name || 'زائر', host: false, me: false, role: session.roles[id] || 'viewer',
       lastSeen: Date.now(), joined: prev ? prev.joined : Date.now(), typing: false
-    }, extra || {});
+    }, prev || {}, extra || {});
+    if (session.roles[id]) session.members[id].role = session.roles[id];
     renderMembers();
   }
 
@@ -804,15 +902,19 @@
   function handlePresence(p) {
     if (!p) return;
     if (p.left || p.type === 'leave') return removeMember(p.clientId);
-    addMember(p.clientId, p.name, { host: !!p.host, typing: !!p.typing });
+    addMember(p.clientId, p.name, { host: !!p.host, role: p.role || session.roles[p.clientId] || 'viewer', typing: !!p.typing });
   }
 
   function mergeMembers(list) {
     const seen = {};
     list.forEach(m => {
-      if (!m || !m.id) return;
-      seen[m.id] = 1;
-      addMember(m.id, m.name, { host: !!m.host });
+      if (!m || !(m.id || m.client_id)) return;
+      const id = m.id || m.client_id;
+      seen[id] = 1;
+      addMember(id, m.name || m.display_name, {
+        host: !!m.host,
+        role: m.role || session.roles[id] || 'viewer'
+      });
     });
     Object.keys(session.members).forEach(id => {
       if (!seen[id] && !session.members[id].me) delete session.members[id];
@@ -820,32 +922,88 @@
     renderMembers();
   }
 
-  function renderMembers() {
-    const list = Object.values(session.members)
-      .sort((a, b) => (b.me - a.me) || (b.host - a.host) || (a.joined - b.joined));
-
-    if (!list.length) {
-      el.membersList.innerHTML = '<div class="members-empty">لا يوجد منضمون بعد — انسخ الرابط وشاركه</div>';
-    } else {
-      el.membersList.innerHTML = list.map(m => {
-        const cls = ['member-chip'];
-        if (m.me) cls.push('is-me');
-        if (m.host) cls.push('is-host');
-        if (m.typing) cls.push('is-typing');
-        return '<div class="' + cls.join(' ') + '" title="' + U.esc(m.name) + '">' +
-          '<span class="member-chip__av" style="background:' + U.colorFor(m.name) + '">' + U.esc(U.initials(m.name)) + '</span>' +
-          '<span class="member-chip__body">' +
-          '<span class="member-chip__name">' + U.esc(m.name) + (m.me ? ' (أنت)' : '') + '</span>' +
-          '<span class="member-chip__meta">' + (m.typing ? 'يكتب…' : m.host ? 'يتحكم الآن' : 'متصل') + '</span>' +
-          '</span>' +
-          (m.host ? '<span class="member-chip__crown">' + IC.html('crown', 14) + '</span>' : '') +
-          '</div>';
-      }).join('');
+  function updateRoles(rows) {
+    if (!Array.isArray(rows)) return;
+    const roles = {};
+    rows.forEach(row => {
+      if (!row) return;
+      const id = row.client_id || row.clientId || row.id;
+      if (id) roles[id] = row.role || 'viewer';
+    });
+    session.roles = roles;
+    Object.values(session.members).forEach(m => { m.role = roles[m.id] || 'viewer'; });
+    const role = roles[session.clientId];
+    if (role) {
+      session.role = role;
+      session.isOwner = role === 'owner';
+      updateControlAccess();
     }
+    renderMembers();
+  }
 
-    const n = list.length;
-    el.membersCount.textContent = n;
-    el.sideMembersCount.textContent = n;
+  async function changeMemberRole(clientId, role) {
+    if (!canManageRoles() || !session.transport || typeof session.transport.setMemberRole !== 'function') {
+      U.toast('إدارة المنظّمين متاحة لمنشئ الغرفة فقط', 'warn');
+      return;
+    }
+    try {
+      const result = await session.transport.setMemberRole(clientId, role);
+      if (Array.isArray(result)) updateRoles(result);
+      else if (result && Array.isArray(result.members)) updateRoles(result.members);
+      U.toast(role === 'organizer' ? 'تمت إضافة المنظّم' : 'تمت إزالة صلاحية المنظّم', 'success', 2200);
+    } catch (err) {
+      U.toast('تعذّر تحديث الصلاحية — تحقق من الاتصال ثم أعد المحاولة', 'error', 3500);
+    }
+  }
+
+  function renderMemberCard(m, allowActions) {
+    const role = session.roles[m.id] || m.role || 'viewer';
+    const cls = ['member-card'];
+    if (m.me) cls.push('is-me');
+    if (role === 'owner') cls.push('is-owner');
+    else if (role === 'organizer') cls.push('is-organizer');
+    const action = allowActions && canManageRoles() && !m.me && role !== 'owner'
+      ? '<button class="member-role-btn" type="button" data-client-id="' + U.esc(m.id) + '" data-set-role="' + (role === 'organizer' ? 'viewer' : 'organizer') + '" aria-label="' + (role === 'organizer' ? 'إزالة المنظّم' : 'تعيين منظّم') + '">' +
+        IC.html(role === 'organizer' ? 'user' : 'userPlus', 15) + '<span>' + (role === 'organizer' ? 'إزالة' : 'منظّم') + '</span></button>'
+      : '';
+    return '<div class="' + cls.join(' ') + '" title="' + U.esc(m.name) + '">' +
+      '<span class="member-card__av" style="background:' + U.colorFor(m.name) + '">' + U.esc(U.initials(m.name)) + '</span>' +
+      '<span class="member-card__body"><span class="member-card__name">' + U.esc(m.name) + (m.me ? ' (أنت)' : '') + '</span>' +
+      '<span class="member-card__meta">' + U.esc(roleName(role)) + (m.typing ? ' · يكتب…' : '') + '</span></span>' +
+      (role === 'owner' ? '<span class="member-card__role" title="منشئ الغرفة">' + IC.html('crown', 15) + '</span>' :
+        role === 'organizer' ? '<span class="member-card__role" title="منظّم">' + IC.html('shield', 15) + '</span>' : '') + action +
+      '</div>';
+  }
+
+  function renderMembers() {
+    const list = Object.values(session.members).map(m => {
+      m.role = session.roles[m.id] || m.role || 'viewer';
+      return m;
+    }).sort((a, b) => {
+      const rank = x => x.role === 'owner' ? 0 : x.role === 'organizer' ? 1 : 2;
+      return rank(a) - rank(b) || (b.me - a.me) || (b.host - a.host) || (a.joined - b.joined);
+    });
+    const organizers = list.filter(m => m.role === 'owner' || m.role === 'organizer');
+
+    el.membersList.innerHTML = list.length
+      ? list.map(m => renderMemberCard(m, true)).join('')
+      : '<div class="members-empty">لا يوجد مشاركون الآن — انسخ الرابط وشاركه</div>';
+    el.organizerList.innerHTML = organizers.length
+      ? organizers.map(m => renderMemberCard(m, false)).join('')
+      : '';
+    el.organizerEmpty.hidden = organizers.length > 1 || (organizers.length === 1 && organizers[0].role === 'organizer');
+    el.organizerCount.textContent = String(organizers.filter(m => m.role === 'organizer').length);
+    el.membersCount.textContent = String(list.length);
+    el.sideMembersCount.textContent = String(list.length);
+
+    el.membersList.querySelectorAll('[data-set-role]').forEach(btn => {
+      btn.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        changeMemberRole(btn.getAttribute('data-client-id') || (btn.dataset && (btn.dataset.clientId || btn.dataset['client-id'])),
+          btn.getAttribute('data-set-role') || (btn.dataset && (btn.dataset.setRole || btn.dataset['set-role'])));
+      });
+    });
   }
 
   function pingPresence(first) {
@@ -951,12 +1109,12 @@
     el.chatCount.textContent = n + (n === 1 ? ' رسالة' : ' رسائل');
   }
 
-  function isChatVisible() { return session.focusMode || !window.matchMedia('(max-width: 860px)').matches; }
+  function isChatVisible() { return session.focusMode; }
 
-  function updateFab() {
-    el.chatFabCount.hidden = session.unread === 0;
-    el.chatFabCount.textContent = session.unread > 99 ? '99+' : session.unread;
-    el.chatFab.style.display = session.focusMode ? 'none' : '';
+  function updateMessagesBadge() {
+    if (!el.messagesCount) return;
+    el.messagesCount.hidden = session.unread === 0;
+    el.messagesCount.textContent = session.unread > 99 ? '99+' : String(session.unread);
   }
 
   function sendMessage(text, kind) {
@@ -1011,39 +1169,117 @@
   function setFocusMode(on) {
     session.focusMode = !!on;
     document.body.classList.toggle('chat-focus', session.focusMode);
-    el.focusToggleBtn.classList.toggle('is-on', session.focusMode);
-    el.focusToggleLabel.textContent = session.focusMode ? 'وضع الفيديو' : 'وضع الرسائل';
-    const fIcon = el.focusToggleBtn.querySelector('.ic');
-    if (fIcon) fIcon.innerHTML = IC.html(session.focusMode ? 'film' : 'chat', 16);
+    if (el.messagesBtn) el.messagesBtn.classList.toggle('is-on', session.focusMode);
     el.backToVideoBtn.hidden = !session.focusMode;
     if (session.focusMode) {
-      session.unread = 0; updateFab();
+      session.unread = 0;
+      updateMessagesBadge();
       setTimeout(() => { scrollChat(true); el.chatInput.focus(); }, 90);
     } else {
       scrollChat(true);
     }
   }
 
+  /* ============================== قائمة التشغيل المشتركة ============================== */
+  function setQueue(items) {
+    session.queue = Array.isArray(items) ? items.slice() : [];
+    renderQueue();
+  }
+
+  function renderQueue() {
+    const queue = session.queue || [];
+    el.playlistCount.textContent = String(queue.length);
+    el.queueEmpty.hidden = queue.length > 0;
+    if (!queue.length) { el.queueList.innerHTML = ''; return; }
+    el.queueList.innerHTML = queue.map((item, index) => {
+      const title = item.title || item.url || 'فيديو';
+      const canRemove = canControl() || item.addedByClient === session.clientId || item.added_by_client === session.clientId;
+      return '<article class="queue-item" data-queue-id="' + U.esc(item.id) + '">' +
+        '<span class="queue-item__index">' + String(index + 1).padStart(2, '0') + '</span>' +
+        '<span class="queue-item__body"><strong>' + U.esc(title) + '</strong><small dir="ltr">' + U.esc(item.url || '') + '</small>' +
+        '<small>أُضيف بواسطة ' + U.esc(item.addedBy || item.added_by || 'مشارك') + '</small></span>' +
+        (canControl() ? '<button type="button" class="queue-item__play" data-play-queue="' + U.esc(item.id) + '" aria-label="تشغيل الآن">' + IC.html('play', 16) + '</button>' : '') +
+        (canRemove ? '<button type="button" class="queue-item__remove" data-remove-queue="' + U.esc(item.id) + '" aria-label="إزالة من القائمة">' + IC.html('x', 16) + '</button>' : '') +
+        '</article>';
+    }).join('');
+
+    el.queueList.querySelectorAll('[data-play-queue]').forEach(btn => btn.addEventListener('click', () => {
+      const id = btn.getAttribute('data-play-queue');
+      const item = queue.find(x => String(x.id) === String(id));
+      if (item) playQueueItem(item);
+    }));
+    el.queueList.querySelectorAll('[data-remove-queue]').forEach(btn => btn.addEventListener('click', () => {
+      removeQueueItem(btn.getAttribute('data-remove-queue'));
+    }));
+  }
+
+  async function addQueueItem() {
+    const parsed = U.parseWatchUrl(el.newUrl.value);
+    if (!parsed) { U.toast('الرابط غير صالح — أدخل رابط يوتيوب أو mp4 أو m3u8', 'error'); el.newUrl.focus(); return; }
+    if (!session.transport || typeof session.transport.addQueueItem !== 'function') {
+      U.toast('قائمة التشغيل غير متاحة في وضع الاتصال الحالي', 'warn'); return;
+    }
+    const item = { url: parsed.src, title: U.cleanName(el.newTitle.value) || parsed.label || 'فيديو', addedBy: session.name, addedByClient: session.clientId };
+    try {
+      const result = await session.transport.addQueueItem(item);
+      if (Array.isArray(result)) setQueue(result);
+      el.newUrl.value = '';
+      el.newTitle.value = '';
+      el.changeBar.hidden = true;
+      U.toast('أُضيف الفيديو إلى قائمة الغرفة', 'success', 2200);
+    } catch (err) {
+      U.toast('تعذّر إضافة الفيديو — تحقق من الاتصال ثم أعد المحاولة', 'error', 3200);
+    }
+  }
+
+  async function removeQueueItem(id) {
+    if (!session.transport || typeof session.transport.removeQueueItem !== 'function') return;
+    try {
+      const result = await session.transport.removeQueueItem(id);
+      if (Array.isArray(result)) setQueue(result);
+    } catch (err) { U.toast('تعذّر إزالة الفيديو من القائمة', 'error', 2600); }
+  }
+
+  function playQueueItem(item) {
+    if (!requireControl()) return;
+    const parsed = U.parseWatchUrl(item && item.url);
+    if (!parsed) { U.toast('رابط الفيديو في القائمة غير صالح', 'error'); return; }
+    st.url = parsed.src;
+    st.kind = parsed.kind;
+    st.pos = 0;
+    st.playing = true;
+    session.lastAppliedRev = -1;
+    loadVideo(parsed, { autoplay: true });
+    publish({ force: true });
+    el.playlistModal.hidden = true;
+    sysMessage('بدأ ' + session.name + ' عرض «' + (item.title || parsed.label) + '»');
+  }
+
   /* ============================== الحالة والشريط ============================== */
   function setStatus(state, detail) {
     const map = {
-      connecting: { txt: 'جارٍ الاتصال', cls: '', pulse: false },
-      online: { txt: 'مباشر', cls: 'badge--live', pulse: true },
-      local: { txt: 'وضع محلي', cls: 'badge--host', pulse: false },
-      offline: { txt: 'غير متصل', cls: '', pulse: false }
+      connecting: { txt: 'يتصل…', cls: 'is-connecting', pulse: true },
+      online: { txt: 'متصل', cls: 'is-online', pulse: true },
+      local: { txt: 'محلي', cls: 'is-local', pulse: false },
+      offline: { txt: 'يعيد الاتصال', cls: 'is-offline', pulse: true }
     };
     const m = map[state] || map.offline;
-    el.statusBadge.className = 'badge ' + m.cls;
-    el.statusText.textContent = m.txt;
-    const dot = el.statusBadge.querySelector('.dot');
+    if (el.statusBadge) {
+      el.statusBadge.className = 'badge room-connection ' + m.cls;
+      el.statusBadge.setAttribute('data-state', state || 'offline');
+      el.statusBadge.title = detail || 'حالة اتصال الغرفة';
+    }
+    if (el.statusText) el.statusText.textContent = m.txt;
+    const dot = el.statusBadge && el.statusBadge.querySelector('.dot');
     if (dot) dot.className = 'dot' + (m.pulse ? ' dot--pulse' : '');
-    if (detail) el.roomSub.textContent = detail;
+    if (detail && el.roomSub) el.roomSub.textContent = detail;
   }
 
   /* ============================== ربط الواجهة ============================== */
   function wireUI() {
     /* ---- تشغيل/إيقاف ---- */
     el.playPause.addEventListener('click', () => {
+      if (!requireControl()) return;
       if (!player.isReady()) {
         if (!st.url) return openChangeBar();
         return U.toast('لم يكتمل تحميل الفيديو بعد', 'warn');
@@ -1054,8 +1290,9 @@
       localControl('toggle');
     });
 
-    /* ---- تقديم/ترجيع ---- */
+    /* ---- تقديم/ترجيع عبر مفاتيح الأسهم فقط ---- */
     const skip = (delta) => {
+      if (!requireControl()) return;
       if (!player.isReady()) return U.toast('لا يوجد فيديو يعمل', 'warn');
       const to = Math.max(0, player.getCurrentTime() + delta);
       player.seek(to);
@@ -1063,8 +1300,6 @@
       localControl('seek');
       updateProgressUI();
     };
-    el.backBtn.addEventListener('click', () => skip(-10));
-    el.fwdBtn.addEventListener('click', () => skip(+10));
 
     /* ---- الصوت ---- */
     el.muteBtn.addEventListener('click', () => {
@@ -1096,6 +1331,7 @@
 
     /* ---- شريط التقدم (سحب باللمس والفأرة) ---- */
     const seekFromEvent = (ev) => {
+      if (!canControl()) return;
       const dur = player.getDuration();
       if (!dur) return;
       const rect = el.progressBar.getBoundingClientRect();
@@ -1107,7 +1343,7 @@
     };
     let dragging = false;
     el.progressBar.addEventListener('pointerdown', (e) => {
-      if (!player.isReady()) return;
+      if (!canControl() || !player.isReady()) return;
       dragging = true;
       el.progressBar.classList.add('is-active');
       try { el.progressBar.setPointerCapture(e.pointerId); } catch (err) { }
@@ -1127,32 +1363,30 @@
       if (e.key === 'ArrowRight') { e.preventDefault(); skip(5); }
     });
 
-    /* ---- مزامنة يدوية ---- */
-    el.resyncBtn.addEventListener('click', () => {
-      if (player.isReady()) { player.seek(expectedPos()); st.playing ? player.play() : player.pause(); }
-      publish();
-      U.toast('تمت المزامنة وبثّ الحالة للجميع', 'success');
-    });
-
-    /* ---- تغيير الرابط ---- */
-    el.changeUrlBtn.addEventListener('click', openChangeBar);
+    /* ---- أدوات المشاهدة ---- */
+    el.addVideoBtn.addEventListener('click', openChangeBar);
+    el.messagesBtn.addEventListener('click', () => setFocusMode(!session.focusMode));
+    el.playlistBtn.addEventListener('click', () => { renderQueue(); el.playlistModal.hidden = false; });
+    el.playlistCloseBtn.addEventListener('click', () => { el.playlistModal.hidden = true; });
+    el.playlistModal.addEventListener('click', (e) => { if (e.target === el.playlistModal) el.playlistModal.hidden = true; });
     el.cancelUrlBtn.addEventListener('click', () => { el.changeBar.hidden = true; });
-    el.applyUrlBtn.addEventListener('click', applyNewUrl);
-    el.newUrl.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); applyNewUrl(); } });
-
-    /* ---- وضع الرسائل ---- */
-    el.focusToggleBtn.addEventListener('click', () => setFocusMode(!session.focusMode));
+    el.applyUrlBtn.addEventListener('click', addQueueItem);
+    el.newUrl.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); addQueueItem(); } });
     el.backToVideoBtn.addEventListener('click', () => setFocusMode(false));
 
-    /* ---- طيّ قائمة المنضمين ---- */
-    let membersCollapsed = false;
-    el.membersToggle.addEventListener('click', () => {
-      membersCollapsed = !membersCollapsed;
-      el.membersList.classList.toggle('is-collapsed', membersCollapsed);
-      el.infoGrid.classList.toggle('is-collapsed', membersCollapsed);
-      const mIcon = el.membersToggle.querySelector('.ic');
-      if (mIcon) mIcon.innerHTML = IC.html(membersCollapsed ? 'chevronDown' : 'chevronUp', 17);
-    });
+    /* ---- القائمة الجانبية ---- */
+    const setDrawerOpen = (open) => {
+      el.drawer.classList.toggle('is-open', !!open);
+      el.drawerScrim.hidden = !open;
+      el.drawer.setAttribute('aria-hidden', open ? 'false' : 'true');
+      el.drawerOpenBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+      document.body.classList.toggle('drawer-open', !!open);
+      if (open) setTimeout(() => el.drawerCloseBtn.focus(), 30);
+      else el.drawerOpenBtn.focus();
+    };
+    el.drawerOpenBtn.addEventListener('click', () => setDrawerOpen(true));
+    el.drawerCloseBtn.addEventListener('click', () => setDrawerOpen(false));
+    el.drawerScrim.addEventListener('click', () => setDrawerOpen(false));
 
     /* ---- نسخ ومشاركة ---- */
     /* الرابط يحمل كود الغرفة + رابط الفيديو، فيلتحق الصديق بنفس المشاهدة
@@ -1220,7 +1454,9 @@
         'REST: ' + (sb && sb.rest && sb.rest.ok ? 'يعمل (' + sb.rest.ms + 'ms)' : 'فشل'),
         'جدول rooms: ' + (sb && sb.tables && sb.tables.rooms ? 'موجود' : 'مفقود'),
         'جدول messages: ' + (sb && sb.tables && sb.tables.messages ? 'موجود' : 'مفقود'),
-        'جدول presence: ' + (sb && sb.tables && sb.tables.presence ? 'موجود' : 'مفقود'),
+        'جدول room_members (الأدوار): ' + (sb && sb.tables && sb.tables.room_members ? 'موجود' : 'مفقود'),
+        'جدول room_queue (قائمة التشغيل): ' + (sb && sb.tables && sb.tables.room_queue ? 'موجود' : 'مفقود'),
+        'جدول presence (قديم/اختياري): ' + (sb && sb.tables && sb.tables.presence ? 'موجود' : 'مفقود'),
         'Realtime: ' + (sb && sb.realtime && sb.realtime.ok ? 'يعمل' : 'لا يعمل'),
         ''
       ];
@@ -1305,11 +1541,7 @@
       });
     });
 
-    /* ---- زر الرسائل العائم ---- */
-    el.chatFab.addEventListener('click', () => {
-      setFocusMode(true);
-    });
-    if (window.matchMedia('(max-width: 860px)').matches) updateFab();
+    updateMessagesBadge();
 
     /* ---- اختصارات ---- */
     document.addEventListener('keydown', (e) => {
@@ -1323,9 +1555,11 @@
       else if (e.key.toLowerCase() === 'c') copy(roomUrl(), 'تم نسخ رابط الغرفة');
       else if (e.key.toLowerCase() === 'd') setFocusMode(!session.focusMode);
       else if (e.key === 'Escape') {
-        if (el.diagModal && !el.diagModal.hidden) closeDiag();
+        if (!el.playlistModal.hidden) el.playlistModal.hidden = true;
+        else if (el.diagModal && !el.diagModal.hidden) closeDiag();
         else if (!el.qrModal.hidden) el.qrModal.hidden = true;
         else if (!el.meModal.hidden) el.meModal.hidden = true;
+        else if (el.drawer.classList.contains('is-open')) setDrawerOpen(false);
         else if (session.focusMode) setFocusMode(false);
       }
     });
@@ -1334,30 +1568,30 @@
     window.addEventListener('pagehide', () => goodbye(true));
     window.addEventListener('beforeunload', () => goodbye(true));
     document.addEventListener('visibilitychange', () => { if (document.hidden) goodbye(true); });
-    window.addEventListener('focus', () => { if (!session.focusMode) { session.unread = 0; updateFab(); } });
+    window.addEventListener('focus', () => { if (session.focusMode) { session.unread = 0; updateMessagesBadge(); } });
   }
 
   function openChangeBar() {
     el.changeBar.hidden = false;
-    el.newUrl.value = st.url || '';
+    el.newUrl.value = '';
+    el.newTitle.value = '';
     el.newUrl.focus();
     el.changeBar.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   }
 
-  function applyNewUrl() {
-    const parsed = U.parseWatchUrl(el.newUrl.value);
-    if (!parsed) { U.toast('رابط غير صالح — أدخل رابط يوتيوب أو mp4 أو m3u8', 'error'); return; }
+  function setVideoNow(raw) {
+    if (!requireControl()) return false;
+    const parsed = U.parseWatchUrl(raw);
+    if (!parsed) { U.toast('رابط غير صالح — أدخل رابط يوتيوب أو mp4 أو m3u8', 'error'); return false; }
     st.url = parsed.src;
     st.kind = parsed.kind;
     st.pos = 0;
     st.playing = true;
-    st.rev = (st.rev || 0);
     session.lastAppliedRev = -1;
-    el.changeBar.hidden = true;
     loadVideo(parsed, { autoplay: true });
     publish({ force: true });
     sysMessage('غيّر ' + session.name + ' الفيديو');
-    U.toast('تم تغيير الفيديو للجميع', 'success');
+    return true;
   }
 
   /* ============================== الوداع وحفظ آخر حالة ============================== */
@@ -1379,32 +1613,10 @@
           final: true                     /* علامة «آخر حفظ» */
         });
         st = snapshot;
-        t.publishState(snapshot);
-
-        /* إرسال عبر beacon لضمان الوصول حتى أثناء إغلاق التبويب */
-        if (t.kind === 'supabase' && CFG.supabase && CFG.supabase.url && navigator.sendBeacon) {
-          const body = JSON.stringify({
-            room_id: roomId, state: snapshot, updated_at: new Date().toISOString()
-          });
-          const blob = new Blob([body], { type: 'application/json' });
-          const url = CFG.supabase.url.replace(/\/$/, '') + '/rest/v1/rooms?on_conflict=room_id';
-          try {
-            navigator.sendBeacon(url, blob);
-          } catch (e) { /* تجاهل */ }
-          /* sendBeacon لا يرسل ترويسات مخصصة → نعيد المحاولة عبر fetch keepalive */
-          try {
-            fetch(url, {
-              method: 'POST', keepalive: true,
-              headers: {
-                'apikey': CFG.supabase.anonKey,
-                'Authorization': 'Bearer ' + CFG.supabase.anonKey,
-                'Content-Type': 'application/json',
-                'Prefer': 'resolution=merge-duplicates'
-              },
-              body
-            }).catch(() => { });
-          } catch (e) { }
-        }
+        /* Supabase لا يقبل الكتابة المباشرة إلى rooms؛ ارفع الحالة عبر RPC
+           الموثّق مع keepalive حتى يحافظ الخادم على الدور والترقيم المركزي. */
+        const saved = t.publishState(snapshot, { keepalive: t.kind === 'supabase' || !!keepAlive });
+        if (saved && typeof saved.catch === 'function') saved.catch(() => { });
         session.lastPersistAt = Date.now();
       }
     } catch (e) { }

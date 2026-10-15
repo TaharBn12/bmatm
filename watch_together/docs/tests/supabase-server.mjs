@@ -71,8 +71,8 @@ function testClassify() {
    2) تحمّل مشروع ناقص: جدول الرسائل مفقود
    ========================================================= */
 function makePartialSupabaseStub() {
-  const db = { rooms: new Map(), nextId: 1 };
-  const calls = { msgSelect: 0, msgInsert: 0, roomsInsert: 0 };
+  const db = { rooms: new Map(), members: new Map(), queue: new Map(), nextId: 1 };
+  const calls = { msgSelect: 0, msgInsert: 0, roomsInsert: 0, rpc: [] };
 
   const matchEq = (url, key) => {
     const m = url.match(new RegExp('[?&]' + key + '=eq\\.([^&]*)'));
@@ -83,23 +83,52 @@ function makePartialSupabaseStub() {
     text: async () => JSON.stringify(data),
     json: async () => data
   });
+  const membersFor = room => Array.from(db.members.values()).filter(m => m.room_id === room);
 
   const fetchStub = (url, options = {}) => {
     const p = String(url);
     const method = (options.method || 'GET').toUpperCase();
     const body = options.body ? JSON.parse(options.body) : null;
+    const rpc = p.match(/\/rest\/v1\/rpc\/([^?]+)/);
+    if (rpc) {
+      const name = decodeURIComponent(rpc[1]);
+      calls.rpc.push(name);
+      if (name === 'wt_create_room') {
+        calls.roomsInsert++;
+        const id = body.p_room_id;
+        if (!db.rooms.has(id)) db.rooms.set(id, { room_id: id, title: body.p_title, video_url: body.p_video_url, host_name: body.p_owner_name, state: null, owner_token: body.p_owner_token });
+        const row = db.rooms.get(id);
+        return row.owner_token === body.p_owner_token ? json({ ok: true }) : json({ code: '42501', message: 'not owner' }, 403);
+      }
+      if (name === 'wt_join_room') {
+        const row = db.rooms.get(body.p_room_id);
+        if (!row) return json({ found: false, role: 'viewer', members: [], serverTime: Date.now() });
+        const key = body.p_room_id + '|' + body.p_client_id;
+        let member = db.members.get(key);
+        const isOwner = row.owner_token === body.p_member_token;
+        if (member && !isOwner && member.token !== body.p_member_token) return json({ code: '42501', message: 'invalid member token' }, 403);
+        const role = isOwner ? 'owner' : member ? member.role : 'viewer';
+        if (!member) { member = { room_id: body.p_room_id, client_id: body.p_client_id, display_name: body.p_display_name, role, token: body.p_member_token }; db.members.set(key, member); }
+        else { member.display_name = body.p_display_name; if (isOwner) member.role = 'owner'; }
+        return json({ found: true, role, serverTime: Date.now(), members: membersFor(body.p_room_id).map(({ room_id, client_id, display_name, role }) => ({ room_id, client_id, display_name, role })) });
+      }
+      if (name === 'wt_apply_room_state') {
+        const row = db.rooms.get(body.p_room_id);
+        const member = db.members.get(body.p_room_id + '|' + body.p_client_id);
+        const role = row && row.owner_token === body.p_member_token ? 'owner' : member && member.token === body.p_member_token ? member.role : 'viewer';
+        if (!row || !['owner', 'organizer'].includes(role)) return json({ code: '42501', message: 'permission denied' }, 403);
+        const rev = Number(row.state && row.state.rev || 0) + 1;
+        row.state = Object.assign({}, body.p_state, { rev, t: Date.now(), updatedBy: body.p_client_id });
+        return json(row.state);
+      }
+      return json({ message: 'unknown RPC ' + name }, 404);
+    }
 
     if (p.includes('/rest/v1/rooms')) {
       if (method === 'GET') {
         const id = matchEq(p, 'room_id');
         const row = id && db.rooms.has(id) ? db.rooms.get(id) : null;
-        return json(row ? [row] : []);
-      }
-      if (method === 'POST') {
-        calls.roomsInsert++;
-        const id = body.room_id;
-        db.rooms.set(id, Object.assign({}, db.rooms.get(id) || {}, body));
-        return json([db.rooms.get(id)]);
+        return json(row ? [{ room_id: row.room_id, state: row.state, video_url: row.video_url, host_name: row.host_name, updated_at: new Date().toISOString() }] : []);
       }
     }
     if (p.includes('/rest/v1/messages')) {
@@ -107,20 +136,19 @@ function makePartialSupabaseStub() {
       if (method === 'GET') { calls.msgSelect++; return json({ code: '42P01', message: 'relation "public.messages" does not exist' }, 404); }
       if (method === 'POST') { calls.msgInsert++; return json({ code: '42P01', message: 'relation "public.messages" does not exist' }, 404); }
     }
-    if (p.includes('/rest/v1/presence')) {
-      if (method === 'POST') return json([]);
-      if (method === 'GET') return json([]);
-      if (method === 'DELETE') return json([]);
-    }
+    if (p.includes('/rest/v1/room_members')) return json(membersFor(matchEq(p, 'room_id')));
+    if (p.includes('/rest/v1/room_queue')) return json([]);
+    if (p.includes('/rest/v1/presence')) return json([]);
     return json({ message: 'unknown route' }, 404);
   };
   return { db, calls, fetchStub };
 }
-
 async function testPartialProject() {
   const sb = makePartialSupabaseStub();
+  const ownerToken = 'b'.repeat(64);
   const env = createRoomEnv({
     search: '?id=PART01&host=1&v=' + encodeURIComponent('https://example.com/a.mp4'),
+    store: { 'wt:owner:PART01': JSON.stringify(ownerToken) },
     fetch: sb.fetchStub
   });
   env.sandbox.WT_CONFIG.sync.pollMs = 120;
@@ -131,13 +159,13 @@ async function testPartialProject() {
   await wait(400);
 
   t('مشروع ناقص: ما زال متصلاً بـ Supabase (لم يسقط للوضع المحلي)',
-    env.byId.get('sbMode').textContent.includes('Supabase'),
-    env.byId.get('sbMode').textContent);
+    env.sandbox.WTRoom.session.transport.kind === 'supabase' && env.byId.get('statusBadge').getAttribute('data-state') === 'online',
+    env.byId.get('statusText').textContent);
   t('مشروع ناقص: صف الغرفة أُنشئ', sb.db.rooms.has('PART01'));
   t('مشروع ناقص: حاول قراءة الرسائل (وتوقّع الفشل)', sb.calls.msgSelect > 0);
 
   const chat = env.byId.get('chatBody').children.map(c => String(c.innerHTML || '')).join(' ');
-  t('مشروع ناقص: تنبيه واضح بأن الدردشة معطّلة', chat.includes('الدردشة معطّلة'), chat.slice(0, 160));
+  t('مشروع ناقص: تنبيه واضح بأن الدردشة غير متاحة مؤقتاً', chat.includes('الدردشة غير متاحة'), chat.slice(0, 160));
 
   /* المزامنة يجب أن تعمل رغم غياب جدول الرسائل */
   const v = findVideo(env);
@@ -180,10 +208,10 @@ function testSbctl() {
   fs.mkdirSync(tmpRoot, { recursive: true });
   fs.writeFileSync(path.join(tmpRoot, 'index.html'), '<script src="assets/js/config.js?v=2.2.0"></script>', 'utf8');
   fs.writeFileSync(path.join(tmpRoot, 'room.html'), '<script src="assets/js/room.js?v=2.2.0"></script>', 'utf8');
-  const changed = bumpVersion('2.3.0', tmpRoot);
+  const changed = bumpVersion('2.4.0', tmpRoot);
   t('sbctl: يرفع رقم الكاش في الصفحات', changed.length === 2, changed.join(','));
   t('sbctl: الرقم الجديد صحيح',
-    fs.readFileSync(path.join(tmpRoot, 'index.html'), 'utf8').includes('?v=2.3.0'));
+    fs.readFileSync(path.join(tmpRoot, 'index.html'), 'utf8').includes('?v=2.4.0'));
 
   /* استخراج مفتاح anon من صيغ api-keys المختلفة */
   t('sbctl: يستخرج anon من صيغة القائمة',
@@ -208,23 +236,52 @@ function startFakePostgrest(opts) {
       res.writeHead(code, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify(data));
     };
+    const parseBody = (cb) => {
+      let raw = '';
+      req.on('data', c => raw += c);
+      req.on('end', () => {
+        try { cb(JSON.parse(raw || '{}')); }
+        catch (e) { send(400, { message: 'invalid JSON' }); }
+      });
+    };
+    const rpc = url.match(/^\/rest\/v1\/rpc\/([^?]+)/);
+    if (rpc && req.method === 'POST') {
+      return parseBody(body => {
+        const name = decodeURIComponent(rpc[1]);
+        if (name === 'wt_create_room') {
+          state.posts++;
+          state.rows.set(body.p_room_id, {
+            room_id: body.p_room_id, state: null, video_url: body.p_video_url,
+            host_name: body.p_owner_name, owner_token: body.p_owner_token
+          });
+          return send(200, { ok: true });
+        }
+        if (name === 'wt_join_room') {
+          const row = state.rows.get(body.p_room_id);
+          if (!row) return send(200, { found: false, role: 'viewer', members: [], serverTime: Date.now() });
+          return send(200, { found: true, role: row.owner_token === body.p_member_token ? 'owner' : 'viewer', members: [], serverTime: Date.now() });
+        }
+        if (name === 'wt_apply_room_state') {
+          const row = state.rows.get(body.p_room_id);
+          if (!row || row.owner_token !== body.p_member_token) return send(403, { code: '42501', message: 'permission denied' });
+          row.state = Object.assign({}, body.p_state, { rev: Number(row.state && row.state.rev || 0) + 1, t: Date.now() });
+          return send(200, row.state);
+        }
+        if (name === 'wt_delete_room') {
+          const row = state.rows.get(body.p_room_id);
+          if (row && row.owner_token !== body.p_owner_token) return send(403, { code: '42501', message: 'permission denied' });
+          if (row) { state.rows.delete(body.p_room_id); state.deletes++; }
+          return send(200, { ok: true, deleted: !!row });
+        }
+        return send(404, { message: 'unknown RPC' });
+      });
+    }
     if (url.startsWith('/rest/v1/rooms')) {
       if (req.method === 'GET') {
         if (opts.missingRooms) return send(404, { code: '42P01', message: 'relation "public.rooms" does not exist' });
         const id = (url.match(/room_id=eq\.([^&]+)/) || [])[1];
         const row = id && state.rows.has(decodeURIComponent(id)) ? state.rows.get(decodeURIComponent(id)) : null;
-        return send(200, row ? [row] : []);
-      }
-      if (req.method === 'POST') {
-        state.posts++;
-        let raw = '';
-        req.on('data', c => raw += c);
-        req.on('end', () => {
-          const body = JSON.parse(raw || '{}');
-          state.rows.set(body.room_id, body);
-          send(200, [body]);
-        });
-        return;
+        return send(200, row ? [{ room_id: row.room_id, state: row.state, video_url: row.video_url, host_name: row.host_name }] : []);
       }
       if (req.method === 'DELETE') { state.deletes++; return send(200, []); }
     }
@@ -234,6 +291,14 @@ function startFakePostgrest(opts) {
     }
     if (url.startsWith('/rest/v1/presence')) {
       if (opts.missingPresence) return send(404, { code: '42P01', message: 'relation "public.presence" does not exist' });
+      return send(200, []);
+    }
+    if (url.startsWith('/rest/v1/room_members')) {
+      if (opts.missingRoomMembers) return send(404, { code: '42P01', message: 'relation "public.room_members" does not exist' });
+      return send(200, []);
+    }
+    if (url.startsWith('/rest/v1/room_queue')) {
+      if (opts.missingRoomQueue) return send(404, { code: '42P01', message: 'relation "public.room_queue" does not exist' });
       return send(200, []);
     }
     send(404, { message: 'not found' });
@@ -249,14 +314,14 @@ function startFakePostgrest(opts) {
     });
   });
 }
-
 async function testDoctor() {
   /* حالة: كل شيء سليم */
   const good = await startFakePostgrest({});
   const r1 = await doctorProject({ url: good.url, anonKey: 'k', realtime: false, write: true });
   t('doctor: REST يردّ', r1.rest && r1.rest.ok === true);
-  t('doctor: الجداول الثلاثة موجودة',
-    r1.tables.rooms === true && r1.tables.messages === true && r1.tables.presence === true);
+  t('doctor: الجداول الخمسة موجودة',
+    r1.tables.rooms === true && r1.tables.messages === true && r1.tables.presence === true &&
+    r1.tables.room_members === true && r1.tables.room_queue === true);
   t('doctor: لا مشاكل', r1.problems.length === 0, JSON.stringify(r1.problems));
   t('doctor: اختبار الكتابة نجح', r1.write && r1.write.ok === true);
   t('doctor: حذف غرفة الاختبار', good.state.deletes >= 1);
@@ -290,8 +355,10 @@ async function testDoctor() {
    ========================================================= */
 async function testRoomDiagnostics() {
   const sb = makePartialSupabaseStub();
+  const ownerToken = 'c'.repeat(64);
   const env = createRoomEnv({
     search: '?id=DIAG1&host=1&v=' + encodeURIComponent('https://example.com/a.mp4'),
+    store: { 'wt:owner:DIAG1': JSON.stringify(ownerToken) },
     fetch: sb.fetchStub
   });
   env.sandbox.WT_CONFIG.sync.pollMs = 500;
@@ -321,8 +388,8 @@ async function testRoomDiagnostics() {
   env.byId.get('diagReconnectBtn').dispatch('click', {});
   await wait(400);
   t('غرفة: إعادة الاتصال تُبقي الاتصال حياً',
-    env.byId.get('sbMode').textContent.includes('Supabase'),
-    env.byId.get('sbMode').textContent);
+    env.sandbox.WTRoom.session.transport.kind === 'supabase' && env.byId.get('statusBadge').getAttribute('data-state') === 'online',
+    env.byId.get('statusText').textContent);
 
   /* نافذة التشخيص تُغلق بزر الإغلاق */
   env.byId.get('diagBtn').dispatch('click', {});

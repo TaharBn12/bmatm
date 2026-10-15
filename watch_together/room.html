@@ -17,7 +17,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800;900&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="assets/css/app.css?v=2.3.0">
+  <link rel="stylesheet" href="assets/css/app.css?v=2.4.0">
 </head>
 <body class="room-body">
   <div class="bg-fx"></div>
@@ -67,175 +67,139 @@
        ===================================================== -->
   <div class="room" id="room" hidden>
 
-    <!-- الشريط العلوي -->
+    <!-- رأس الغرفة: عنوان مختصر، حالة الاتصال، وقائمة جانبية -->
     <header class="rtopbar">
-      <a class="brand rtopbar__brand" href="index.html" title="الصفحة الرئيسية">
+      <a class="brand rtopbar__brand" href="index.html" title="الرئيسية">
         <span class="brand__logo brand__logo--sm"><span class="ic" data-icon="logo" data-size="20"></span></span>
       </a>
-
       <div class="rtopbar__main">
         <h1 class="rtopbar__title" id="roomTitle">غرفة مشاهدة</h1>
-        <p class="rtopbar__sub"><span id="roomSub">جارٍ الاتصال…</span></p>
+        <p class="rtopbar__sub" id="roomSub">جارٍ الاتصال…</p>
       </div>
-
       <div class="rtopbar__spacer"></div>
+      <span class="badge room-connection" id="statusBadge" title="حالة اتصال الغرفة">
+        <span class="dot"></span><span id="statusText">جارٍ الاتصال</span>
+      </span>
+      <button class="drawer-open btn btn--ghost" id="drawerOpenBtn" type="button" aria-label="فتح المشاركين والإعدادات" aria-expanded="false">
+        <span class="ic" data-icon="menu" data-size="19"></span>
+        <span>القائمة</span>
+        <span class="drawer-open__count" id="membersCount">1</span>
+      </button>
+    </header>
 
-      <div class="rtopbar__actions">
-        <button class="code-pill" id="copyCodeBtn" title="نسخ كود الغرفة">
-          <span id="roomCodeText">------</span>
-          <span class="ic" data-icon="copy" data-size="15"></span>
-        </button>
-
-        <span class="badge badge--live" id="statusBadge">
-          <span class="dot dot--pulse"></span><span id="statusText">جارٍ الاتصال</span>
-        </span>
-
-        <button class="btn btn--sm btn--ghost" id="copyLinkBtn" title="نسخ رابط الغرفة">
-          <span class="ic" data-icon="link" data-size="16"></span> نسخ الرابط
-        </button>
-        <button class="btn btn--sm btn--ghost" id="shareBtn" title="مشاركة" hidden>
-          <span class="ic" data-icon="share" data-size="16"></span> مشاركة
-        </button>
-        <button class="btn btn--sm btn--ghost" id="qrBtn" title="رمز QR للرابط">
-          <span class="ic" data-icon="qr" data-size="16"></span>
-        </button>
-        <button class="btn btn--sm btn--ghost" id="diagBtn" title="تشخيص الاتصال بالسيرفر">
-          <span class="ic" data-icon="server" data-size="16"></span> تشخيص
-        </button>
-        <button class="btn btn--sm btn--danger" id="leaveBtn" title="مغادرة الغرفة">
-          <span class="ic" data-icon="logout" data-size="16"></span> خروج
+    <!-- دراور الغرفة: المشاركون، المنظمون، وأدوات الغرفة -->
+    <div class="drawer-scrim" id="drawerScrim" hidden></div>
+    <aside class="room-drawer" id="roomDrawer" aria-hidden="true" aria-label="قائمة الغرفة">
+      <div class="drawer__head">
+        <div>
+          <p class="drawer__eyebrow">WATCH TOGETHER</p>
+          <h2 class="drawer__title">قائمة الغرفة</h2>
+        </div>
+        <button class="btn btn--ghost btn--icon-sm" id="drawerCloseBtn" type="button" aria-label="إغلاق القائمة">
+          <span class="ic" data-icon="x" data-size="18"></span>
         </button>
       </div>
-    </header>
+
+      <div class="drawer__room-code">
+        <span><span class="ic" data-icon="users" data-size="15"></span> كود الغرفة</span>
+        <button class="code-pill" id="copyCodeBtn" type="button" title="نسخ كود الغرفة">
+          <span id="roomCodeText">------</span><span class="ic" data-icon="copy" data-size="15"></span>
+        </button>
+      </div>
+
+      <div class="drawer__actions" aria-label="أدوات الغرفة">
+        <button class="drawer-action" id="copyLinkBtn" type="button"><span class="ic" data-icon="link" data-size="17"></span><span>نسخ الرابط</span></button>
+        <button class="drawer-action" id="shareBtn" type="button" hidden><span class="ic" data-icon="share" data-size="17"></span><span>مشاركة</span></button>
+        <button class="drawer-action" id="qrBtn" type="button"><span class="ic" data-icon="qr" data-size="17"></span><span>رمز QR</span></button>
+        <button class="drawer-action" id="diagBtn" type="button"><span class="ic" data-icon="server" data-size="17"></span><span>تشخيص الاتصال</span></button>
+        <button class="drawer-action" id="fullBtn" type="button"><span class="ic" data-icon="expand" data-size="17"></span><span>ملء الشاشة</span></button>
+        <button class="drawer-action" id="sbMeBtn" type="button"><span class="ic" data-icon="user" data-size="17"></span><span>حسابي</span></button>
+        <button class="drawer-action drawer-action--danger" id="leaveBtn" type="button"><span class="ic" data-icon="logout" data-size="17"></span><span>مغادرة الغرفة</span></button>
+      </div>
+
+      <section class="drawer__section" aria-labelledby="organizersTitle">
+        <div class="drawer__section-head">
+          <h3 id="organizersTitle"><span class="ic" data-icon="shield" data-size="16"></span> المنظّمون</h3>
+          <span class="drawer__count" id="organizerCount">0</span>
+        </div>
+        <div class="drawer__people" id="organizerList"></div>
+        <p class="drawer__empty" id="organizerEmpty">لا يوجد منظّمون إضافيون بعد.</p>
+      </section>
+
+      <section class="drawer__section" id="membersPanel" aria-labelledby="membersTitle">
+        <div class="drawer__section-head">
+          <h3 id="membersTitle"><span class="ic" data-icon="users" data-size="16"></span> المشاركون</h3>
+          <span class="drawer__count" id="sideMembersCount">1</span>
+        </div>
+        <div class="drawer__people" id="membersList"></div>
+      </section>
+    </aside>
 
     <main class="room-main" id="roomMain">
 
-      <!-- ========== 1) المشغّل ========== -->
+      <!-- المشغّل -->
       <section class="stage glass" id="stage">
         <div class="player" id="player">
           <div class="player__placeholder" id="playerPlaceholder">
             <span class="ic player__placeholder-icon" data-icon="film" data-size="46"></span>
-            <p class="player__placeholder-text">لا يوجد فيديو في هذه الغرفة بعد.<br>أضف رابطاً من الشريط أسفل المشغّل لبدء المشاهدة معاً.</p>
+            <p class="player__placeholder-text">لا يوجد فيديو في هذه الغرفة بعد.<br>أضف فيديو إلى قائمة التشغيل المشتركة.</p>
           </div>
         </div>
       </section>
 
-      <!-- ========== 2) أدوات التحكم ========== -->
-      <section class="ctrlbar glass" id="ctrlbar">
-        <div class="ctrlbar__row">
-          <button class="ctrl-btn ctrl-btn--big" id="playPauseBtn" title="تشغيل / إيقاف (مسافة)" aria-label="تشغيل أو إيقاف">
-            <span id="iconPlay"><span class="ic" data-icon="play" data-size="26"></span></span>
-            <span id="iconPause" hidden><span class="ic" data-icon="pause" data-size="26"></span></span>
-          </button>
-
-          <button class="ctrl-btn" id="backBtn" title="رجوع 10 ثوانٍ (→)" aria-label="رجوع 10 ثوانٍ">
-            <span class="ic" data-icon="back10" data-size="21"></span>
-          </button>
-          <button class="ctrl-btn" id="fwdBtn" title="تقديم 10 ثوانٍ (←)" aria-label="تقديم 10 ثوانٍ">
-            <span class="ic" data-icon="fwd10" data-size="21"></span>
-          </button>
-
-          <button class="ctrl-btn" id="muteBtn" title="كتم الصوت (M)" aria-label="كتم الصوت">
-            <span id="iconSound"><span class="ic" data-icon="volume" data-size="20"></span></span>
-            <span id="iconMuted" hidden><span class="ic" data-icon="mute" data-size="20"></span></span>
-          </button>
-
-          <div class="vol">
-            <input type="range" id="volRange" min="0" max="100" value="85" aria-label="مستوى الصوت">
-          </div>
-
-          <button class="ctrl-btn" id="fullBtn" title="ملء الشاشة (F)" aria-label="ملء الشاشة">
-            <span class="ic" data-icon="expand" data-size="19"></span>
-          </button>
+      <!-- صف تحكم مختصر: التقدم، التشغيل/الإيقاف، والصوت -->
+      <section class="ctrlbar glass" id="ctrlbar" aria-label="التحكم بالمشاهدة">
+        <span class="time" id="curTime">00:00</span>
+        <div class="progress__bar" id="progressBar" role="slider" tabindex="0" aria-label="شريط التقدم" aria-valuemin="0">
+          <span class="progress__buffer" id="progressBuffer"></span>
+          <span class="progress__fill" id="progressFill"></span>
+          <span class="progress__knob" id="progressKnob"></span>
         </div>
-
-        <div class="ctrlbar__row ctrlbar__row--progress">
-          <span class="time" id="curTime">00:00</span>
-          <div class="progress__bar" id="progressBar" role="slider" tabindex="0" aria-label="شريط التقدم" aria-valuemin="0">
-            <span class="progress__buffer" id="progressBuffer"></span>
-            <span class="progress__fill" id="progressFill"></span>
-            <span class="progress__knob" id="progressKnob"></span>
-          </div>
-          <span class="time" id="durTime">00:00</span>
-        </div>
-
-        <div class="ctrlbar__row ctrlbar__row--tools">
-          <button class="btn btn--sm" id="changeUrlBtn" title="تغيير رابط الفيديو للجميع">
-            <span class="ic" data-icon="film" data-size="16"></span> تغيير الفيديو
-          </button>
-          <button class="btn btn--sm btn--ghost" id="resyncBtn" title="مزامنة الآن">
-            <span class="ic" data-icon="sync" data-size="16"></span> مزامنة
-          </button>
-          <button class="btn btn--sm btn--ghost" id="focusToggleBtn" title="إخفاء المشغّل وعرض الرسائل بالكامل">
-            <span class="ic" data-icon="chat" data-size="16"></span> <span id="focusToggleLabel">وضع الرسائل</span>
-          </button>
-
-          <span class="ctrlbar__spacer"></span>
-
-          <span class="badge" id="membersBadge" title="عدد المنضمين">
-            <span class="ic" data-icon="users" data-size="14"></span><span id="membersCount">1</span>
-          </span>
-          <span class="badge badge--brand" id="syncBadge" title="دقة المزامنة">
-            <span class="ic" data-icon="zap" data-size="14"></span><span id="syncBadgeText">—</span>
-          </span>
-        </div>
-
-        <!-- تنبيه المزامنة -->
-        <div class="sync-note" id="syncNote" hidden>
-          <span class="ic" data-icon="broadcast" data-size="17"></span>
-          <span id="syncNoteText">آخر تحديث من <b>—</b> • الجميع على نفس اللحظة</span>
-        </div>
+        <span class="time" id="durTime">00:00</span>
+        <button class="ctrl-btn ctrl-btn--compact" id="playPauseBtn" type="button" title="تشغيل أو إيقاف (مسافة)" aria-label="تشغيل أو إيقاف">
+          <span id="iconPlay"><span class="ic" data-icon="play" data-size="19"></span></span>
+          <span id="iconPause" hidden><span class="ic" data-icon="pause" data-size="19"></span></span>
+        </button>
+        <button class="ctrl-btn ctrl-btn--compact" id="muteBtn" type="button" title="كتم الصوت (M)" aria-label="كتم الصوت">
+          <span id="iconSound"><span class="ic" data-icon="volume" data-size="18"></span></span>
+          <span id="iconMuted" hidden><span class="ic" data-icon="mute" data-size="18"></span></span>
+        </button>
+        <div class="vol"><input type="range" id="volRange" min="0" max="100" value="85" aria-label="مستوى الصوت"></div>
       </section>
 
-      <!-- ========== تغيير الرابط ========== -->
+      <!-- الأزرار الثلاثة المطلوبة أسفل المشغّل -->
+      <nav class="player-actions" aria-label="أدوات المشاهدة">
+        <button class="player-action" id="addVideoBtn" type="button" aria-label="إضافة فيديو جديد" title="إضافة فيديو جديد">
+          <span class="ic" data-icon="search" data-size="19"></span><span>إضافة فيديو</span>
+        </button>
+        <button class="player-action" id="messagesBtn" type="button" aria-label="عرض الرسائل" title="عرض الرسائل">
+          <span class="ic" data-icon="chat" data-size="19"></span><span>الرسائل</span><span class="player-action__count" id="messagesCount" hidden>0</span>
+        </button>
+        <button class="player-action" id="playlistBtn" type="button" aria-label="عرض قائمة التشغيل" title="قائمة التشغيل">
+          <span class="ic" data-icon="playlist" data-size="19"></span><span>قائمة التشغيل</span><span class="player-action__count" id="playlistCount">0</span>
+        </button>
+      </nav>
+
+      <!-- إضافة رابط إلى قائمة التشغيل المشتركة -->
       <section class="change-bar glass" id="changeBar" hidden>
         <div class="change-bar__row">
           <div class="field-wrap">
             <span class="ic field-wrap__ic" data-icon="link" data-size="18"></span>
-            <input class="input input--pad input--ltr" id="newUrl" type="url" spellcheck="false"
-                   placeholder="الصق رابط الفيديو الجديد… (يوتيوب / mp4 / m3u8)">
+            <input class="input input--pad input--ltr" id="newUrl" type="url" spellcheck="false" autocomplete="url"
+                   placeholder="الصق رابط فيديو (يوتيوب / mp4 / m3u8)">
           </div>
-          <button class="btn btn--primary" id="applyUrlBtn">
-            <span class="ic" data-icon="check" data-size="17"></span> تطبيق للجميع
+          <input class="input" id="newTitle" type="text" maxlength="120" placeholder="عنوان الفيديو — اختياري">
+          <button class="btn btn--primary" id="applyUrlBtn" type="button">
+            <span class="ic" data-icon="plus" data-size="17"></span> أضف للقائمة
           </button>
-          <button class="btn btn--ghost btn--icon" id="cancelUrlBtn" title="إلغاء" aria-label="إلغاء">
+          <button class="btn btn--ghost btn--icon" id="cancelUrlBtn" type="button" title="إغلاق" aria-label="إغلاق">
             <span class="ic" data-icon="x" data-size="18"></span>
           </button>
         </div>
-        <p class="change-bar__hint">
-          <span class="ic" data-icon="info" data-size="14"></span>
-          يتغيّر الفيديو عند <b>كل</b> المنضمين في نفس اللحظة، ويبدأ من الثانية صفر.
-        </p>
+        <p class="change-bar__hint"><span class="ic" data-icon="info" data-size="14"></span> سيظهر الفيديو في قائمة تشغيل مشتركة، ويمكن للمنظّمين بدء عرضه للجميع.</p>
       </section>
 
-      <!-- ========== 3) المنضمون الحقيقيون ========== -->
-      <section class="panel glass" id="membersPanel">
-        <div class="panel__head">
-          <h2 class="panel__title">
-            <span class="ic" data-icon="users" data-size="18"></span> المنضمون
-            <span class="live-pill" id="livePill"><span class="dot dot--pulse"></span> مباشر</span>
-          </h2>
-          <div class="panel__head-actions">
-            <span class="badge" id="sideMembersCount">1</span>
-            <button class="btn btn--sm btn--ghost btn--icon-sm" id="membersToggle" title="طيّ/فتح" aria-label="طيّ القائمة">
-              <span class="ic" data-icon="chevronUp" data-size="17"></span>
-            </button>
-          </div>
-        </div>
-
-        <div class="members members--row" id="membersList"></div>
-
-        <div class="info-grid" id="infoGrid">
-          <div class="info-cell"><span class="info-cell__k">الكود</span><span class="info-cell__v" id="infoCode">—</span></div>
-          <div class="info-cell"><span class="info-cell__k">المصدر</span><span class="info-cell__v" id="infoProvider">—</span></div>
-          <div class="info-cell"><span class="info-cell__k">آخر تحكّم</span><span class="info-cell__v" id="infoController">—</span></div>
-          <div class="info-cell"><span class="info-cell__k">المزامنة</span><span class="info-cell__v" id="infoSync">—</span></div>
-          <div class="info-cell"><span class="info-cell__k">وضعي</span><span class="info-cell__v" id="infoRole">—</span></div>
-          <div class="info-cell"><span class="info-cell__k">الخادم</span><span class="info-cell__v" id="infoTransport">—</span></div>
-        </div>
-      </section>
-
-      <!-- ========== 4) الرسائل (الدردشة) ========== -->
+      <!-- الرسائل -->
       <section class="chat glass" id="chat">
         <div class="chat__head">
           <h2 class="chat__title"><span class="ic" data-icon="chat" data-size="18"></span> الرسائل</h2>
@@ -278,28 +242,31 @@
       </section>
     </main>
 
-    <!-- شريط الحالة -->
-    <footer class="statusbar">
-      <span><span class="ic" data-icon="server" data-size="14"></span> <span id="sbMode">—</span></span>
-      <span class="sep"></span>
-      <span><span class="ic" data-icon="database" data-size="14"></span> <span id="sbSync">—</span></span>
-      <span class="statusbar__spacer"></span>
-      <button class="statusbar__me" id="sbMeBtn" title="حسابي">
-        <span class="ic" data-icon="user" data-size="14"></span> <span id="sbMe">—</span>
-      </button>
-    </footer>
   </div>
 
-  <!-- زر العودة للفيديو (يظهر في وضع الرسائل) -->
+  <!-- زر العودة للفيديو (يظهر عند فتح الرسائل على كامل الشاشة) -->
   <button class="back-to-video" id="backToVideoBtn" hidden>
     <span class="ic" data-icon="film" data-size="20"></span> العودة إلى الفيديو
   </button>
 
-  <!-- زر الرسائل العائم (جوال) -->
-  <button class="chat-fab" id="chatFab" aria-label="الرسائل">
-    <span class="ic" data-icon="chat" data-size="24"></span>
-    <span class="chat-fab__count" id="chatFabCount" hidden>0</span>
-  </button>
+  <!-- نافذة قائمة التشغيل المشتركة -->
+  <div class="modal" id="playlistModal" hidden>
+    <div class="modal__card glass modal__card--playlist">
+      <div class="modal__head">
+        <div>
+          <p class="drawer__eyebrow">قائمة الغرفة</p>
+          <h2 class="modal__title"><span class="ic" data-icon="playlist" data-size="19"></span> قائمة التشغيل</h2>
+        </div>
+        <button class="btn btn--ghost btn--icon-sm" id="playlistCloseBtn" type="button" aria-label="إغلاق القائمة"><span class="ic" data-icon="x" data-size="18"></span></button>
+      </div>
+      <p class="playlist__hint">يمكن للجميع إضافة فيديو. تشغيل الفيديو للجميع متاح للمنشئ والمنظّمين.</p>
+      <div class="queue-list" id="queueList"></div>
+      <div class="queue-empty" id="queueEmpty">
+        <span class="ic" data-icon="film" data-size="28"></span>
+        <span>القائمة فارغة — أضف رابط فيديو جديداً.</span>
+      </div>
+    </div>
+  </div>
 
   <!-- نافذة QR -->
   <div class="modal" id="qrModal" hidden>
@@ -363,14 +330,14 @@
   </div>
 
   <!-- ===== سكربتات ===== -->
-  <script src="assets/vendor/hls.min.js?v=2.3.0"></script>
-  <script src="assets/vendor/qrcode.min.js?v=2.3.0"></script>
-  <script src="assets/js/config.js?v=2.3.0"></script>
-  <script src="assets/js/util.js?v=2.3.0"></script>
-  <script src="assets/js/icons.js?v=2.3.0"></script>
-  <script src="assets/js/auth.js?v=2.3.0"></script>
-  <script src="assets/js/transport.js?v=2.3.0"></script>
-  <script src="assets/js/player.js?v=2.3.0"></script>
-  <script src="assets/js/room.js?v=2.3.0"></script>
+  <script src="assets/vendor/hls.min.js?v=2.4.0"></script>
+  <script src="assets/vendor/qrcode.min.js?v=2.4.0"></script>
+  <script src="assets/js/config.js?v=2.4.0"></script>
+  <script src="assets/js/util.js?v=2.4.0"></script>
+  <script src="assets/js/icons.js?v=2.4.0"></script>
+  <script src="assets/js/auth.js?v=2.4.0"></script>
+  <script src="assets/js/transport.js?v=2.4.0"></script>
+  <script src="assets/js/player.js?v=2.4.0"></script>
+  <script src="assets/js/room.js?v=2.4.0"></script>
 </body>
 </html>
