@@ -52,7 +52,12 @@
   }
 
   UnifiedPlayer.prototype.isReady = function () { return this.state === S.READY; };
-  UnifiedPlayer.prototype.canSync = function () { return this.kind === 'youtube' || this.kind === 'html5' || this.kind === 'hls'; };
+  /* ملاحظة مهمة: `file` هو اسم النوع الذي يأتي من util.parseWatchUrl لملفات
+     mp4/webm، وهو يُحمَّل عبر مشغّل HTML5 — فلابد أن يُعتبر قابلاً للمزامنة،
+     وإلا توقّفت مزامنة الموضع تماماً لكل من يشارك رابط ملف فيديو مباشر. */
+  UnifiedPlayer.prototype.canSync = function () {
+    return this.kind === 'youtube' || this.kind === 'html5' || this.kind === 'file' || this.kind === 'hls';
+  };
 
   UnifiedPlayer.prototype._fire = function (name, data) {
     const fn = this.opts[name];

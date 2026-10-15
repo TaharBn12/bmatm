@@ -53,6 +53,12 @@ public final class RoomStore implements WebSocketServer.Listener {
         volatile Map<String, Object> state;
         volatile String hostId;
         volatile String hostName;
+        /**
+         * رقم تسلسلي مركزي (ساعة منطقية).
+         * الخادم هو من يرقّم كل تحديث → يستحيل أن يبثّ مشاركان رقمَين متساويين،
+         * وهو ما كان يجمّد المزامنة ويجعل كل واحد يظنّ نفسه في غرفة وحده.
+         */
+        final AtomicLong rev = new AtomicLong();
         /** متى حُفظت الحالة آخر مرة (لحساب الوقت عند انضمام متأخر) */
         volatile long lastSavedAt = 0L;
         final AtomicLong messagesCount = new AtomicLong();
@@ -96,6 +102,10 @@ public final class RoomStore implements WebSocketServer.Listener {
                 if (rec == null) continue;
                 Room r = new Room(e.getKey());
                 r.state = Json.asMap(rec.get("state"));
+                /* استأنف الترقيم من حيث توقّف، لا من الصفر */
+                if (r.state != null && r.state.get("rev") instanceof Number) {
+                    r.rev.set(Math.max(0, ((Number) r.state.get("rev")).longValue()));
+                }
                 Object hist = rec.get("messages");
                 if (hist instanceof List) {
                     for (Object o : (List<Object>) hist) {
@@ -248,12 +258,28 @@ public final class RoomStore implements WebSocketServer.Listener {
         if (state == null) return;
 
         String selfId = String.valueOf(conn.attrs.get("clientId"));
-        String hostId = Json.str(state, "hostId", selfId);
-        String hostName = Json.str(state, "hostName", Json.str(conn.attrs, "name", "مضيف"));
+        String hostId = Json.str(state, "updatedBy", Json.str(state, "hostId", selfId));
+        String hostName = Json.str(state, "updatedByName",
+                Json.str(state, "hostName", Json.str(conn.attrs, "name", "مضيف")));
 
-        /* التحكم متاح لأي مشارك: آخر إجراء يفوز (last-write-wins)
-           والترتيب يُحسم في العميل عبر الرقم التسلسلي rev */
-        r.state = state;
+        /* التحكم متاح لأي مشارك: آخر إجراء يفوز (last-write-wins).
+           الخادم يرقّم كل تحديث تسلسلياً فيبقى الترتيب واحداً عند الجميع،
+           ونبثّها للكل (حتى المرسل) ليعرف الرقم المعتمد ويكمل فوقه. */
+        Object revIn = state.get("rev");
+        if (revIn instanceof Number) {
+            final long seen = ((Number) revIn).longValue();
+            r.rev.updateAndGet(cur -> Math.max(cur, seen));
+        }
+        long rev = r.rev.incrementAndGet();
+
+        Map<String, Object> stored = new LinkedHashMap<>(state);
+        stored.put("rev", rev);
+        stored.put("hostId", hostId);
+        stored.put("hostName", hostName);
+        stored.put("updatedBy", hostId);
+        stored.put("updatedByName", hostName);
+
+        r.state = stored;
         r.hostId = hostId;
         r.hostName = hostName;
         r.lastSavedAt = System.currentTimeMillis();
@@ -261,8 +287,8 @@ public final class RoomStore implements WebSocketServer.Listener {
         conn.attrs.put("name", hostName);
         conn.attrs.put("lastSeen", System.currentTimeMillis());
 
-        Map<String, Object> out = Json.map("type", "state", "state", state, "sender", conn.attrs.get("clientId"));
-        broadcast(r, out, conn);   // لا نعيد للمرسل (تجنّب الصدى)
+        /* نبثّها للجميع بمن فيهم المرسل: الواجهة تتجاهل صداها عبر حقل sender */
+        broadcast(r, Json.map("type", "state", "state", stored, "sender", conn.attrs.get("clientId")), null);
     }
 
     private void handleChat(WsConnection conn, String roomId, Map<String, Object> msg) {
