@@ -28,3 +28,6 @@ cd watch_together/java-server && ./build.sh && ./run.sh   # → http://localhost
 ```
 
 التفاصيل الكاملة: [`watch_together/README.md`](watch_together/README.md)
+
+> 🩺 **رفعت الملفات ولم تظهر التغييرات؟** → [`watch_together/docs/troubleshooting.md`](watch_together/docs/troubleshooting.md)
+> (السببان الأكثر شيوعاً: السحب من فرع قديم، أو كاش المتصفح — الحل في أول خطوتين)

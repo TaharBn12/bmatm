@@ -65,7 +65,8 @@ watch_together/
     ├── migration.sql           ← ترقية قاعدة قائمة (user_id + kind='react')
     ├── supabase-setup.md       ← دليل Supabase + تفعيل Auth
     ├── deployment.md           ← النشر على الاستضافات
-    └── tests/                  ← اختباران بلا متصفح (93 اختباراً)
+    ├── troubleshooting.md      ← 🩺 «رفعت الملفات ولم تظهر التغييرات»
+    └── tests/                  ← اختباران بلا متصفح (140 اختباراً)
 ```
 
 ---
@@ -211,6 +212,16 @@ node watch_together/docs/tests/smoke.mjs      # 56 اختباراً — الأد
 node watch_together/docs/tests/room-dom.mjs   # 84 اختباراً — واجهة الغرفة عبر DOM وهمي
 ```
 المجموع **140 اختباراً**، وتعمل بدون متصفح ولا شبكة.
+
+---
+
+## 📦 النشر وكاش المتصفح
+
+- كل مراجع CSS/JS تحمل رقم إصدار `?v=2.1.0` — **ارفع الرقم** في
+  `index.html` و `room.html` و `auth.html` عند أي تعديل حتى لا يعرض المتصفح نسخة قديمة.
+- ملف **`.htaccess`** يمنع تخزين صفحات HTML، يخزّن الأصول أسبوعاً، يفعّل Gzip،
+  ويمنع الوصول المباشر لملفات `.sql/.md/.sh`.
+- إن لم تظهر تغييراتك بعد الرفع: [`docs/troubleshooting.md`](docs/troubleshooting.md).
 
 ---
 
