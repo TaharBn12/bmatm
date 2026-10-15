@@ -23,6 +23,17 @@
       return (prefix || 'id') + '-' + Util.randomCode(10) + Date.now().toString(36).slice(-4);
     },
 
+    /** مفتاح عشوائي عالي العشوائية لصلاحية الغرفة، لا يوضع في رابط الدعوة */
+    randomToken(bytes) {
+      const n = Math.max(24, Math.min(64, Number(bytes) || 32));
+      const data = new Uint8Array(n);
+      if (!global.crypto || typeof global.crypto.getRandomValues !== 'function') {
+        throw new Error('يلزم مولّد عشوائي آمن لإنشاء مفتاح الغرفة');
+      }
+      global.crypto.getRandomValues(data);
+      return Array.from(data, b => b.toString(16).padStart(2, '0')).join('');
+    },
+
     /* ---------- تخزين محلي آمن ---------- */
     store: {
       get(key, fallback) {

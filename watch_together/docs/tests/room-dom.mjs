@@ -1,13 +1,10 @@
 /* =========================================================
    WatchTogether — اختبار واجهة الغرفة بدون متصفح (DOM وهمي)
-   التشغيل:  node docs/tests/room-dom.mjs
-   ---------------------------------------------------------
-   يبني DOM وهمياً من room.html ثم يشغّل room.js بالكامل:
-   بوابة الاسم ← الدخول ← الوضع المحلي ← المزامنة ← الرسائل
-   ← التفاعلات ← وضع الرسائل ← المنضمون، ويلتقط أي خطأ runtime.
+   التشغيل: node docs/tests/room-dom.mjs
    ========================================================= */
+import fs from 'fs';
 import path from 'path';
-import { createRoomEnv, wait } from './harness.mjs';
+import { createRoomEnv, wait, base } from './harness.mjs';
 
 let pass = 0, fail = 0;
 const errors = [];
@@ -15,180 +12,158 @@ const t = (name, cond, extra = '') => {
   if (cond) pass++;
   else { fail++; errors.push(`✗ ${name} ${extra}`); }
 };
-
-/* ==================== بيئة المتصفح الوهمية ==================== */
+const ownerToken = 'a'.repeat(64);
 const env = createRoomEnv({
-  search: '?id=ABC123&host=1&v=https%3A%2F%2Fcommondatastorage.googleapis.com%2Fsample.mp4'
+  search: '?id=ABC123&host=1&v=https%3A%2F%2Fcommondatastorage.googleapis.com%2Fsample.mp4',
+  store: { 'wt:owner:ABC123': JSON.stringify(ownerToken) }
 });
 const { sandbox, documentStub, byId, store, html } = env;
-
+env.sandbox.WT_CONFIG.javaServer.enabled = false;
+env.sandbox.WT_CONFIG.supabase.ready = false;
 const reactRow = byId.get('reactRow');
 
-/* تحميل السكربتات (جرى داخل createRoomEnv) */
 env.loaded.forEach(l => t(`تحميل ${path.basename(l.file)}`, l.ok, l.ok ? '' : l.error.message));
 env.loaded.filter(l => !l.ok).forEach(l => console.log(l.error && l.error.stack));
 
 const run = async () => {
-  await wait(150);
+  await wait(100);
 
-  /* ---- 1) كل العناصر المطلوبة موجودة ---- */
-  const needed = ['gate', 'gateCode', 'gateName', 'gateForm', 'gateError', 'gateSubmit', 'avatarPreview',
+  const needed = [
+    'gate', 'gateCode', 'gateName', 'gateForm', 'gateError', 'gateSubmit', 'avatarPreview',
     'room', 'roomTitle', 'roomSub', 'roomCodeText', 'copyCodeBtn', 'statusBadge', 'statusText',
-    'copyLinkBtn', 'shareBtn', 'qrBtn', 'leaveBtn', 'stage', 'player', 'playerPlaceholder', 'ctrlbar',
-    'playPauseBtn', 'iconPlay', 'iconPause', 'backBtn', 'fwdBtn', 'muteBtn', 'iconSound', 'iconMuted',
-    'fullBtn', 'volRange', 'progressBar', 'progressFill', 'progressBuffer', 'progressKnob',
-    'curTime', 'durTime', 'changeUrlBtn', 'resyncBtn', 'focusToggleBtn', 'focusToggleLabel',
-    'membersBadge', 'membersCount', 'syncBadge', 'syncBadgeText', 'syncNote', 'syncNoteText',
-    'changeBar', 'newUrl', 'applyUrlBtn', 'cancelUrlBtn', 'membersPanel', 'membersList',
-    'membersToggle', 'sideMembersCount', 'infoGrid', 'infoCode', 'infoProvider', 'infoController',
-    'infoSync', 'infoRole', 'infoTransport', 'chat', 'chatBody', 'chatEmpty', 'chatCount',
-    'clearChatBtn', 'reactRow', 'chatForm', 'chatInput', 'chatSend', 'typing',
-    'backToVideoBtn', 'chatFab', 'chatFabCount', 'sbMode', 'sbSync', 'sbMe', 'sbMeBtn',
-    'qrModal', 'qrBox', 'qrUrl', 'qrClose', 'qrCopy',
-    'meModal', 'meClose', 'meAvatar', 'meName', 'meMail', 'meNameInput', 'meSave', 'meSignout'];
+    'copyLinkBtn', 'shareBtn', 'qrBtn', 'diagBtn', 'leaveBtn', 'drawerOpenBtn', 'drawerCloseBtn',
+    'drawerScrim', 'roomDrawer', 'organizerList', 'organizerCount', 'membersList', 'membersCount',
+    'sideMembersCount', 'stage', 'player', 'playerPlaceholder', 'ctrlbar', 'playPauseBtn',
+    'iconPlay', 'iconPause', 'muteBtn', 'iconSound', 'iconMuted', 'fullBtn', 'volRange',
+    'progressBar', 'progressFill', 'progressBuffer', 'progressKnob', 'curTime', 'durTime',
+    'addVideoBtn', 'messagesBtn', 'messagesCount', 'playlistBtn', 'playlistCount',
+    'changeBar', 'newUrl', 'newTitle', 'applyUrlBtn', 'cancelUrlBtn', 'chat', 'chatBody',
+    'chatEmpty', 'chatCount', 'clearChatBtn', 'reactRow', 'chatForm', 'chatInput', 'chatSend',
+    'typing', 'backToVideoBtn', 'playlistModal', 'playlistCloseBtn', 'queueList', 'queueEmpty',
+    'sbMeBtn', 'qrModal', 'qrBox', 'qrUrl', 'qrClose', 'qrCopy', 'meModal', 'meClose',
+    'meAvatar', 'meName', 'meMail', 'meNameInput', 'meSave', 'meSignout', 'diagModal',
+    'diagBody', 'diagReconnectBtn', 'diagRunBtn', 'diagCopyBtn', 'diagCloseBtn'
+  ];
   const missing = needed.filter(id => !byId.has(id));
-  t('كل عناصر room.html موجودة', missing.length === 0, missing.join(','));
+  t('كل عناصر الواجهة الجديدة موجودة', missing.length === 0, missing.join(','));
 
-  /* ---- 2) ترتيب الأقسام: مشغّل ← تحكم ← منضمون ← رسائل ---- */
-  const orderOf = ['stage', 'ctrlbar', 'membersPanel', 'chat'].map(id => html.indexOf(`id="${id}"`));
-  t('الترتيب: المشغّل أولاً', orderOf[0] > -1 && orderOf[0] < orderOf[1], orderOf.join(','));
-  t('الترتيب: أدوات التحكم تحت المشغّل', orderOf[1] < orderOf[2], orderOf.join(','));
-  t('الترتيب: المنضمون تحت التحكم', orderOf[2] < orderOf[3], orderOf.join(','));
-  t('الترتيب: الرسائل في الأسفل', orderOf[3] > orderOf[2]);
+  const roomJs = fs.readFileSync(path.join(base, 'assets/js/room.js'), 'utf8');
+  const refs = [...roomJs.matchAll(/\$\(['"]([^'"]+)['"]\)/g)].map(m => m[1]);
+  const missingRefs = [...new Set(refs)].filter(id => !byId.has(id));
+  t('كل مراجع DOM في room.js موجودة أو اختيارية', missingRefs.length === 0, missingRefs.join(','));
 
-  /* ---- 3) لا إيموجي في واجهة التحكم (أيقونات SVG فقط) ---- */
-  const chrome = html.replace(/<div class="react-row"[\s\S]*?<\/div>/, '');   // استثناء منطقة التفاعل
-  const emojiInChrome = (chrome.match(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/gu) || []);
-  t('لا إيموجي خارج منطقة التفاعل', emojiInChrome.length === 0, emojiInChrome.join(' '));
-  t('أيقونات SVG مستخدمة', (html.match(/data-icon="/g) || []).length >= 30,
-    'count=' + (html.match(/data-icon="/g) || []).length);
+  const order = ['id="stage"', 'id="ctrlbar"', 'class="player-actions"', 'id="changeBar"', 'id="chat"']
+    .map(s => html.indexOf(s));
+  t('ترتيب المشغّل وصف التحكم والأزرار والرسائل صحيح', order.every((n, i) => n >= 0 && (!i || n > order[i - 1])), order.join(','));
+  t('أزرار الأدوات الثلاثة تحت المشغّل',
+    html.indexOf('id="addVideoBtn"') < html.indexOf('id="messagesBtn"') && html.indexOf('id="messagesBtn"') < html.indexOf('id="playlistBtn"'));
+  t('شبكة معلومات المشاركين القديمة محذوفة', !/id="info(Grid|Transport|Provider|Controller|Role|Sync|Code)"/.test(html));
+  t('مفتاح المنشئ ليس ضمن رابط الدعوة', !/ownerToken|owner_token/i.test(html));
+  t('أيقونات SVG مستخدمة', (html.match(/data-icon="/g) || []).length >= 35);
 
-  /* ---- 4) البوابة: الحالة الأولية ---- */
-  t('البوابة ظاهرة قبل إدخال الاسم', byId.get('gate').hidden === false);
+  t('بوابة الاسم ظاهرة أولاً', byId.get('gate').hidden === false);
   t('الغرفة مخفية قبل الدخول', byId.get('room').hidden === true);
-  t('كود الغرفة في البوابة', byId.get('gateCode').textContent === 'ABC123');
-  t('كود الغرفة في الشريط', byId.get('roomCodeText').textContent === 'ABC123');
-  t('رابط صفحة الدخول موجود', /auth\.html/.test(html));
+  t('كود الغرفة ظاهر في البوابة والدرّاور', byId.get('gateCode').textContent === 'ABC123' && byId.get('roomCodeText').textContent === 'ABC123');
 
-  /* اسم قصير → رفض */
   byId.get('gateName').value = 'أ';
   byId.get('gateForm').dispatch('submit', {});
-  t('الاسم القصير مرفوض', byId.get('gateError').textContent.length > 0, byId.get('gateError').textContent);
-  t('البوابة ما زالت ظاهرة', byId.get('gate').hidden === false);
-
-  /* صورة الاسم الحرفية */
+  t('يرفض الاسم القصير', byId.get('gateError').textContent.length > 0);
   byId.get('gateName').value = 'أمين بن علي';
   byId.get('gateName').dispatch('input', {});
-  t('الصورة الحرفية تتحدث', byId.get('avatarPreview').textContent.length >= 1, byId.get('avatarPreview').textContent);
+  t('صورة الاسم تتحدث', byId.get('avatarPreview').textContent.length > 0);
 
-  /* ---- 5) الدخول ---- */
   byId.get('gateForm').dispatch('submit', {});
-  await wait(500);
-  t('البوابة اختفت بعد إدخال الاسم', byId.get('gate').hidden === true);
-  t('الغرفة ظهرت', byId.get('room').hidden === false);
+  await wait(450);
+  t('البوابة تختفي والغرفة تظهر', byId.get('gate').hidden && !byId.get('room').hidden);
   t('الاسم حُفظ محلياً', store['wt:name'] === '"أمين بن علي"', String(store['wt:name']));
-  t('الوضع المحلي مُختار (لا سيرفر في الاختبار)', byId.get('sbMode').textContent.includes('محلي'), byId.get('sbMode').textContent);
-  t('الخادم معروض في المعلومات', byId.get('infoTransport').textContent.length > 0);
+  t('مؤشر الاتصال المحلي ظاهر', byId.get('statusText').textContent === 'محلي فقط', byId.get('statusText').textContent);
+  t('مؤشر اتصال صغير فقط في رأس الغرفة', !!byId.get('statusBadge').querySelector('.dot'));
+  t('المستخدم الحالي منشئ ويملك التحكم', sandbox.WTRoom.session.role === 'owner' && !byId.get('playPauseBtn').disabled, sandbox.WTRoom.session.role);
 
-  /* ---- 6) المنضمون ---- */
-  await wait(250);
-  t('أنا في قائمة المنضمين', byId.get('membersList').innerHTML.includes('أمين بن علي'),
-    byId.get('membersList').innerHTML.slice(0, 90));
+  await wait(80);
+  t('أنا في قائمة المشاركين', byId.get('membersList').innerHTML.includes('أمين بن علي'));
   t('شارة «أنت» ظاهرة', byId.get('membersList').innerHTML.includes('(أنت)'));
-  t('عدد المنضمين = 1', byId.get('membersCount').textContent === '1', byId.get('membersCount').textContent);
-  t('شارة المنضمين في الشريط العلوي', byId.get('sideMembersCount').textContent === '1');
+  t('المنشئ يظهر بقائمة المنظّمين', byId.get('organizerList').innerHTML.includes('أمين بن علي'));
+  t('عداد المشاركين يساوي 1', byId.get('membersCount').textContent === '1' && byId.get('sideMembersCount').textContent === '1');
 
-  /* ---- 7) الرسائل ---- */
+  const drawer = byId.get('roomDrawer');
+  byId.get('drawerOpenBtn').dispatch('click', {});
+  t('زر القائمة يفتح الدرّاور', drawer.classList.contains('is-open') && byId.get('drawerScrim').hidden === false);
+  t('حالة الوصول للدرّاور تُحدّث', byId.get('drawerOpenBtn').getAttribute('aria-expanded') === 'true');
+  byId.get('drawerCloseBtn').dispatch('click', {});
+  t('زر الإغلاق يغلق الدرّاور', !drawer.classList.contains('is-open') && byId.get('drawerScrim').hidden === true);
+
   const chatBody = byId.get('chatBody');
   const before = chatBody.children.length;
-  const input = byId.get('chatInput');
-  input.value = 'أهلاً بالجميع';
+  byId.get('chatInput').value = 'أهلاً بالجميع';
   byId.get('chatForm').dispatch('submit', {});
-  await wait(80);
-  t('الرسالة أُضيفت', chatBody.children.length > before, `${chatBody.children.length} vs ${before}`);
-  t('حقل الإدخال فُرّغ', input.value === '', input.value);
-  t('عدّاد الرسائل يتحدث', /رسالة|رسائل/.test(byId.get('chatCount').textContent), byId.get('chatCount').textContent);
-  t('رسالة نظام الانضمام موجودة', chatBody.children.some(c => String(c._className).includes('msg--system')));
-
-  /* ---- 8) التفاعلات (الإيموجي هنا فقط) ---- */
+  await wait(50);
+  t('الرسالة أُضيفت وحقل الإدخال فُرّغ', chatBody.children.length > before && byId.get('chatInput').value === '');
+  t('عداد الرسائل يتحدث', /رسالة|رسائل/.test(byId.get('chatCount').textContent));
+  t('رسائل الانضمام محصورة في نافذة الرسائل', chatBody.children.some(c => String(c._className).includes('msg--system')));
   const beforeReact = chatBody.children.length;
   const reactBtn = reactRow.children.find(c => c.dataset.react);
-  t('أزرار التفاعل موجودة', !!reactBtn, 'n=' + reactRow.children.length);
+  t('تفاعلات الدردشة موجودة', !!reactBtn);
   if (reactBtn) {
     reactBtn.dispatch('click', {});
-    await wait(60);
-    t('التفاعل أُرسل كرسالة', chatBody.children.length > beforeReact);
-    t('نمط رسالة التفاعل', chatBody.children.some(c => String(c._className).includes('msg--react')),
-      chatBody.children.map(c => c._className).join('|').slice(0, 120));
+    await wait(40);
+    t('تفاعل الإيموجي أُرسل كرسالة', chatBody.children.length > beforeReact && chatBody.children.some(c => String(c._className).includes('msg--react')));
   }
 
-  /* ---- 9) وضع الرسائل (إخفاء المشغّل) ---- */
-  byId.get('focusToggleBtn').dispatch('click', {});
-  await wait(120);
-  t('الجسم أخذ صنف chat-focus', documentStub.body.classList.contains('chat-focus'));
-  t('زر العودة للفيديو ظهر', byId.get('backToVideoBtn').hidden === false);
-  t('تسمية الزر تغيّرت', byId.get('focusToggleLabel').textContent.includes('فيديو'), byId.get('focusToggleLabel').textContent);
+  byId.get('messagesBtn').dispatch('click', {});
+  await wait(40);
+  t('زر الرسائل يفتح وضع المحادثة', documentStub.body.classList.contains('chat-focus') && !byId.get('backToVideoBtn').hidden);
   byId.get('backToVideoBtn').dispatch('click', {});
-  await wait(60);
-  t('العودة ألغت وضع الرسائل', !documentStub.body.classList.contains('chat-focus'));
-  t('زر العودة اختفى', byId.get('backToVideoBtn').hidden === true);
+  t('العودة للفيديو تغلق وضع المحادثة', !documentStub.body.classList.contains('chat-focus') && byId.get('backToVideoBtn').hidden);
 
-  /* ---- 10) أزرار التحكم مربوطة ---- */
-  ['playPauseBtn', 'backBtn', 'fwdBtn', 'muteBtn', 'fullBtn', 'resyncBtn', 'changeUrlBtn',
-    'focusToggleBtn', 'membersToggle', 'copyCodeBtn', 'copyLinkBtn', 'qrBtn', 'qrClose', 'qrCopy',
-    'leaveBtn', 'clearChatBtn', 'sbMeBtn', 'meClose', 'meSave', 'meSignout', 'cancelUrlBtn', 'applyUrlBtn']
-    .forEach(id => {
-      const h = byId.get(id)._handlers['click'] || [];
-      t(`زر ${id} مربوط`, h.length >= 1, 'handlers=' + h.length);
-    });
-
-  /* ---- 11) تغيير الرابط ---- */
-  byId.get('changeUrlBtn').dispatch('click', {});
-  t('شريط تغيير الرابط فتح', byId.get('changeBar').hidden === false);
-  byId.get('cancelUrlBtn').dispatch('click', {});
-  t('شريط تغيير الرابط أُغلق', byId.get('changeBar').hidden === true);
-
-  /* رابط غير صالح → تنبيه ولا يُطبَّق */
-  byId.get('changeUrlBtn').dispatch('click', {});
+  byId.get('addVideoBtn').dispatch('click', {});
+  t('إضافة فيديو تفتح حقل الرابط', !byId.get('changeBar').hidden);
   byId.get('newUrl').value = 'not a url';
   byId.get('applyUrlBtn').dispatch('click', {});
-  t('الرابط غير الصالح مرفوض', byId.get('changeBar').hidden === false);
-  byId.get('cancelUrlBtn').dispatch('click', {});
+  t('يرفض رابط فيديو غير صالح', !byId.get('changeBar').hidden);
+  byId.get('newUrl').value = 'https://example.com/next.mp4';
+  byId.get('newTitle').value = 'الفيديو التالي';
+  byId.get('applyUrlBtn').dispatch('click', {});
+  await wait(40);
+  t('إضافة فيديو صالح إلى القائمة المشتركة', sandbox.WTRoom.session.queue.length === 1 && byId.get('playlistCount').textContent === '1');
+  byId.get('playlistBtn').dispatch('click', {});
+  t('زر القائمة يفتح نافذة التشغيل', !byId.get('playlistModal').hidden && byId.get('queueList').innerHTML.includes('الفيديو التالي'));
+  byId.get('playlistCloseBtn').dispatch('click', {});
+  t('زر إغلاق قائمة التشغيل يعمل', byId.get('playlistModal').hidden);
 
-  /* ---- 12) QR ---- */
+  const clickIds = ['playPauseBtn', 'muteBtn', 'fullBtn', 'progressBar', 'addVideoBtn', 'messagesBtn', 'playlistBtn',
+    'drawerOpenBtn', 'drawerCloseBtn', 'copyCodeBtn', 'copyLinkBtn', 'qrBtn', 'leaveBtn', 'clearChatBtn',
+    'sbMeBtn', 'meClose', 'meSave', 'meSignout', 'cancelUrlBtn', 'applyUrlBtn', 'playlistCloseBtn'];
+  clickIds.forEach(id => {
+    const node = byId.get(id);
+    const count = node ? ((node._handlers.click || []).length + (node._handlers.pointerdown || []).length) : 0;
+    t(`ربط الحدث ${id}`, count > 0, `handlers=${count}`);
+  });
+
   byId.get('qrBtn').dispatch('click', {});
-  t('نافذة QR فتحت', byId.get('qrModal').hidden === false);
-  t('رابط QR صحيح', byId.get('qrUrl').textContent.includes('room.html?id=ABC123'), byId.get('qrUrl').textContent);
+  t('نافذة QR تفتح برابط الغرفة', !byId.get('qrModal').hidden && byId.get('qrUrl').textContent.includes('room.html?id=ABC123'));
   byId.get('qrClose').dispatch('click', {});
-  t('نافذة QR أُغلقت', byId.get('qrModal').hidden === true);
-
-  /* ---- 13) الحساب ---- */
   byId.get('sbMeBtn').dispatch('click', {});
-  t('نافذة الحساب فتحت', byId.get('meModal').hidden === false);
-  t('اسمي في نافذة الحساب', byId.get('meName').textContent === 'أمين بن علي', byId.get('meName').textContent);
-  t('شارة الضيف', byId.get('meMail').textContent.includes('ضيف'), byId.get('meMail').textContent);
+  t('نافذة الحساب تفتح باسم المستخدم', !byId.get('meModal').hidden && byId.get('meName').textContent === 'أمين بن علي');
   byId.get('meClose').dispatch('click', {});
-  t('نافذة الحساب أُغلقت', byId.get('meModal').hidden === true);
 
-  /* ---- 14) معلومات الغرفة ---- */
-  t('معلومات: الكود', byId.get('infoCode').textContent === 'ABC123');
-  t('معلومات: المصدر', byId.get('infoProvider').textContent.length > 0, byId.get('infoProvider').textContent);
-  t('معلومات: وضعي', byId.get('infoRole').textContent.length > 0, byId.get('infoRole').textContent);
-  t('شارة المزامنة', byId.get('syncBadgeText').textContent.length > 0, byId.get('syncBadgeText').textContent);
-
-  /* ---- 15) اختصارات لوحة المفاتيح ---- */
-  documentStub.dispatch('keydown', { key: 'd', target: { tagName: 'BODY', isContentEditable: false } });
-  await wait(40);
-  t('اختصار D يفتح وضع الرسائل', documentStub.body.classList.contains('chat-focus'));
   documentStub.dispatch('keydown', { key: 'Escape', target: { tagName: 'BODY', isContentEditable: false } });
-  await wait(40);
-  t('Escape يغلق وضع الرسائل', !documentStub.body.classList.contains('chat-focus'));
+  t('Escape لا يترك نافذة قائمة التشغيل مفتوحة', byId.get('playlistModal').hidden);
+  t('أداة توليد المفتاح موجودة', typeof sandbox.WTUtil.randomToken === 'function' && sandbox.WTUtil.randomToken(32).length >= 48);
 
-  /* ---- 16) إعدادات المزامنة المطلوبة ---- */
+  /* وضع host=1 في الرابط وحده لا يمنح صلاحية المالك. */
+  const unsafe = createRoomEnv({ search: '?id=NOAUTH1&host=1' });
+  unsafe.sandbox.WT_CONFIG.javaServer.enabled = false;
+  unsafe.sandbox.WT_CONFIG.supabase.ready = false;
+  unsafe.byId.get('gateName').value = 'زائر';
+  unsafe.byId.get('gateForm').dispatch('submit', {});
+  await wait(250);
+  t('host=1 لا ينشئ مفتاح مالك ولا يرفع دور الزائر', unsafe.sandbox.WTRoom.session.role === 'viewer');
+
   const cfg = sandbox.WT_CONFIG;
-  t('الرفع إلى قاعدة البيانات كل 5 ثوانٍ', cfg.sync.persistMs === 5000, String(cfg.sync.persistMs));
-  t('التحاق المتأخرين مفعّل', cfg.sync.lateJoinCatchup === true);
-  t('حساسية الانحراف عالية', cfg.sync.driftTolerance <= 1.2, String(cfg.sync.driftTolerance));
+  t('فترة حفظ الحالة الأساسية 5 ثوانٍ', cfg.sync.persistMs === 5000);
+  t('التحاق المتأخر مفعّل', cfg.sync.lateJoinCatchup === true);
+  t('انحراف المزامنة مضبوط', cfg.sync.driftTolerance <= 1.2);
 
   console.log('\n' + errors.join('\n'));
   console.log(`\n${pass} passed, ${fail} failed`);
