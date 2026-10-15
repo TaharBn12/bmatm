@@ -60,13 +60,17 @@ watch_together/
 │   │   └── Headers.java            مساعد ترويسات
 │   ├── build.sh run.sh build.bat run.bat
 │   └── data/rooms.json         ← يُنشأ تلقائياً (حالات الغرف — غير مرفوع للمستودع)
+├── tools/
+│   └── sbctl.mjs               ← 🛠️ أداة «السيرفر الجديد»: إنشاء مشروع Supabase + فحص + ربط
 └── docs/
+    ├── bootstrap.sql           ← 🗄️ مخطط مشروع Supabase جديد (جداول + RLS + Realtime + wt_health)
     ├── schema.sql              ← 🗄️ مخطط Supabase (rooms / messages / presence + RLS + Realtime)
     ├── migration.sql           ← ترقية قاعدة قائمة (user_id + kind='react')
     ├── supabase-setup.md       ← دليل Supabase + تفعيل Auth
+    ├── new-supabase-server.md  ← 🚀 «سيرفر جديد على Supabase» — خطوة بخطوة + أمر واحد
     ├── deployment.md           ← النشر على الاستضافات
     ├── troubleshooting.md      ← 🩺 «رفعت الملفات ولم تظهر التغييرات»
-    └── tests/                  ← ثلاثة اختبارات بلا متصفح (175 اختباراً)
+    └── tests/                  ← أربعة اختبارات بلا متصفح (226 اختباراً)
 ```
 
 ---
@@ -98,6 +102,51 @@ cd watch_together && python3 -m http.server 8080
 ```
 يعمل في **الوضع المحلي** (مزامنة بين تبويبات نفس الجهاز) — ممتاز لتجربة التصميم.
 للدخول المباشر في الوضع المحلي أضف `?local=1` للرابط.
+
+---
+
+## 🛠️ سيرفر جديد على Supabase + تشخيص الاتصال (جديد في 2.3.0)
+
+> **«في الغرفة يتعذّر الاتصال»** — هذا الجزء يحلّه ويمنع تكراره.
+
+### المشكلة التي كانت تُرعب المستخدم
+
+كان الاتصال يفشل بلا سبب واضح: «تعذّر الاتصال بالغرفة» فقط، دون أن يعرف المستخدم
+هل السبب هو الجداول، أو المفتاح، أو RLS، أو مشروع موقوف، أو حجب للشبكة.
+وأخطر من ذلك: **جدول واحد ناقص (مثل `messages`) كان يُسقط الاتصال كله**، مع أن
+مزامنة الفيديو كان يمكن أن تعمل.
+
+### الحل في 3 أجزاء
+
+**1) نافذة «تشخيص» داخل الغرفة** — زر في الشريط العلوي يفحص المشروع من متصفحك:
+هل REST يستجيب؟ هل الجداول موجودة؟ هل Realtime يعمل؟ وما **السبب + الحل**؟
+مع زر «إعادة الاتصال» وزر «نسخ التقرير».
+
+**2) التطبيق صار متسامحاً** — غياب جدول `messages` لم يعد يُسقط الاتصال:
+المزامنة تعمل، والدردشة فقط تتعطّل مع تنبيه واضح. وكل خطأ يُترجم
+إلى سبب وحل بالعربية (42P01 → نفّذ المخطط، 401 → المفتاح، 42501 → RLS، …).
+
+**3) أداة `sbctl` — إنشاء سيرفر جديد بأمر واحد:**
+
+```bash
+cd watch_together
+
+# فحص المشروع الحالي (REST + الجداول + Realtime + كتابة/قراءة)
+node tools/sbctl.mjs doctor
+
+# إنشاء مشروع Supabase جديد + تنفيذ المخطط + ربطه بالموقع تلقائياً
+export SUPABASE_ACCESS_TOKEN="sbp_..."     # من supabase.com → Access Tokens
+node tools/sbctl.mjs create --name wt-new \
+  --org-id <ORGANIZATION_ID> --db-password "<كلمة مرور قوية>"
+
+# تبديل المشروع يدوياً (يرفع أيضاً رقم الكاش ?v=)
+node tools/sbctl.mjs set --url "https://xxx.supabase.co" --key "eyJhbGci..."
+
+# اختبار حي: ينشئ غرفة، يكتب حالة، يقرأها، يحذفها
+node tools/sbctl.mjs smoke
+```
+
+الدليل الكامل: [`docs/new-supabase-server.md`](docs/new-supabase-server.md).
 
 ---
 
@@ -218,17 +267,18 @@ auth: { required: true, allowGuest: false }
 ## 🧪 الاختبارات
 
 ```bash
-node watch_together/docs/tests/smoke.mjs      # 56 اختباراً — الأدوات والروابط والمزامنة والالتحاق
-node watch_together/docs/tests/room-dom.mjs   # 84 اختباراً — واجهة الغرفة عبر DOM وهمي
-node watch_together/docs/tests/join-room.mjs  # 35 اختباراً — عميلان في نفس الغرفة (ws + Supabase)
+node watch_together/docs/tests/smoke.mjs           # 56 اختباراً — الأدوات والروابط والمزامنة والالتحاق
+node watch_together/docs/tests/room-dom.mjs        # 84 اختباراً — واجهة الغرفة عبر DOM وهمي
+node watch_together/docs/tests/join-room.mjs       # 41 اختباراً — عميلان في نفس الغرفة (ws + Supabase)
+node watch_together/docs/tests/supabase-server.mjs # 45 اختباراً — أداة السيرفر الجديد + التشخيص
 ```
-المجموع **175 اختباراً**، وتعمل بدون متصفح ولا شبكة.
+المجموع **226 اختباراً**، وتعمل بدون متصفح ولا شبكة.
 
 ---
 
 ## 📦 النشر وكاش المتصفح
 
-- كل مراجع CSS/JS تحمل رقم إصدار `?v=2.2.0` — **ارفع الرقم** في
+- كل مراجع CSS/JS تحمل رقم إصدار `?v=2.3.0` — **ارفع الرقم** في
   `index.html` و `room.html` و `auth.html` عند أي تعديل حتى لا يعرض المتصفح نسخة قديمة.
 - ملف **`.htaccess`** يمنع تخزين صفحات HTML، يخزّن الأصول أسبوعاً، يفعّل Gzip،
   ويمنع الوصول المباشر لملفات `.sql/.md/.sh`.
