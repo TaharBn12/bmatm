@@ -104,6 +104,7 @@
     copyLinkBtn: $('copyLinkBtn'), shareBtn: $('shareBtn'), qrBtn: $('qrBtn'), leaveBtn: $('leaveBtn'),
     drawer: $('roomDrawer'), drawerScrim: $('drawerScrim'), drawerOpenBtn: $('drawerOpenBtn'), drawerCloseBtn: $('drawerCloseBtn'),
     membersCount: $('membersCount'), organizerList: $('organizerList'), organizerCount: $('organizerCount'), organizerEmpty: $('organizerEmpty'),
+    mediaShell: $('mediaShell'),
     stage: $('stage'), player: $('player'), placeholder: $('playerPlaceholder'), ctrlbar: $('ctrlbar'),
     playPause: $('playPauseBtn'), iconPlay: $('iconPlay'), iconPause: $('iconPause'),
     muteBtn: $('muteBtn'), iconSound: $('iconSound'), iconMuted: $('iconMuted'), fullBtn: $('fullBtn'), volRange: $('volRange'),
@@ -583,7 +584,7 @@
       el.progressBar.title = locked ? 'التحكم بالمنشئ والمنظّمين فقط' : 'اسحب للتقديم أو الترجيع';
     }
     if (el.player) el.player.classList.toggle('player--view-only', locked);
-    if (player && player._video) player._video.controls = !locked;
+    if (player && player._video) player._video.controls = false;
     if (el.room) el.room.classList.toggle('room--viewer', locked);
     renderMembers();
   }
@@ -782,7 +783,8 @@
     st.kind = parsed.kind;
 
     try {
-      await player.load(parsed, { autoplay: !!opts.autoplay, controls: canControl() });
+      el.ctrlbar.hidden = parsed.kind === 'embed';
+      await player.load(parsed, { autoplay: !!opts.autoplay, controls: false });
       if (el.placeholder) { el.placeholder.remove(); el.placeholder = null; }
 
       /* الموضع: عند الانضمام نحسب الوقت المتوقع، وإلا نستخدم الموضع المحفوظ */
@@ -1321,7 +1323,7 @@
 
     /* ---- ملء الشاشة ---- */
     el.fullBtn.addEventListener('click', () => {
-      const target = el.player;
+      const target = el.mediaShell;
       if (!document.fullscreenElement && !document.webkitFullscreenElement) {
         (target.requestFullscreen || target.webkitRequestFullscreen || function () { }).call(target);
       } else {

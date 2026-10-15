@@ -171,14 +171,26 @@
   });
 
   /* ============================== إنشاء الغرفة ============================== */
-  els.form.addEventListener('submit', function (e) {
+  els.form.addEventListener('submit', async function (e) {
     e.preventDefault();
 
     const raw = els.url.value.trim();
-    const parsed = U.parseWatchUrl(raw);
+    let parsed = U.parseWatchUrl(raw);
     if (!parsed) {
       U.toast('أدخل رابط مشاهدة صالحاً (يوتيوب أو mp4 أو m3u8)', 'error');
       els.url.focus();
+      return;
+    }
+
+    if (els.createBtn.disabled) return;
+    els.createBtn.disabled = true;
+    try {
+      const media = await window.WTResolve(raw);
+      parsed = media.parsed;
+      if (media.title && !els.title.value.trim()) els.title.value = media.title;
+    } catch (err) {
+      els.createBtn.disabled = false;
+      U.toast(err.message || 'تعذّر تجهيز الفيديو', 'error', 7000);
       return;
     }
 

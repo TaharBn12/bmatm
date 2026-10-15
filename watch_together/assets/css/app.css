@@ -987,7 +987,8 @@ footer a:hover { color: var(--brand-2); }
 .ctrlbar { padding: 12px; display: flex; flex-direction: column; gap: 11px; }
 
 .ctrlbar__row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.ctrlbar__row--progress { gap: 10px; }
+.ctrlbar__row--progress { gap: 10px; flex-wrap: nowrap; min-width: 0; }
+.ctrlbar__row[hidden] { display: none; }
 .ctrlbar__row--tools { gap: 7px; }
 .ctrlbar__spacer { flex: 1; }
 
@@ -1016,7 +1017,8 @@ footer a:hover { color: var(--brand-2); }
 
 /* شريط التقدم المحسّن */
 .progress__bar {
-  flex: 1; height: 22px; min-width: 120px;
+  flex: 1; height: 22px; min-width: 0;
+  background: transparent; overflow: visible;
   display: flex; align-items: center;
   position: relative; cursor: pointer;
   touch-action: none;
@@ -1035,7 +1037,7 @@ footer a:hover { color: var(--brand-2); }
   margin: auto 0;
 }
 .progress__fill {
-  position: absolute; inset-inline-start: 0; top: 50%;
+  position: absolute; inset-block: auto; inset-inline-start: 0; top: 50%;
   transform: translateY(-50%);
   height: 6px; width: 0%; border-radius: 999px;
   background: var(--grad);
@@ -1341,12 +1343,12 @@ body.chat-focus .chat-fab { display: none !important; }
   .stage { padding: 7px; border-radius: 16px; }
 
   .ctrlbar {
-    position: sticky; bottom: 0; z-index: 45;
+    position: static;
     padding: 10px;
     gap: 9px;
-    border-radius: 16px 16px 0 0;
+    border-radius: 16px;
     background: rgba(10, 12, 26, .94);
-    box-shadow: 0 -14px 34px rgba(0, 0, 0, .55);
+    box-shadow: none;
     padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px));
   }
   .ctrlbar__row { gap: 6px; }
@@ -1715,3 +1717,33 @@ body.drawer-open { overflow: hidden; }
 .queue-item__remove:hover { background: rgba(180, 80, 95, .16); border-color: rgba(190, 100, 110, .3); color: #e8b4ba; }
 .queue-empty { display: flex; align-items: center; justify-content: center; gap: 9px; min-height: 90px; padding: 15px; border: 1px dashed var(--border); border-radius: 12px; color: var(--muted-2); font-size: 12px; text-align: center; }
 .queue-empty[hidden] { display: none !important; }
+
+/* Discovery and extraction */
+.discovery { margin-top: 32px; padding: clamp(18px, 4vw, 36px); }
+.discovery h1 { font-size: clamp(24px, 4vw, 36px); }
+.discovery p { color: var(--muted, #a9abc1); line-height: 1.9; margin: 16px 0; }
+.site-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 14px; margin: 24px 0; }
+.site-card { border: 1px solid #ffffff20; border-radius: 18px; padding: 18px 10px; text-align: center; background: #ffffff05; }
+.site-card a { display: flex; flex-direction: column; align-items: center; gap: 12px; color: inherit; text-decoration: none; }
+.site-card:hover { border-color: #7c5cff; background: #7c5cff15; }
+.site-icon { width: 48px; height: 48px; border-radius: 14px; background: #7c5cff35; display: grid; place-items: center; font-size: 24px; position: relative; overflow: hidden; }
+.site-icon img { position: absolute; width: 100%; height: 100%; object-fit: contain; background: #161626; }
+.site-form { display: grid; gap: 16px; padding: 20px 0; }
+.site-form label { display: grid; gap: 8px; }
+.discovery summary { cursor: pointer; padding: 12px; }
+.resolve-dialog { color: #eee; background: #141527; border: 1px solid #7c5cff80; border-radius: 22px; padding: 28px; width: min(440px, 90vw); margin: auto; text-align: center; }
+.resolve-dialog::backdrop { background: #03040ccf; backdrop-filter: blur(8px); }
+.resolve-dialog p { margin: 20px 0; line-height: 1.8; }
+
+/* Keep the single room toolbar attached to the player, also in fullscreen. */
+.media-shell { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.media-shell:fullscreen { background: #06070f; padding: 10px; overflow: auto; }
+.media-shell:fullscreen .stage { flex: 1; min-height: 0; display: flex; }
+.media-shell:fullscreen .player { flex: 1; width: 100%; height: 100%; aspect-ratio: auto; }
+.media-shell:fullscreen .ctrlbar { flex: none; position: static; }
+.media-shell:-webkit-full-screen { background: #06070f; padding: 10px; overflow: auto; }
+.media-shell:-webkit-full-screen .stage { flex: 1; min-height: 0; display: flex; }
+.media-shell:-webkit-full-screen .player { flex: 1; width: 100%; height: 100%; aspect-ratio: auto; }
+.media-shell:-webkit-full-screen .ctrlbar { flex: none; position: static; }
+
+.ctrlbar[hidden] { display: none !important; }

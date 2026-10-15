@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#06070f">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <title>تصفّح المواقع — WatchTogether</title>
+  <meta name="description" content="أنشئ غرفة، الصق رابط الفيديو، وشارك الرابط مع أصدقائك لتشاهدوا معاً في نفس اللحظة مع رسائل مباشرة ومزامنة فائقة الدقة.">
+
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='24' fill='%237c5cff'/%3E%3Cpath d='M40 32l28 18-28 18z' fill='white'/%3E%3C/svg%3E">
+  <link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='24' fill='%237c5cff'/%3E%3Cpath d='M40 32l28 18-28 18z' fill='white'/%3E%3C/svg%3E">
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="assets/css/app.css?v=2.3.0">
+</head>
+<body>
+  <div class="bg-fx"></div>
+  <div class="blob blob--a"></div>
+  <div class="blob blob--b"></div>
+  <div class="blob blob--c"></div>
+
+  <!-- ===== الشريط العلوي ===== -->
+  <header class="nav">
+    <div class="container nav__inner">
+      <a class="brand" href="index.html">
+        <span class="brand__logo"><span class="ic" data-icon="logo" data-size="24"></span></span>
+        <span>
+          <span class="brand__name">WatchTogether</span>
+          <span class="brand__sub">شاهدوا معاً • نفس اللحظة</span>
+        </span>
+      </a>
+
+      <div class="nav__actions">
+        <span class="badge" id="modeBadge"><span class="dot"></span> جارٍ الفحص…</span>
+        <a class="btn btn--ghost" href="discover.html">تصفّح المواقع</a>
+        <span id="navAuth"></span>
+      </div>
+    </div>
+  </header>
+
+  <main>
+<section class="container discovery glass" aria-labelledby="discoverTitle">
+<h1 id="discoverTitle">تصفّح وشاهد مع أصدقائك</h1>
+<p>افتح موقعاً، انسخ رابط صفحة الفيديو ثم الصقه أدناه لإنشاء الغرفة تلقائياً بعد تجهيزه. YouTube يعمل دون وسيط.</p>
+<form id="searchSites" class="url-row"><input class="input" id="googleQuery" aria-label="ابحث في Google" placeholder="ابحث عن فيديو على Google" required maxlength="300"><button class="btn btn--primary">بحث Google</button></form>
+<div id="siteCards" class="site-grid"></div>
+<details><summary>إضافة موقع وأيقونته يدوياً</summary>
+<form id="addSite" class="site-form">
+<label>اسم الموقع<input class="input" name="siteName" required maxlength="60"></label>
+<label>رابط الموقع<input class="input input--ltr" name="siteUrl" type="url" required placeholder="https://example.com"></label>
+<label>رابط الأيقونة (اختياري)<input class="input input--ltr" name="siteIcon" type="url" placeholder="https://example.com/icon.png"></label>
+<button class="btn btn--primary">حفظ الموقع</button>
+</form></details>
+<p>المواقع المضافة محفوظة في هذا المتصفح فقط. إضافة موقع لا تضمن دعم استخراجه. بعض الفيديوهات تتطلب تسجيل الدخول أو تمنع التشغيل الخارجي.</p>
+</section>
+
+    <!-- ===== الواجهة الرئيسية ===== -->
+    <section class="hero container">
+      <span class="hero__eyebrow">
+        <span class="ic" data-icon="broadcast" data-size="15"></span>
+        مشاهدة جماعية متزامنة + رسائل مباشرة
+      </span>
+      <h1 class="hero__title">الصق رابط الفيديو… <span class="grad-text">وشاهدوه معاً</span></h1>
+      <p class="hero__lead">
+        أنشئ غرفة في ثانية واحدة، انسخ رابطها وأرسله لأصدقائك.
+        من يفتح الرابط يُطلب منه إدخال اسمه ثم يدخل — والتشغيل والإيقاف والتقديم
+        يتزامن عند <b>الجميع</b> بدقة أقل من ثانية، وأي مشارك يستطيع التحكم.
+      </p>
+
+      <!-- بطاقة إنشاء الغرفة -->
+      <div class="creator glass" id="creator">
+        <div class="creator__head">
+          <span class="creator__step">1</span>
+          <div>
+            <h2 class="creator__title">أضف رابط المشاهدة</h2>
+            <p class="creator__hint">
+              <span class="ic" data-icon="film" data-size="13"></span>
+              يوتيوب • MP4/WebM • بث HLS (m3u8) • أي رابط تضمين
+            </p>
+          </div>
+        </div>
+
+        <form id="createForm" autocomplete="off" novalidate>
+          <div class="url-row">
+            <div class="field-wrap">
+              <span class="ic field-wrap__ic" data-icon="link" data-size="18"></span>
+              <input class="input input--pad input--ltr" id="videoUrl" type="url" inputmode="url" spellcheck="false"
+                     placeholder="https://www.youtube.com/watch?v=..." required>
+            </div>
+            <button class="btn btn--ghost" type="button" id="pasteBtn" title="لصق من الحافظة">
+              <span class="ic" data-icon="copy" data-size="17"></span> لصق
+            </button>
+          </div>
+
+          <!-- معاينة الرابط -->
+          <div class="preview" id="preview">
+            <div class="preview__thumb" id="previewThumb">
+              <span class="ic" data-icon="film" data-size="22"></span>
+            </div>
+            <div class="preview__meta">
+              <p class="preview__kind" id="previewKind">—</p>
+              <p class="preview__url" id="previewUrl">—</p>
+            </div>
+          </div>
+
+          <div class="name-row">
+            <div>
+              <label class="label" for="hostName">اسمك (يظهر للمنضمين)</label>
+              <div class="field-wrap">
+                <span class="ic field-wrap__ic" data-icon="user" data-size="18"></span>
+                <input class="input input--pad" id="hostName" type="text" maxlength="24" placeholder="مثال: أمين">
+              </div>
+            </div>
+            <div>
+              <label class="label" for="roomTitle">اسم الغرفة <span class="label__opt">(اختياري)</span></label>
+              <div class="field-wrap">
+                <span class="ic field-wrap__ic" data-icon="sparkle" data-size="18"></span>
+                <input class="input input--pad" id="roomTitle" type="text" maxlength="40" placeholder="مثال: سهرة الجمعة">
+              </div>
+            </div>
+          </div>
+
+          <div class="creator__cta">
+            <button class="btn btn--primary btn--lg" type="submit" id="createBtn">
+              <span class="ic" data-icon="zap" data-size="19"></span> إنشاء الغرفة وبدء المشاهدة
+            </button>
+          </div>
+
+          <div class="chips">
+            <span class="chips__label"><span class="ic" data-icon="flask" data-size="14"></span> جرّب رابطاً:</span>
+            <button type="button" class="chip" data-demo="https://www.youtube.com/watch?v=aqz-KE-bpKQ">
+              <span class="ic" data-icon="play" data-size="13"></span> يوتيوب
+            </button>
+            <button type="button" class="chip" data-demo="https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8">
+              <span class="ic" data-icon="broadcast" data-size="13"></span> بث HLS
+            </button>
+            <button type="button" class="chip" data-demo="https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4">
+              <span class="ic" data-icon="film" data-size="13"></span> ملف MP4
+            </button>
+          </div>
+        </form>
+
+        <div class="divider"><span>أو ادخل غرفة موجودة</span></div>
+
+        <form id="joinForm" autocomplete="off" novalidate>
+          <div class="join-row">
+            <div class="field-wrap">
+              <span class="ic field-wrap__ic" data-icon="keyboard" data-size="18"></span>
+              <input class="input input--pad input--code" id="joinCode" maxlength="10" placeholder="كود الغرفة  8F3K2Q" spellcheck="false">
+            </div>
+            <button class="btn btn--ok btn--lg" type="submit">
+              <span class="ic" data-icon="login" data-size="18"></span> دخول
+            </button>
+          </div>
+        </form>
+      </div>
+    </section>
+
+    <!-- ===== المزايا ===== -->
+    <section class="features container">
+      <h2 class="section-title">كل ما تحتاجه <span class="grad-text">للمشاهدة الجماعية</span></h2>
+      <p class="section-sub">مزامنة حساسة جداً — تُحفظ حالة الغرفة في قاعدة البيانات كل 5 ثوانٍ، وعند خروج آخر مشارك.</p>
+
+      <div class="grid-3">
+        <article class="card glass">
+          <div class="card__icon"><span class="ic" data-icon="zap" data-size="22"></span></div>
+          <h3 class="card__title">مزامنة فورية</h3>
+          <p class="card__text">كل ضغطة تُبثّ فوراً، مع تصحيح تلقائي لانحراف الوقت (ناعم أو قفزة) ورقم تسلسل يمنع التحديثات القديمة.</p>
+        </article>
+        <article class="card glass">
+          <div class="card__icon"><span class="ic" data-icon="clock" data-size="22"></span></div>
+          <h3 class="card__title">من انضم لاحقاً يلحق بالجميع</h3>
+          <p class="card__text">من يدخل الغرفة بعد بدء العرض يأخذ الوقت الحالي المحسوب من آخر حالة محفوظة — لا يبدأ من الصفر.</p>
+        </article>
+        <article class="card glass">
+          <div class="card__icon"><span class="ic" data-icon="sliders" data-size="22"></span></div>
+          <h3 class="card__title">التحكم للجميع</h3>
+          <p class="card__text">أي مشارك يستطيع التشغيل والإيقاف والتقديم والتأخير، والتغيير يصل متزامناً لكل الحاضرين.</p>
+        </article>
+        <article class="card glass">
+          <div class="card__icon"><span class="ic" data-icon="users" data-size="22"></span></div>
+          <h3 class="card__title">المنضمون الحقيقيون</h3>
+          <p class="card__text">قائمة حيّة تحت المشغّل مباشرة، بأسماء حقيقية وألوان ثابتة، مع حذف تلقائي لمن انقطع اتصاله.</p>
+        </article>
+        <article class="card glass">
+          <div class="card__icon"><span class="ic" data-icon="chat" data-size="22"></span></div>
+          <h3 class="card__title">رسائل وتفاعلات</h3>
+          <p class="card__text">منطقة رسائل أسفل المنضمين، مع تفاعلات سريعة، ومؤشر «يكتب الآن…»، ووضع يملأ الشاشة بالرسائل.</p>
+        </article>
+        <article class="card glass">
+          <div class="card__icon"><span class="ic" data-icon="phone" data-size="22"></span></div>
+          <h3 class="card__title">مصمّم للهاتف أولاً</h3>
+          <p class="card__text">يعمل على iPhone و Android والحاسوب: أشرطة آمنة للنتوء، تحكم ثابت أسفل الشاشة، وأزرار بحجم اللمس.</p>
+        </article>
+      </div>
+    </section>
+
+    <!-- ===== خطوات ===== -->
+    <section class="container">
+      <h2 class="section-title">ثلاث خطوات فقط</h2>
+      <p class="section-sub">بدون تثبيت، وبدون انتظار.</p>
+      <div class="steps">
+        <article class="step glass">
+          <div class="step__num">1</div>
+          <h3 class="card__title">الصق رابط الفيديو</h3>
+          <p class="card__text">يوتيوب أو ملف MP4 أو بث HLS — يُكتشف النوع تلقائياً مع معاينة فورية.</p>
+        </article>
+        <article class="step glass">
+          <div class="step__num">2</div>
+          <h3 class="card__title">انسخ رابط الغرفة</h3>
+          <p class="card__text">رابط قصير أو رمز QR أرسله لمن تريد، فيدخل بعد كتابة اسمه مباشرة.</p>
+        </article>
+        <article class="step glass">
+          <div class="step__num">3</div>
+          <h3 class="card__title">شاهدوا وتحدّثوا</h3>
+          <p class="card__text">الفيديو متزامن عند الجميع، والرسائل تعمل أسفل المنضمين مباشرة.</p>
+        </article>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container site-footer__inner">
+      <span class="site-footer__brand">
+        <span class="ic" data-icon="logo" data-size="17"></span> WatchTogether
+      </span>
+      <nav class="site-footer__links">
+        <a href="auth.html"><span class="ic" data-icon="lock" data-size="14"></span> الدخول</a>
+        <a href="README.md"><span class="ic" data-icon="doc" data-size="14"></span> الدليل</a>
+        <a href="docs/deployment.md"><span class="ic" data-icon="server" data-size="14"></span> النشر</a>
+        <a href="docs/supabase-setup.md"><span class="ic" data-icon="database" data-size="14"></span> Supabase</a>
+      </nav>
+      <span class="site-footer__note" id="footerMode"></span>
+    </div>
+  </footer>
+
+  <!-- ===== سكربتات ===== -->
+  <script src="assets/vendor/hls.min.js?v=2.3.0" defer></script>
+  <script src="assets/vendor/qrcode.min.js?v=2.3.0" defer></script>
+  <script src="assets/js/config.js?v=2.3.0"></script>
+  <script src="assets/js/util.js?v=2.3.0"></script>
+  <script src="assets/js/icons.js?v=2.3.0"></script>
+  <script src="assets/js/auth.js?v=2.3.0"></script>
+  <script src="assets/js/transport.js?v=2.3.0"></script>
+  <script src="assets/js/player.js?v=2.3.0"></script>
+  <script src="assets/js/resolver.js?v=1"></script>
+  <script src="assets/js/home.js?v=2.3.0"></script>
+<script src="assets/js/discover.js?v=1"></script>
+</body>
+</html>
