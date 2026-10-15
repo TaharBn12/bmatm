@@ -59,6 +59,61 @@ alter table public.messages add column if not exists kind text not null default 
 create index if not exists messages_room_created_idx on public.messages (room_id, created_at desc);
 
 -- ---------------------------------------------------------------------
+-- 2ب) إصلاح جدول الرسائل في المشاريع القديمة — يعالج خطأ PostgREST:
+--     «Could not find the 'body' column of 'messages' in the schema cache» (PGRST204)
+--
+--     السبب: مشروع قديم أنشأ messages بعمود text/message بدل body، أو بلا
+--     أعمدة المخطط الجديد. `create table if not exists` يتجاهل الجدول القائم،
+--     فلا يُضاف العمود أبداً وترفض الدردشة الكتابة.
+--     هذا القسم آمن للتكرار ولا يحذف أي رسالة.
+-- ---------------------------------------------------------------------
+alter table public.messages add column if not exists room_id text;
+alter table public.messages add column if not exists name text;
+alter table public.messages add column if not exists created_at timestamptz not null default now();
+
+do $$
+declare
+  legacy text;
+begin
+  /* 1) عمود النص: أعِد تسمية العمود القديم (text/message/content/msg) إلى body إن وُجد */
+  if not exists (
+    select 1 from information_schema.columns
+     where table_schema = 'public' and table_name = 'messages' and column_name = 'body'
+  ) then
+    select column_name into legacy
+      from information_schema.columns
+     where table_schema = 'public' and table_name = 'messages'
+       and column_name in ('text', 'message', 'content', 'msg')
+     order by array_position(array['text', 'message', 'content', 'msg'], column_name)
+     limit 1;
+
+    if legacy is not null then
+      execute format('alter table public.messages rename column %I to body', legacy);
+      raise notice 'WatchTogether: أُعيد تسمية العمود % إلى body في جدول messages.', legacy;
+    else
+      execute 'alter table public.messages add column body text';
+      raise notice 'WatchTogether: أُضيف العمود body إلى جدول messages.';
+    end if;
+  end if;
+end $$;
+
+/* 2) ثبّت شكل العمود كما في المخطط (بلا فقدان أي نصّ قائم) */
+update public.messages set body = '' where body is null;
+alter table public.messages alter column body set default '';
+alter table public.messages alter column body set not null;
+update public.messages set name = 'زائر' where name is null;
+update public.messages set room_id = 'legacy' where room_id is null;
+
+create index if not exists messages_room_created_idx on public.messages (room_id, created_at desc);
+
+/* 3) اطلب من PostgREST إعادة قراءة المخطط فوراً — يزيل رسالة schema cache */
+notify pgrst, 'reload schema';
+
+-- إن كان الجدول تالفاً تماماً ولا تحتاج رسائله القديمة، استبدل القسم أعلاه بـ:
+-- drop table if exists public.messages;
+-- ثم أعد تنفيذ هذا الملف من أوله (سيُنشأ الجدول بالشكل الصحيح).
+
+-- ---------------------------------------------------------------------
 -- 3) الحضور (للتوافق مع الإصدارات السابقة) وسجل الأدوار الآمن.
 --    member_token سرّ لكل تبويب/عضو، ولا يقرأه العميل من PostgREST.
 -- ---------------------------------------------------------------------

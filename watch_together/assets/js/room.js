@@ -301,6 +301,9 @@
         sb.tables && sb.tables.rooms ? 'is-good' : 'is-bad') +
       diagRow('chat', 'جدول الرسائل (messages)', sb.tables && sb.tables.messages ? 'موجود ✓' : 'مفقود ✕',
         sb.tables && sb.tables.messages ? 'is-good' : 'is-warn') +
+      (sb.messageField ? diagRow('check', 'عمود نصّ الرسالة',
+        '<code>' + U.esc(sb.messageField) + '</code>' + (sb.messageField === 'body' ? ' ✓' : ' — جدول قديم (تكيّف العميل)'),
+        sb.messageField === 'body' ? 'is-good' : 'is-warn') : '') +
       diagRow('users', 'جدول الأدوار (room_members)', sb.tables && sb.tables.room_members ? 'موجود ✓' : 'مفقود ✕',
         sb.tables && sb.tables.room_members ? 'is-good' : 'is-bad') +
       diagRow('playlist', 'قائمة التشغيل (room_queue)', sb.tables && sb.tables.room_queue ? 'موجود ✓' : 'مفقود ✕',
@@ -528,6 +531,13 @@
       if (!isChatVisible()) { session.unread++; updateMessagesBadge(); }
     });
     t.on('system', (m) => { if (m && m.text) sysMessage(m.text); });
+    t.on('chat-error', (d, info) => {
+      if (!d) return;
+      session.lastChatError = d;
+      /* جدول قديم تكيّف معه العميل: تنبيه ودي بلا إزعاج */
+      U.toast(d.title + (d.fix && !(info && info.healed) ? ' — ' + d.fix : ''), (info && info.healed) ? 'warn' : 'error', 8000);
+      if (!(info && info.healed)) sysMessage('تعذّر إرسال الرسائل: ' + d.title + (d.fix ? ' — الحل: ' + d.fix : ''));
+    });
     t.on('status', (s) => setStatus(s.state, s.detail));
     t.on('serverTime', (time) => { if (typeof time === 'number') session.clockOffset = time - Date.now(); });
     t.on('members', (list) => { if (Array.isArray(list)) mergeMembers(list); });
@@ -1520,6 +1530,7 @@
         'REST: ' + (sb && sb.rest && sb.rest.ok ? 'يعمل (' + sb.rest.ms + 'ms)' : 'فشل'),
         'جدول rooms: ' + (sb && sb.tables && sb.tables.rooms ? 'موجود' : 'مفقود'),
         'جدول messages: ' + (sb && sb.tables && sb.tables.messages ? 'موجود' : 'مفقود'),
+        'عمود نصّ الرسالة: ' + (sb && sb.messageField ? sb.messageField : 'غير معروف (body المتوقع)'),
         'جدول room_members (الأدوار): ' + (sb && sb.tables && sb.tables.room_members ? 'موجود' : 'مفقود'),
         'جدول room_queue (قائمة التشغيل): ' + (sb && sb.tables && sb.tables.room_queue ? 'موجود' : 'مفقود'),
         'جدول presence (قديم/اختياري): ' + (sb && sb.tables && sb.tables.presence ? 'موجود' : 'مفقود'),

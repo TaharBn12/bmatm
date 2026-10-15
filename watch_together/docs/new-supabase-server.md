@@ -193,6 +193,7 @@ node tools/sbctl.mjs set --url "https://cazwkhcbkzhnsluuafwz.supabase.co" --key 
 | `! Realtime لا يعمل` | الجداول غير مربوطة بالمنشور | أعد تنفيذ `bootstrap.sql`، أو أضف `rooms`, `messages`, `room_members`, `room_queue`, `presence` إلى `supabase_realtime` |
 | `✗ المشروع متوقف` | مشروع مجاني خامل | Dashboard → Project Settings → **Resume**، أو أنشئ مشروعاً جديداً |
 | `الدردشة لا تعمل` لكن الفيديو متزامن | جدول `messages` مفقود | نفّذ `bootstrap.sql` |
+| `supabase: Could not find the 'body' column of 'messages' in the schema cache` (أو أي عمود آخر) | جدول `messages` بُني بنسخة قديمة من المخطط، و`create table if not exists` لا يعدّله | نفّذ [`repair-messages.sql`](repair-messages.sql) ثم `notify pgrst, 'reload schema';` — التفصيل في [حل المشاكل 6ج](troubleshooting.md#6ج-تعذّر-إرسال-الرسالة--عمود-body-غير-موجود-pgrst204-) |
 | الأصدقاء لا يدخلون نفس الغرفة | كود مختلف أو الرابط القديم | انسخ «رابط الدعوة» من الغرفة (يحمل الكود + رابط الفيديو) |
 
 ---
@@ -210,6 +211,7 @@ node tools/sbctl.mjs set --url "https://cazwkhcbkzhnsluuafwz.supabase.co" --key 
 ## 📚 روابط مفيدة
 
 - [مخطط القاعدة (bootstrap.sql)](bootstrap.sql) — انسخه إلى SQL Editor
+- [إصلاح جدول الرسائل (repair-messages.sql)](repair-messages.sql) — لخطأ العمود `body` / PGRST204
 - [المخطط القديم (schema.sql)](schema.sql) — نفس المحتوى تقريباً (للمشاريع القائمة)
 - [دليل Supabase الكامل](supabase-setup.md) — الشرح المفصّل لكل خطوة
 - [دليل النشر](deployment.md) — رفع الملفات على الاستضافة
