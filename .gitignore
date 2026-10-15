@@ -1,0 +1,11 @@
+# مخرجات بناء Java
+watch_together/java-server/out/
+*.class
+*.jar
+
+# نظام التشغيل والمحررات
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
