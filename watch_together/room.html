@@ -17,7 +17,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800;900&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="assets/css/app.css?v=2.4.1">
+  <link rel="stylesheet" href="assets/css/app.css?v=2.4.2">
 </head>
 <body class="room-body">
   <div class="bg-fx"></div>
@@ -68,24 +68,7 @@
   <div class="room" id="room" hidden>
 
     <!-- رأس الغرفة: عنوان مختصر، حالة الاتصال، وقائمة جانبية -->
-    <header class="rtopbar">
-      <a class="brand rtopbar__brand" href="index.html" title="الرئيسية">
-        <span class="brand__logo brand__logo--sm"><span class="ic" data-icon="logo" data-size="20"></span></span>
-      </a>
-      <div class="rtopbar__main">
-        <h1 class="rtopbar__title" id="roomTitle">غرفة مشاهدة</h1>
-        <p class="rtopbar__sub" id="roomSub">جارٍ الاتصال…</p>
-      </div>
-      <div class="rtopbar__spacer"></div>
-      <span class="badge room-connection" id="statusBadge" title="حالة اتصال الغرفة">
-        <span class="dot"></span><span id="statusText">جارٍ الاتصال</span>
-      </span>
-      <button class="drawer-open btn btn--ghost" id="drawerOpenBtn" type="button" aria-label="فتح المشاركين والإعدادات" aria-expanded="false">
-        <span class="ic" data-icon="menu" data-size="19"></span>
-        <span>القائمة</span>
-        <span class="drawer-open__count" id="membersCount">1</span>
-      </button>
-    </header>
+
 
     <!-- دراور الغرفة: المشاركون، المنظمون، وأدوات الغرفة -->
     <div class="drawer-scrim" id="drawerScrim" hidden></div>
@@ -126,13 +109,6 @@
         <p class="drawer__empty" id="organizerEmpty">لا يوجد منظّمون إضافيون بعد.</p>
       </section>
 
-      <section class="drawer__section" id="membersPanel" aria-labelledby="membersTitle">
-        <div class="drawer__section-head">
-          <h3 id="membersTitle"><span class="ic" data-icon="users" data-size="16"></span> المشاركون</h3>
-          <span class="drawer__count" id="sideMembersCount">1</span>
-        </div>
-        <div class="drawer__people" id="membersList"></div>
-      </section>
     </aside>
 
     <main class="room-main" id="roomMain">
@@ -170,7 +146,25 @@
 
       </div>
 
-      <!-- الأزرار الثلاثة المطلوبة أسفل المشغّل -->
+
+      <!-- شريط الغرفة: اسم الغرفة ▾ · طيّ الفيديو · الأدوات · القائمة (بأسلوب Watch2Gether) -->
+      <div class="room-bar" id="roomBar">
+        <header class="rtopbar">
+      <a class="brand rtopbar__brand" href="index.html" title="الرئيسية">
+        <span class="brand__logo brand__logo--sm"><span class="ic" data-icon="logo" data-size="20"></span></span>
+      </a>
+      <div class="rtopbar__main">
+        <h1 class="rtopbar__title" id="roomTitle">غرفة مشاهدة</h1>
+        <p class="rtopbar__sub" id="roomSub">جارٍ الاتصال…</p>
+      </div>
+      <span class="badge room-connection" id="statusBadge" title="حالة اتصال الغرفة">
+        <span class="dot"></span><span id="statusText">جارٍ الاتصال</span>
+      </span>
+    </header>
+        <button class="room-collapse" id="collapseBtn" type="button" aria-expanded="true" aria-label="طيّ الفيديو وإظهاره" title="طيّ الفيديو وإظهاره">
+          <span class="ic" data-icon="chevronUp" data-size="18"></span>
+        </button>
+              <!-- الأزرار الثلاثة المطلوبة أسفل المشغّل -->
       <nav class="player-actions" aria-label="أدوات المشاهدة">
         <button class="player-action" id="addVideoBtn" type="button" aria-label="إضافة فيديو جديد" title="إضافة فيديو جديد">
           <span class="ic" data-icon="search" data-size="19"></span><span>إضافة فيديو</span>
@@ -182,6 +176,12 @@
           <span class="ic" data-icon="playlist" data-size="19"></span><span>قائمة التشغيل</span><span class="player-action__count" id="playlistCount">0</span>
         </button>
       </nav>
+        <button class="drawer-open btn btn--ghost" id="drawerOpenBtn" type="button" aria-label="فتح المشاركين والإعدادات" aria-expanded="false">
+          <span class="ic" data-icon="menu" data-size="19"></span>
+          <span>القائمة</span>
+          <span class="drawer-open__count" id="membersCount">1</span>
+        </button>
+      </div>
 
       <!-- إضافة رابط إلى قائمة التشغيل المشتركة -->
       <section class="change-bar glass" id="changeBar" hidden>
@@ -200,6 +200,15 @@
           </button>
         </div>
         <p class="change-bar__hint"><span class="ic" data-icon="info" data-size="14"></span> سيظهر الفيديو في قائمة تشغيل مشتركة، ويمكن للمنظّمين بدء عرضه للجميع.</p>
+      </section>
+
+      <!-- المشاركون (بطاقات بأسلوب الشبكة) -->
+      <section class="drawer__section room-members" id="membersPanel" aria-labelledby="membersTitle">
+        <div class="drawer__section-head">
+          <h3 id="membersTitle"><span class="ic" data-icon="users" data-size="16"></span> المشاركون</h3>
+          <span class="drawer__count" id="sideMembersCount">1</span>
+        </div>
+        <div class="drawer__people" id="membersList"></div>
       </section>
 
       <!-- الرسائل -->
@@ -333,14 +342,14 @@
   </div>
 
   <!-- ===== سكربتات ===== -->
-  <script src="assets/vendor/hls.min.js?v=2.4.1"></script>
-  <script src="assets/vendor/qrcode.min.js?v=2.4.1"></script>
-  <script src="assets/js/config.js?v=2.4.1"></script>
-  <script src="assets/js/util.js?v=2.4.1"></script>
-  <script src="assets/js/icons.js?v=2.4.1"></script>
-  <script src="assets/js/auth.js?v=2.4.1"></script>
-  <script src="assets/js/transport.js?v=2.4.1"></script>
-  <script src="assets/js/player.js?v=2.4.1"></script>
-  <script src="assets/js/room.js?v=2.4.1"></script>
+  <script src="assets/vendor/hls.min.js?v=2.4.2"></script>
+  <script src="assets/vendor/qrcode.min.js?v=2.4.2"></script>
+  <script src="assets/js/config.js?v=2.4.2"></script>
+  <script src="assets/js/util.js?v=2.4.2"></script>
+  <script src="assets/js/icons.js?v=2.4.2"></script>
+  <script src="assets/js/auth.js?v=2.4.2"></script>
+  <script src="assets/js/transport.js?v=2.4.2"></script>
+  <script src="assets/js/player.js?v=2.4.2"></script>
+  <script src="assets/js/room.js?v=2.4.2"></script>
 </body>
 </html>
