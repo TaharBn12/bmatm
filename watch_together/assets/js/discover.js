@@ -27,6 +27,7 @@
       const card = document.createElement('div'); card.className = 'site-card';
       const link = document.createElement('a');
       link.href = site.url; link.target = '_blank'; link.rel = 'noopener noreferrer';
+      link.addEventListener('click', e => { if (e.button === 0 && !e.ctrlKey && !e.metaKey && !e.shiftKey) { e.preventDefault(); openViewer(site.name, site.url); } });
       const icon = document.createElement('span'); icon.className = 'site-icon'; icon.textContent = site.initial || site.name.slice(0, 1);
       if (site.icon) {
         const img = document.createElement('img'); img.src = site.icon; img.alt = ''; img.referrerPolicy = 'no-referrer'; img.loading = 'lazy';
@@ -59,7 +60,35 @@
     } catch (err) { WTUtil.toast(err.message, 'error'); }
   });
   document.getElementById('searchSites').addEventListener('submit', e => {
-    e.preventDefault(); window.open('https://www.google.com/search?q=' + encodeURIComponent(document.getElementById('googleQuery').value), '_blank', 'noopener,noreferrer');
+    e.preventDefault();
+    const q = document.getElementById('googleQuery').value.trim();
+    if (q) openViewer('Google', 'https://www.google.com/search?q=' + encodeURIComponent(q));
   });
+  /* ---- عارض المواقع داخل الصفحة ---- */
+  const viewer = document.getElementById('siteViewer');
+  const frame = document.getElementById('svFrame');
+  const external = document.getElementById('svExternal');
+  let lastFocus = null;
+  function openViewer(name, url) {
+    let href;
+    try { href = safeUrl(url); } catch (err) { WTUtil.toast(err.message, 'error'); return; }
+    lastFocus = document.activeElement;
+    document.getElementById('svTitle').textContent = name;
+    external.href = href;
+    frame.src = href;
+    viewer.hidden = false;
+    document.body.classList.add('site-viewer-open');
+    document.getElementById('svClose').focus();
+  }
+  function closeViewer() {
+    viewer.hidden = true;
+    frame.src = 'about:blank';
+    document.body.classList.remove('site-viewer-open');
+    if (lastFocus && lastFocus.focus) lastFocus.focus();
+  }
+  document.getElementById('svClose').addEventListener('click', closeViewer);
+  document.getElementById('svReload').addEventListener('click', () => { if (frame.src) frame.src = frame.src; });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && !viewer.hidden) closeViewer(); });
+
   render();
 })();

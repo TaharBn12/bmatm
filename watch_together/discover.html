@@ -17,7 +17,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800;900&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="assets/css/app.css?v=2.3.0">
+  <link rel="stylesheet" href="assets/css/app.css?v=2.4.3">
 </head>
 <body>
   <div class="bg-fx"></div>
@@ -240,6 +240,25 @@
     </div>
   </footer>
 
+  <!-- ===== عارض المواقع داخل الصفحة ===== -->
+  <div class="site-viewer" id="siteViewer" role="dialog" aria-modal="true" aria-labelledby="svTitle" hidden>
+    <div class="site-viewer__bar">
+      <button class="btn btn--ghost btn--icon-sm" type="button" id="svClose" aria-label="إغلاق">
+        <span class="ic" data-icon="x" data-size="18"></span>
+      </button>
+      <strong class="site-viewer__title" id="svTitle"></strong>
+      <button class="btn btn--ghost btn--icon-sm" type="button" id="svReload" aria-label="تحديث الصفحة" title="تحديث">
+        <span class="ic" data-icon="sync" data-size="16"></span>
+      </button>
+      <a class="btn btn--ghost btn--icon-sm" id="svExternal" href="#" target="_blank" rel="noopener noreferrer" aria-label="فتح في تبويب جديد" title="فتح في تبويب جديد">
+        <span class="ic" data-icon="link" data-size="16"></span>
+      </a>
+    </div>
+    <iframe class="site-viewer__frame" id="svFrame" title="محتوى الموقع" referrerpolicy="strict-origin-when-cross-origin"
+            allow="autoplay; fullscreen; encrypted-media; picture-in-picture; clipboard-write"></iframe>
+    <p class="site-viewer__note">إن ظهرت الصفحة فارغة أو رسالة رفض الاتصال، فالموقع يمنع العرض داخل مواقع أخرى — استخدم زر «فتح في تبويب جديد».</p>
+  </div>
+
   <!-- ===== سكربتات ===== -->
   <script src="assets/vendor/hls.min.js?v=2.3.0" defer></script>
   <script src="assets/vendor/qrcode.min.js?v=2.3.0" defer></script>
@@ -251,6 +270,6 @@
   <script src="assets/js/player.js?v=2.3.0"></script>
   <script src="assets/js/resolver.js?v=1"></script>
   <script src="assets/js/home.js?v=2.3.0"></script>
-<script src="assets/js/discover.js?v=1"></script>
+<script src="assets/js/discover.js?v=2"></script>
 </body>
 </html>
