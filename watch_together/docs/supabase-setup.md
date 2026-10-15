@@ -29,8 +29,7 @@ supabase: {
 ## 2) نفّذ مخطط قاعدة البيانات
 
 1. من القائمة الجانبية: **SQL Editor** → **New query**.
-2. افتح ملف [`bootstrap.sql`](bootstrap.sql) (المُوصى به للمشروع الجديد)
-   أو [`schema.sql`](schema.sql) (نفس المحتوى تقريباً، لمن等项目 قائم).
+2. افتح ملف [`schema.sql`](schema.sql) أو [`bootstrap.sql`](bootstrap.sql). كلاهما يهيّئ المخطط الآمن نفسه، ويمكن إعادة تشغيله لترقية مشروع قائم.
 3. الصقه في المحرر → **Run** (أو `Ctrl+Enter`).
 
 > 🛠️ **أسرع طريقة:** `node tools/sbctl.mjs create …` ينشئ المشروع وينفّذ المخطط
@@ -39,24 +38,22 @@ supabase: {
 > 🔎 **للتأكد بعد التنفيذ:** `node tools/sbctl.mjs doctor` يفحص الجداول والسياسات
 > وRealtime ويطبع النتيجة.
 
-سينشئ الملف:
+يهيّئ الملف الجداول العامة التالية:
 
-| الجدول | الوظيفة |
-|--------|---------|
-| `rooms` | الغرفة + `state` (jsonb) الذي يحمل حالة المزامنة كاملة |
-| `messages` | رسائل الدردشة مع فهرس على `(room_id, created_at desc)` |
-| `presence` | من متصل الآن (اسم + مضيف؟ + آخر ظهور) |
+| الجدول | الوظيفة والصلاحيات |
+|--------|--------------------|
+| `rooms` | الحالة المركزية `state`؛ قراءة عامة، والتغيير عبر RPC يتحقق من الدور |
+| `messages` | رسائل الدردشة؛ قراءة وإضافة للضيوف |
+| `presence` | حضور تقريبي (اسم وآخر ظهور) للتوافق مع الواجهة |
+| `room_members` | أسماء المشاركين وأدوارهم؛ القراءة فقط من العميل |
+| `room_queue` | قائمة التشغيل المشتركة؛ القراءة فقط، والتعديل عبر RPC |
 
-وأيضاً:
-- يضيف الجدولين إلى `supabase_realtime` (بدون هذا **لا يصل البث المباشر**).
-- يفعّل **RLS** مع سياسات تسمح للزائر المجهول (`anon`) بالقراءة والكتابة — لأن الموقع
-  يطلب الاسم فقط ولا يوجد تسجيل دخول.
-- يمنح الصلاحيات اللازمة لدور `anon`.
+وتُحفظ مفاتيح المنشئ والأعضاء في جداول خاصة داخل مخطط `wt_private`، غير مكشوف عبر PostgREST.
+تتحقق `wt_create_room` و`wt_join_room` و`wt_apply_room_state` وRPCs الأدوار والقائمة من المفتاح والدور.
+كما يفعّل المخطط RLS ويضيف الجداول اللازمة إلى `supabase_realtime`؛ ويظل استطلاع REST شبكة أمان عند تعطل Realtime.
 
 > ℹ️ **لا تنشئ أي جدول داخل مخطط `realtime`** — جدول `realtime.messages` موجود تلقائياً
-> في كل مشروع، وإنشاؤه يدوياً يعطي الخطأ
-> `42501: permission denied for schema realtime`.
-> (النسخة الحالية من `schema.sql` لا تحتوي هذا المقطع إطلاقاً — إن كان لديك نسخة قديمة فحدّثها.)
+> في كل مشروع. المخطط يضيف جداول التطبيق نفسها إلى المنشور، ولا ينشئ جداول داخل مخطط Realtime.
 
 ---
 
@@ -68,7 +65,7 @@ supabase: {
 2. للتجربة بدون رسائل تأكيد: أطفئ **Confirm email**
    (وإلا سيُطلب من المستخدم تأكيد بريده قبل أول دخول — والموقع يعرض له رسالة واضحة).
 3. لا حاجة لأي جدول إضافي: الاسم يُحفظ في `auth.users → user_metadata.full_name`،
-   والعمود `messages.user_id` يربط الرسائل بالحساب (اختياري).
+   والعمود `messages.user_id` يربط الرسائل بالحساب (اختياري). دور المنشئ يُثبت بمفتاح الغرفة الخاص، سواء دخل بحساب أو كضيف.
 
 > إن أردت الموقع **بالاسم فقط بدون حسابات**: اجعل في `assets/js/config.js`
 > ```js
@@ -77,20 +74,19 @@ supabase: {
 > عندها تعمل نافذة «أدخل اسمك» في الغرفة كما هي، وصفحة `auth.html` تبقى متاحة اختيارياً.
 
 ### ترقية قاعدة قائمة
-إن كنت أنشأت الجداول من نسخة أقدم، نفّذ [`migration.sql`](migration.sql) — يضيف
-`messages.user_id` و `kind` (للتفاعلات) بأمان وبدون فقدان بيانات.
+إن كنت تملك قاعدة أقدم، نفّذ [`migration.sql`](migration.sql) أو `schema.sql` كاملاً؛ المخطط آمن للتكرار وينقل أسرار النسخ التجريبية إلى `wt_private` إن وجدت، ولا يحذف بيانات الغرف والرسائل.
 
 ---
 
 ## 3) تحقّق أن كل شيء جاهز
 
-في **Table Editor** يجب أن ترى الجداول الثلاثة. وللتحقق من السياسات:
+في **Table Editor** يجب أن ترى الجداول الخمسة. وللتحقق من السياسات:
 
 ```sql
 select tablename, policyname, cmd, roles from pg_policies where schemaname = 'public';
 ```
 
-يجب أن ترى `rooms_all_anon` و `messages_all_anon` و `presence_all_anon`.
+يجب أن ترى سياسات القراءة للغرف والأعضاء والقائمة، وسياسات الرسائل والحضور. لا ينبغي وجود سياسة تسمح للعميل بتحديث `rooms` أو كتابة أدوار الأعضاء مباشرة.
 
 وللتحقق من Realtime:
 
@@ -99,14 +95,17 @@ select tablename from pg_publication_tables
  where pubname = 'supabase_realtime' and schemaname = 'public';
 ```
 
-يجب أن ترى `rooms` و `messages`. إن لم تَرهما:
+يجب أن ترى `rooms` و `messages` و `room_members` و `room_queue` (و`presence`). إن لم تَرهما:
 
 ```sql
 alter publication supabase_realtime add table public.rooms;
 alter publication supabase_realtime add table public.messages;
+alter publication supabase_realtime add table public.room_members;
+alter publication supabase_realtime add table public.room_queue;
+alter publication supabase_realtime add table public.presence;
 ```
 
-أو من **Dashboard → Database → Replication → supabase_realtime** وفعّل الجدولين.
+أو من **Dashboard → Database → Replication → supabase_realtime** وفعّل الجداول المذكورة.
 
 وللتأكد أن جدول البث موجود في مشروعك (لا تنشئه — فقط تحقق):
 
@@ -148,19 +147,17 @@ $$);
 ## 6) كيف تعمل المزامنة تقنياً؟
 
 ```
- المضيف (يتحكم بالفيديو)                     الضيوف
+ المنشئ/المنظّم (مفتاح عضو)                 المشاهدون
         │                                      ▲
-        │ POST /rest/v1/rooms (upsert state)   │
+        │ RPC wt_apply_room_state (تحقق + ترقيم)│
         ▼                                      │
-   ┌──────────┐   postgres_changes (Realtime)  │
+   ┌──────────┐   postgres_changes + REST poll │
    │ Supabase │ ───────────────────────────────┘
-   └──────────┘   رسائل الدردشة: INSERT على messages
+   └──────────┘   الدردشة: INSERT على messages
 ```
 
-- **حالة المزامنة** تُكتب في `rooms.state` (upsert بمفتاح `room_id`)، وأي تعديل يصل
-  لجميع المشتركين في القناة عبر `postgres_changes` على جدول `rooms`.
-- **الدردشة**: `INSERT` في `messages` → يصل للجميع فوراً. الموقع يعرض رسالتك محلياً
-  ثم يتجاهل نسختك عندما ترجع من Realtime (منع التكرار).
+- **حالة المزامنة** تُكتب إلى `rooms.state` عبر RPC بعد التحقق من مالك/منظّم العضو، والخادم هو من يرقّم `rev` ويثبت وقت التحديث. تصل الحالة عبر Realtime أو الاستطلاع الاحتياطي.
+- **الدردشة**: `INSERT` في `messages` → يصل للجميع عبر Realtime/الاستطلاع. الموقع يعرض رسالتك محلياً ثم يتجاهل نسختك عند عودتها (منع التكرار).
 - **الرقم التسلسلي `seq`** داخل الحالة يمنع تطبيق تحديث قديم وصل متأخراً.
 - **الحضور**: `upsert` في `presence` كل 3 ثوانٍ + حذف الصف عند المغادرة، وأي مشارك
   لم يظهر منذ 12 ثانية يُحذف من القائمة.
@@ -174,7 +171,7 @@ $$);
 | الشارة «وضع محلي» | فشل الاتصال بـ Supabase | تحقّق من `url` و `anonKey`، ومن أن الموقع يعمل بـ **https** |
 | الرسائل لا تصل | الجدول غير مضاف لـ Realtime | أعد تنفيذ قسم Realtime في `schema.sql` |
 | `42501 permission denied for schema realtime` | نسخة قديمة من `schema.sql` تحاول إنشاء `realtime.messages` | حدّث الملف من المستودع وأعد التنفيذ — الجدول موجود تلقائياً |
-| `42501 permission denied` (على `public`) | سياسات RLS أو الصلاحيات ناقصة | أعد تنفيذ `schema.sql` كاملاً |
+| `42501 permission denied` | قد يكون مخططاً أو RLS قديماً، أو أن مفتاح العضو غير صحيح | أعد تنفيذ `schema.sql`؛ رابط الغرفة يتيح المشاهدة ولا يمنح التحكم |
 | `42P01 relation does not exist` | الجداول غير منشأة | نفّذ `schema.sql` |
 | الحالة تتأخر | اتصال ضعيف | قلّل `heartbeatMs` في `config.js` إلى 2500 |
 

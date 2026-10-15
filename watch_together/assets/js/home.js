@@ -8,6 +8,9 @@
   const IC = window.WTIcons;
   const Auth = window.WTAuth;
   const $ = (id) => document.getElementById(id);
+  if (new URLSearchParams(location.search).get('secure') === 'required') {
+    setTimeout(() => U.toast('يلزم متصفح حديث لإنشاء مفتاح غرفة آمن — حدّث المتصفح ثم أعد المحاولة', 'warn', 7000), 100);
+  }
 
   const els = {
     form: $('createForm'),
@@ -199,8 +202,16 @@
     }
 
     const code = U.randomCode(window.WT_CONFIG.room.codeLength);
+    let ownerToken;
+    try { ownerToken = U.randomToken(32); }
+    catch (err) {
+      U.toast('تعذّر إنشاء مفتاح تحكم آمن — حدّث المتصفح ثم أعد المحاولة', 'error', 6000);
+      return;
+    }
     U.store.set('name', name);
     U.store.set('lastRoomTitle', els.title.value.trim());
+    /* مفتاح المنشئ يبقى على جهازه ولا يدخل أبداً في رابط الدعوة. */
+    U.store.set('owner:' + code, ownerToken);
 
     try {
       sessionStorage.setItem('wt:create:' + code, JSON.stringify({
@@ -208,6 +219,7 @@
         title: U.cleanName(els.title.value) || 'غرفة مشاهدة',
         host: true,
         name,
+        ownerToken,
         at: Date.now()
       }));
     } catch (err) { /* ignore */ }

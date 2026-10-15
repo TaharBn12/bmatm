@@ -30,6 +30,7 @@
    ========================================================= */
 import fs from 'fs';
 import path from 'path';
+import { randomBytes } from 'node:crypto';
 import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -264,12 +265,12 @@ export async function doctorProject({ url, anonKey, realtime = true, write = fal
   }
 
   /* 2) بقية الجداول */
-  for (const t of ['messages', 'presence']) {
+  for (const t of ['messages', 'presence', 'room_members', 'room_queue']) {
     const r = await restGet(url, anonKey, `/rest/v1/${t}?select=*&limit=1`);
     report.tables[t] = r.ok;
     if (!r.ok) {
       const e = explain(r);
-      (t === 'messages' ? report.problems : report.warnings).push(
+      (t === 'presence' ? report.warnings : report.problems).push(
         Object.assign({ table: t }, e)
       );
     }
@@ -283,45 +284,56 @@ export async function doctorProject({ url, anonKey, realtime = true, write = fal
       report.warnings.push({
         code: 'realtime-down', title: 'Realtime لا يستجيب',
         detail: rt.error || '',
-        fix: 'تأكد أن rooms و messages مُضافان إلى منشور supabase_realtime (docs/bootstrap.sql).'
+        fix: 'تأكد أن rooms و messages و room_members و room_queue مُضافة إلى منشور supabase_realtime (docs/bootstrap.sql).'
       });
     }
   } else {
     report.realtime = { skipped: true };
   }
 
-  /* 4) اختبار كتابة/قراءة (يُنشئ غرفة اختبار ويحذفها) */
+  /* 4) اختبار كتابة/قراءة عبر واجهة RPC الآمنة، ثم حذف غرفة الاختبار */
   if (write) {
     const code = 'TEST' + Math.random().toString(36).slice(2, 8).toUpperCase();
-    const state = { url: '', kind: '', playing: false, pos: 0, t: Date.now(), rev: 1, updatedBy: 'sbctl', updatedByName: 'فحص' };
-    const w = await restPost(url, anonKey, '/rest/v1/rooms?on_conflict=room_id', {
-      room_id: code, state, video_url: null, host_name: 'فحص', updated_at: new Date().toISOString()
+    const ownerToken = randomBytes(32).toString('hex');
+    const clientId = 'sbctl-' + code;
+    const state = { url: '', kind: '', playing: false, pos: 42.5, t: Date.now(), rev: 0, updatedBy: clientId, updatedByName: 'فحص' };
+    const created = await restPost(url, anonKey, '/rest/v1/rpc/wt_create_room', {
+      p_room_id: code, p_title: 'فحص اتصال', p_video_url: null, p_owner_token: ownerToken, p_owner_name: 'فحص'
     });
+    let joined = { ok: false, status: 0, body: null };
+    let applied = { ok: false, status: 0, body: null };
+    if (created.ok) {
+      joined = await restPost(url, anonKey, '/rest/v1/rpc/wt_join_room', {
+        p_room_id: code, p_client_id: clientId, p_member_token: ownerToken, p_display_name: 'فحص'
+      });
+      if (joined.ok) applied = await restPost(url, anonKey, '/rest/v1/rpc/wt_apply_room_state', {
+        p_room_id: code, p_client_id: clientId, p_member_token: ownerToken, p_state: state
+      });
+    }
     const back = await restGet(url, anonKey, `/rest/v1/rooms?room_id=eq.${code}&select=room_id,state`);
     const row = Array.isArray(back.body) ? back.body[0] : null;
+    const removed = created.ok ? await restPost(url, anonKey, '/rest/v1/rpc/wt_delete_room', {
+      p_room_id: code, p_owner_token: ownerToken
+    }) : { ok: false, status: created.status };
+    const stateOk = !!(row && row.state && Number(row.state.pos) === 42.5);
+    const ok = created.ok && joined.ok && applied.ok && stateOk && removed.ok;
+    const firstError = !created.ok ? created : !joined.ok ? joined : !applied.ok ? applied : !stateOk ? back : !removed.ok ? removed : null;
     report.write = {
-      ok: w.ok && !!row,
-      room: code,
-      status: w.status,
-      detail: w.ok ? (row ? 'الكتابة والقراءة تعملان ✓' : 'الصف لم يُقرأ') : (explain(w) || {}).title
+      ok, room: code, status: (firstError || created).status,
+      cleanupOk: removed.ok,
+      detail: ok ? 'إنشاء الغرفة والتحقق من الدور وكتابة الحالة وقراءتها وحذفها تعمل ✓'
+        : (firstError ? (explain(firstError) || {}).title || 'فشل جزء من اختبار RPC' : 'حالة الاختبار لم تُقرأ كما كُتبت')
     };
     if (!report.write.ok) {
       report.problems.push({
-        code: 'write-failed', title: 'الكتابة في القاعدة فشلت',
+        code: 'write-failed', title: 'اختبار RPC الكتابة/القراءة فشل',
         detail: report.write.detail,
-        fix: 'تأكد من سياسات RLS (docs/bootstrap.sql) ومن أن المفتاح من نوع anon.'
+        fix: 'نفّذ docs/bootstrap.sql وتأكد من صلاحيات anon على دوال wt_create_room و wt_join_room و wt_apply_room_state و wt_delete_room.'
       });
     }
-    /* تنظيف */
-    try {
-      await fetch(url.replace(/\/$/, '') + `/rest/v1/rooms?room_id=eq.${code}`, {
-        method: 'DELETE',
-        headers: { apikey: anonKey, Authorization: 'Bearer ' + anonKey }
-      });
-    } catch (e) { /* غير مهم */ }
   }
 
-  report.coreOk = report.rest.ok === true && report.tables.rooms === true;
+  report.coreOk = report.rest.ok === true && report.tables.rooms === true && report.tables.room_members === true;
   report.ok = report.coreOk && report.problems.length === 0;
   return report;
 }
@@ -338,8 +350,10 @@ export function renderReport(r) {
     ? ok(`REST يستجيب (${r.rest.ms}ms)`)
     : bad('REST لا يستجيب' + (r.rest && r.rest.error ? ' — ' + r.rest.error.title : ''))));
   lines.push('  ' + (r.tables.rooms ? ok('جدول rooms موجود') : bad('جدول rooms مفقود')));
-  lines.push('  ' + (r.tables.messages ? ok('جدول messages موجود') : warn('جدول messages مفقود (الدردشة لن تعمل)')));
-  lines.push('  ' + (r.tables.presence ? ok('جدول presence موجود') : warn('جدول presence مفقود (قائمة المنضمين لن تتحدّث)')));
+  lines.push('  ' + (r.tables.messages ? ok('جدول messages موجود') : bad('جدول messages مفقود (الدردشة لن تعمل)')));
+  lines.push('  ' + (r.tables.room_members ? ok('جدول room_members موجود (الأدوار)') : bad('جدول room_members مفقود (التحكم الآمن لن يعمل)')));
+  lines.push('  ' + (r.tables.room_queue ? ok('جدول room_queue موجود (القائمة المشتركة)') : bad('جدول room_queue مفقود')));
+  lines.push('  ' + (r.tables.presence ? ok('جدول presence موجود') : warn('جدول presence القديم مفقود (اختياري)')));
   if (r.realtime && !r.realtime.skipped) {
     lines.push('  ' + (r.realtime.ok ? ok(`Realtime يعمل (${r.realtime.ms}ms)`) : warn('Realtime لا يعمل — ' + (r.realtime.error || ''))));
   }
@@ -520,7 +534,7 @@ async function cmdCreate(args) {
 
   /* 5) ربط المشروع بالموقع */
   writeConfig({ url, anonKey, ready: true });
-  const changed = bumpVersion(args.version || '2.3.0');
+  const changed = bumpVersion(args.version || '2.4.0');
   log(ok('تم تحديث assets/js/config.js'));
   log(C.d('    ' + url));
   log(C.d('    anon: ' + anonKey.slice(0, 12) + '…' + anonKey.slice(-6)));
@@ -573,7 +587,7 @@ async function cmdSet(args) {
     return 1;
   }
   const cfg = writeConfig({ url, anonKey: key, ready: true });
-  const changed = bumpVersion(args.version || '2.3.0');
+  const changed = bumpVersion(args.version || '2.4.0');
   log('');
   log(ok('تم تحديث assets/js/config.js'));
   log('  ' + C.d('العنوان: ' + cfg.url));
@@ -602,35 +616,42 @@ async function cmdSmoke(args) {
   const key = args.key || cfg.anonKey;
   if (!url || !key) { log(C.r('  ✗ لا يوجد مشروع مهيّأ')); return 1; }
   const code = (args.room || ('SB' + Math.random().toString(36).slice(2, 8))).toUpperCase();
+  const ownerToken = randomBytes(32).toString('hex');
+  const clientId = 'sbctl-' + code;
   log('');
   log(C.bold('  🧪 اختبار حي على ' + shortRef(url)));
+  const created = await restPost(url, key, '/rest/v1/rpc/wt_create_room', {
+    p_room_id: code, p_title: 'فحص الاتصال', p_video_url: 'https://example.com/video.mp4',
+    p_owner_token: ownerToken, p_owner_name: 'فحص'
+  });
+  if (!created.ok) { log(bad('إنشاء الغرفة عبر RPC فشل: ' + JSON.stringify(explain(created)))); return 1; }
+  const joined = await restPost(url, key, '/rest/v1/rpc/wt_join_room', {
+    p_room_id: code, p_client_id: clientId, p_member_token: ownerToken, p_display_name: 'فحص'
+  });
   const state = {
     url: 'https://example.com/video.mp4', kind: 'file', playing: true, pos: 42.5,
-    t: Date.now(), rev: 1, updatedBy: 'sbctl', updatedByName: 'فحص'
+    t: Date.now(), rev: 0, updatedBy: clientId, updatedByName: 'فحص'
   };
-  const w = await restPost(url, key, '/rest/v1/rooms?on_conflict=room_id', {
-    room_id: code, state, video_url: state.url, host_name: 'فحص', updated_at: new Date().toISOString()
-  });
-  if (!w.ok) { log(bad('الكتابة فشلت: ' + JSON.stringify(explain(w)))); return 1; }
-  log(ok('كُتبت حالة الغرفة ' + code));
+  const applied = joined.ok ? await restPost(url, key, '/rest/v1/rpc/wt_apply_room_state', {
+    p_room_id: code, p_client_id: clientId, p_member_token: ownerToken, p_state: state
+  }) : joined;
+  if (!applied.ok) { log(bad('كتابة الحالة عبر RPC فشلت: ' + JSON.stringify(explain(applied)))); }
+  else log(ok('كُتبت حالة الغرفة عبر تحقق المالك: ' + code));
 
   const back = await restGet(url, key, `/rest/v1/rooms?room_id=eq.${code}&select=room_id,state,host_name`);
   const row = Array.isArray(back.body) ? back.body[0] : null;
-  if (!row) { log(bad('لم تُقرأ الغرفة')); return 1; }
-  const pos = row.state && row.state.pos;
-  log(ok('قُرئت الحالة من القاعدة: pos=' + pos + ' playing=' + (row.state && row.state.playing)));
+  if (row && row.state) log(ok('قُرئت الحالة من القاعدة: pos=' + row.state.pos + ' playing=' + row.state.playing));
+  else log(bad('لم تُقرأ الغرفة أو حالتها'));
 
   const m = await restPost(url, key, '/rest/v1/messages', {
-    room_id: code, name: 'فحص', body: 'رسالة اختبار', kind: 'chat', client_id: 'sbctl'
+    room_id: code, name: 'فحص', body: 'رسالة اختبار', kind: 'chat', client_id: clientId
   });
   log(m.ok ? ok('الدردشة تعمل (أُضيفت رسالة)') : warn('الدردشة لا تعمل: ' + JSON.stringify(explain(m))));
 
-  const del = await fetch(url.replace(/\/$/, '') + `/rest/v1/rooms?room_id=eq.${code}`, {
-    method: 'DELETE', headers: { apikey: key, Authorization: 'Bearer ' + key }
-  });
-  log(del.ok ? ok('حُذفت غرفة الاختبار') : warn('تعذّر حذف غرفة الاختبار (' + del.status + ')'));
+  const del = await restPost(url, key, '/rest/v1/rpc/wt_delete_room', { p_room_id: code, p_owner_token: ownerToken });
+  log(del.ok ? ok('حُذفت غرفة الاختبار بأمان') : warn('تعذّر حذف غرفة الاختبار: ' + JSON.stringify(explain(del))));
   log('');
-  return 0;
+  return applied.ok && !!row && del.ok ? 0 : 1;
 }
 
 /* =========================================================

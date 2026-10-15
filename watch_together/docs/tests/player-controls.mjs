@@ -4,10 +4,10 @@ const read = file => readFile(new URL('../../' + file, import.meta.url), 'utf8')
 const [html, js, css] = await Promise.all([read('room.html'), read('assets/js/room.js'), read('assets/css/app.css')]);
 assert.equal((html.match(/id="ctrlbar"/g) || []).length, 1);
 assert.ok(html.indexOf('id="mediaShell"') < html.indexOf('id="stage"'));
-assert.ok(html.indexOf('id="ctrlbar"') < html.indexOf('<!-- ========== تغيير الرابط'));
+assert.ok(html.indexOf('id="ctrlbar"') < html.indexOf('<!-- الأزرار الثلاثة المطلوبة أسفل المشغّل -->'));
 assert.match(js, /player\.load\(parsed, \{ autoplay: !!opts.autoplay, controls: false \}\)/);
-assert.match(js, /el\.playbackControls\.hidden = embedded/);
-assert.match(js, /el\.playbackProgress\.hidden = embedded/);
+assert.match(js, /el\.ctrlbar\.hidden = parsed.kind === 'embed'/);
+assert.match(js, /player\._video.controls = false/);
 assert.match(js, /const target = el\.mediaShell/);
 assert.match(css, /\.ctrlbar__row\[hidden\] \{ display: none; \}/);
 assert.match(css, /height: 22px; min-width: 0;\s*background: transparent; overflow: visible;/);
