@@ -87,7 +87,8 @@
           return;
         }
         if (msg.type === 'state') {
-          if (msg.sender && msg.sender === self.meta.clientId) return;
+          /* نُبلّغ دائماً (حتى صدى الذات) — سيرفر Java يرقّم الحالة مركزياً،
+             والواجهة تتجاهل صداها لكنها تحفظ رقمها التسلسلي المعتمد */
           return self.emit('state', msg.state);
         }
         if (msg.type === 'chat') {
@@ -154,6 +155,11 @@
     this._closedByUser = false;
     this._retry = 0;
     this._hbTimer = null;
+    this._pollTimer = null;      /* استطلاع احتياطي إن تعطّل Realtime */
+    this._lastMsgId = 0;         /* آخر رقم رسالة وصلنا (للاستطلاع التدريجي) */
+    this._msgsReady = false;     /* هل اكتملت القراءة الأولى للرسائل؟ */
+    this._lastStateSig = null;   /* بصمة آخر حالة (تفادي إعادة بثّ نفس الحالة) */
+    this._found = false;         /* هل صفّ الغرفة موجود في قاعدة البيانات؟ */
   }
   SupabaseTransport.prototype = Object.create(makeBase.prototype);
 
@@ -183,33 +189,56 @@
     /* أ) جلب حالة الغرفة + آخر الرسائل */
     const pState = this._fetch(`/rest/v1/rooms?room_id=eq.${encodeURIComponent(roomId)}&select=*&limit=1`)
       .then(rows => (rows && rows[0]) || null);
-    const pMsgs = this._fetch(`/rest/v1/messages?room_id=eq.${encodeURIComponent(roomId)}&select=*&order=created_at.desc,id.desc&limit=100`)
-      .then(rows => (rows || []).reverse().map(r => ({
-        id: String(r.id), name: r.name, text: r.body,
-        ts: Date.parse(r.created_at) || Date.now(),
-        kind: r.kind || 'chat', client: r.client_id || null
-      })));
+    const pMsgs = this._fetch(`/rest/v1/messages?room_id=eq.${encodeURIComponent(roomId)}&select=*&order=id.desc&limit=100`)
+      .then(rows => {
+        const list = (rows || []).slice().reverse();
+        list.forEach(r => { const n = +r.id; if (Number.isFinite(n) && n > (self._lastMsgId || 0)) self._lastMsgId = n; });
+        self._msgsReady = true;      /* جاهز لاستطلاع ما يستجدّ من رسائل */
+        return list.map(r => ({
+          id: String(r.id), name: r.name, text: r.body,
+          ts: Date.parse(r.created_at) || Date.now(),
+          kind: r.kind || 'chat', client: r.client_id || null
+        }));
+      });
 
     return Promise.all([pState, pMsgs]).then(([roomRow, messages]) => {
-      /* ب) إنشاء الغرفة إن لم تكن موجودة */
-      const ensure = roomRow ? Promise.resolve(roomRow) : self._fetch('/rest/v1/rooms', {
-        method: 'POST',
-        headers: { 'Prefer': 'resolution=merge-duplicates,return=representation' },
-        body: {
-          room_id: roomId,
-          video_url: (self.meta.videoUrl || null),
-          host_name: self.meta.name || 'مضيف',
-          state: null,
-          updated_at: new Date().toISOString()
-        }
-      }).then(rows => (rows && rows[0]) || null);
+      /* ب) إنشاء الغرفة إن لم تكن موجودة — المنشئ فقط،
+            حتى لا ينشئ ضيفٌ غرفةً فارغة بنفس الكود فوق غرفة المضيف */
+      const isHost = self.meta.host !== false;
+      const ensure = roomRow ? Promise.resolve(roomRow)
+        : (isHost ? self._fetch('/rest/v1/rooms', {
+          method: 'POST',
+          headers: { 'Prefer': 'resolution=merge-duplicates,return=representation' },
+          body: {
+            room_id: roomId,
+            video_url: (self.meta.videoUrl || null),
+            host_name: self.meta.name || 'مضيف',
+            state: null,
+            updated_at: new Date().toISOString()
+          }
+        }).then(rows => (rows && rows[0]) || null) : Promise.resolve(null));
 
       return ensure.then((row) => {
         const state = row && row.state ? row.state : null;
+        self._lastStateSig = state ? U.stateSig(state) : null;
+        self._found = !!row;
+        if (!row && !isHost) {
+          /* الغرفة ليست هنا (المضيف على سيرفر آخر أو الكود خطأ) — نُبلّغ
+             صراحةً بدل أن يدخل الضيف غرفةً فارغة يظنّها غرفة صديقه */
+          setTimeout(() => {
+            if (!self._found && !self._closedByUser) {
+              self.emit('system', {
+                text: 'لم يتم العثور على هذه الغرفة — تأكد أن كود الغرفة صحيح وأن المضيف ما زال داخلها'
+              });
+            }
+          }, 2000);
+        }
         self._openRealtime();
+        self._startPolling();
         return {
           state,
           messages,
+          found: !!row,
           room: { videoUrl: row && row.video_url, hostName: row && row.host_name }
         };
       });
@@ -217,6 +246,61 @@
       self._setStatus('offline', String(err && err.message || err));
       throw err;
     });
+  };
+
+  /**
+   * استطلاع دوري (Polling) — شبكة أمان فوق Realtime
+   * ------------------------------------------------
+   * إن لم تصل أحداث Realtime (المنشور non مفعّل، RLS، replica identity،
+   * أو الشبكة)، يبقى الجميع متزامنين عبر سؤال قاعدة البيانات مباشرةً.
+   * هذه الطبقة هي ما يجعل «الأصدقاء يدخلون نفس الغرفة» مضموناً.
+   */
+  SupabaseTransport.prototype._startPolling = function () {
+    const self = this;
+    if (this._closedByUser) return;
+    clearInterval(this._pollTimer);
+    const every = (global.WT_CONFIG && global.WT_CONFIG.sync && global.WT_CONFIG.sync.pollMs) || 2500;
+    this._pollTimer = setInterval(() => self._pollOnce(), every);
+  };
+
+  SupabaseTransport.prototype._pollOnce = function () {
+    const self = this;
+    if (this._closedByUser || !this.roomId) return;
+    try { if (global.document && global.document.hidden) return; } catch (e) { /* لا يهم */ }
+
+    /* 1) حالة الغرفة (التشغيل/الموضع/الرابط) */
+    this._fetch(`/rest/v1/rooms?room_id=eq.${encodeURIComponent(this.roomId)}&select=state,updated_at&limit=1`)
+      .then((rows) => {
+        const row = rows && rows[0];
+        if (!row) return;
+        self._found = true;
+        if (!row.state) return;
+        const sig = U.stateSig(row.state);
+        if (sig === self._lastStateSig) return;
+        self._lastStateSig = sig;
+        self.emit('state', row.state);
+      })
+      .catch(() => { /* الشبكة مقطوعة → نعيد المحاولة في النبضة التالية */ });
+
+    /* 2) الرسائل الجديدة فقط (id أكبر من آخر ما عرفناه) */
+    if (!this._msgsReady) return;
+    const from = this._lastMsgId || 0;
+    this._fetch(`/rest/v1/messages?room_id=eq.${encodeURIComponent(this.roomId)}` +
+      `&select=*&order=id.asc&limit=50&id=gt.${from}`)
+      .then((rows) => {
+        if (!Array.isArray(rows)) return;
+        rows.forEach((r) => {
+          const n = +r.id;
+          if (Number.isFinite(n) && n > (self._lastMsgId || 0)) self._lastMsgId = n;
+          if (r.client_id && r.client_id === self.meta.clientId) return;   /* رسالتي نفسها */
+          self.emit('chat', {
+            id: String(r.id), name: r.name, text: r.body,
+            ts: Date.parse(r.created_at) || Date.now(),
+            kind: r.kind || 'chat', client: r.client_id || null
+          });
+        });
+      })
+      .catch(() => { });
   };
 
   SupabaseTransport.prototype._wsUrl = function () {
@@ -282,7 +366,11 @@
               kind: rec.kind || 'chat', client: rec.client_id || null
             });
           } else if (c.table === 'rooms' && c.type === 'UPDATE') {
-            if (rec.state) self.emit('state', rec.state);
+            if (rec.state) {
+              self._found = true;
+              self._lastStateSig = U.stateSig(rec.state);
+              self.emit('state', rec.state);
+            }
           }
         });
       }
@@ -301,7 +389,8 @@
   };
 
   SupabaseTransport.prototype.publishState = function (state) {
-    /* حفظ الحالة في جدول rooms → يصل لكل المشاركين عبر Realtime */
+    /* حفظ الحالة في جدول rooms → يصل لكل المشاركين عبر Realtime أو الاستطلاع */
+    this._lastStateSig = U.stateSig(state);
     return this._fetch('/rest/v1/rooms', {
       method: 'POST',
       headers: { 'Prefer': 'resolution=merge-duplicates' },
@@ -342,6 +431,7 @@
   SupabaseTransport.prototype.close = function () {
     this._closedByUser = true;
     clearInterval(this._hbTimer);
+    clearInterval(this._pollTimer);
     try { this.ws && this.ws.close(); } catch (e) { }
   };
 
@@ -468,24 +558,37 @@
     const candidates = [];
     const skipServers = forceLocal();
 
+    const wsCandidate = (tag, ms) => ({
+      tag,
+      make: () => new WsTransport(wsUrlForRoom(cfg.javaServer)),
+      timeout: ms
+    });
+    const wsTimeout = cfg.javaServer.timeoutMs || 2500;
+
     if (!skipServers && cfg.javaServer && cfg.javaServer.enabled) {
-      candidates.push({
-        tag: 'ws',
-        make: () => new WsTransport(wsUrlForRoom(cfg.javaServer)),
-        timeout: cfg.javaServer.timeoutMs || 2500
-      });
+      candidates.push(wsCandidate('ws', wsTimeout));
     }
     if (!skipServers && cfg.supabase && cfg.supabase.url && cfg.supabase.anonKey && cfg.supabase.ready !== false) {
       candidates.push({
         tag: 'supabase',
         make: () => new SupabaseTransport(cfg.supabase),
-        timeout: 7000
+        timeout: 7000,
+        /* إن لم نجد صفّ الغرفة في قاعدة البيانات فالمضيف غالباً على سيرفر Java
+           → نعتبر النتيجة «غير مؤكدة» ونمنح WebSocket فرصةً أطول قبل الاستسلام،
+           حتى لا ينتهي الضيف وحيداً في غرفة فارغة على سيرفر آخر */
+        verify: (result) => !!(result && result.found)
       });
+      if (!skipServers && cfg.javaServer && cfg.javaServer.enabled) {
+        candidates.push(wsCandidate('ws-retry', Math.max(6000, wsTimeout * 3)));
+      }
     }
 
     let i = 0;
+    let unsure = null;    /* نتيجة صالحة لكن غير مؤكدة نعود إليها إن فشل ما بعدها */
+
     const tryNext = () => {
       if (i >= candidates.length) {
+        if (unsure) return Promise.resolve(unsure);
         onStatus && onStatus({ state: 'local', detail: 'تعذّر الاتصال بأي سيرفر — تم التحويل للوضع المحلي' });
         const t = new LocalTransport();
         return t.connect(roomId, meta).then(result => ({ transport: t, result }));
@@ -494,7 +597,17 @@
       const t = c.make();
       onStatus && onStatus({ state: 'connecting', detail: 'جارٍ الاتصال: ' + t.label });
       return withTimeout(t.connect(roomId, meta), c.timeout, c.tag).then(
-        result => ({ transport: t, result }),
+        result => {
+          const got = { transport: t, result };
+          const sure = !c.verify || c.verify(result);
+          if (sure) {
+            if (unsure && unsure.transport !== t) { try { unsure.transport.close(); } catch (e) { } }
+            return got;
+          }
+          /* نتيجة غير مؤكدة: احتفظ بها وجرّب التالي */
+          if (!unsure) unsure = got;
+          return i < candidates.length ? tryNext() : got;
+        },
         err => {
           try { t.close(); } catch (e) { }
           console.warn('[WT] فشل الوضع ' + c.tag + ':', err && err.message);

@@ -64,6 +64,12 @@ create index if not exists presence_room_idx on public.presence (room_id);
 --  وإنشاء جداول هناك ممنوع على دور postgres (خطأ 42501).
 --  المطلوب فقط إضافة جدولينا إلى منشور `supabase_realtime`.
 -- =====================================================================
+--  مهم جداً: بدون REPLICA IDENTITY FULL لا يستطيع Realtime تقييم الفلتر
+--  (room_id=eq.…) على أحداث UPDATE → تُسقَط التحديثات ولا يتزامن أحد،
+--  فيبدو وكأن الأصدقاء «ليسوا في نفس الغرفة».
+alter table public.rooms replica identity full;
+alter table public.messages replica identity full;
+
 do $$
 begin
   begin

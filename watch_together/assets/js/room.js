@@ -44,6 +44,9 @@
     lastPersistAt: 0,
     lastAppliedRev: -1,
     lastAppliedAt: 0,        /* متى وصلت آخر حالة (لحساب الالتحاق) */
+    lastRemoteAt: 0,         /* متى وصل آخر تحديث من «شخص آخر» (لاختيار من يرفع الحالة) */
+    revClock: 0,             /* ساعة منطقية: أكبر رقم تسلسلي رآه هذا العميل */
+    lastApplied: { rev: -1, by: '' },   /* آخر حالة طُبّقت {rev, updatedBy} */
     lastStateT: 0,
     controllerName: '—',
     members: {},
@@ -174,6 +177,17 @@
     el.avatarPreview.style.background = U.colorFor(n);
   }
 
+  /**
+   * الوضع المحلي يعني: لا سيرفر → كل جهاز/متصفح له غرفته المستقلة،
+   * فالأصدقاء لن يلتحقوا بك. نقولها صراحةً بدل أن تبدو «الغرفة مختلفة».
+   */
+  function warnLocalMode() {
+    sysMessage('السيرفر غير متصل — هذه الغرفة محلية داخل متصفحك فقط، ولن يدخلها أصدقاؤك من أجهزتهم');
+    U.toast('تعذّر الاتصال بالسيرفر — المزامنة داخل هذا المتصفح فقط', 'warn', 8000);
+    if (el.roomSub) el.roomSub.textContent = 'وضع محلي — الأصدقاء لن يلتحقوا (السيرفر غير متصل)';
+    if (el.statusText) el.statusText.textContent = 'محلي فقط';
+  }
+
   /* ============================== الدخول ============================== */
   async function enterRoom() {
     el.gate.hidden = true;
@@ -224,7 +238,10 @@
         clientId: session.clientId,
         name: session.name,
         userId: session.userId,
-        videoUrl: st.url || null
+        videoUrl: st.url || null,
+        /* من أنشأ الغرفة هو من يملك الحق في إنشاء صفّها في قاعدة البيانات؛
+           البقية ينتظرونها ولا ينشئون غرفة فارغة تحمل نفس الكود */
+        host: !!(createInfo && createInfo.host) || params.get('host') === '1'
       }, (s) => setStatus(s.state, s.detail));
 
       session.transport = transport;
@@ -235,9 +252,15 @@
 
       /* استرجاع الحالة المحفوظة في قاعدة بيانات الغرفة */
       if (result && result.state && typeof result.state === 'object') {
-        st = normalizeState(result.state);
+        const incoming = normalizeState(result.state);
+        /* لا تسمح لحالة فارغة بمحو الرابط القادم من رابط الدعوة (?v=) */
+        if (!incoming.url && st.url) { incoming.url = st.url; incoming.kind = st.kind; }
+        st = incoming;
+        session.lastApplied = { rev: st.rev || 0, by: st.updatedBy || '' };
         session.lastAppliedRev = st.rev || 0;
+        session.revClock = Math.max(session.revClock, Number.isFinite(+st.rev) ? +st.rev : 0);
         session.lastAppliedAt = Date.now();     /* وصلت الآن → نحسب الالتحاق من الآن */
+        session.lastRemoteAt = Date.now();
         session.controllerName = st.updatedByName || '—';
       }
       if (result && result.room && result.room.videoUrl && !st.url) {
@@ -248,12 +271,20 @@
       bindTransport(transport);
       session.ready = true;
 
-      /* إذا كنتُ منشئ الغرفة ولديّ رابط → أنشره حالاً */
-      if (createInfo && createInfo.host && st.url) publish({ force: true });
+      /* تنبيه صريح: الوضع المحلي يعني أن الأصدقاء لن يلتحقوا بك */
+      if (transport.kind === 'local') warnLocalMode();
+
+      /* أَوّل من يدخل ومعه رابط فيديو ينشره فوراً، فلا ينتظر المنضمّون
+         نبضة الـ5 ثوانٍ ولا يجدون «غرفة فارغة» ويظنّونها غرفة أخرى */
+      const savedUrl = (result && result.state && result.state.url) || '';
+      if (st.url && !savedUrl) publish({ force: true });
 
       /* حمّل الفيديو (الموضع يُحسب داخل applyState) */
       if (st.url) await loadVideo(U.parseWatchUrl(st.url), { autoplay: st.playing, initial: true });
-      else renderPlayerPlaceholder();
+      else {
+        renderPlayerPlaceholder();
+        sysMessage('لا يوجد فيديو في هذه الغرفة بعد — سيظهر تلقائياً حين يبدأ المضيف، أو أضفه من زر «تغيير الفيديو»');
+      }
 
       pingPresence(true);
       sysMessage(session.name + ' انضم إلى الغرفة');
@@ -334,10 +365,19 @@
     st.pos = pos;
     st.playing = playing;
     st.t = serverNow();
-    st.rev = (st.rev || 0) + 1;
+    /* ساعة منطقية: الرقم التسلسلي أكبر من كل ما رآه هذا العميل،
+       فلا يتساوى رقمان إذا بثّ اثنان في نفس اللحظة (كان ذلك يجمّد المزامنة) */
+    st.rev = U.nextRev(st.rev, session.revClock, session.lastAppliedRev);
     st.updatedBy = session.clientId;
     st.updatedByName = session.name;
+    /* لا ننشر أبداً رابطاً فارغاً ونحن نعرف واحداً */
+    if (!st.url && session.videoParsed && session.videoParsed.src) {
+      st.url = session.videoParsed.src;
+      st.kind = session.videoParsed.kind;
+    }
 
+    session.revClock = st.rev;
+    session.lastApplied = { rev: st.rev, by: st.updatedBy };
     session.lastAppliedRev = st.rev;
     session.lastAppliedAt = Date.now();
     session.lastSyncAt = Date.now();
@@ -369,9 +409,17 @@
   function onRemoteState(raw) {
     if (!raw) return;
     const incoming = normalizeState(raw);
-    if (incoming.updatedBy === session.clientId) return;             /* صدى ذاتي */
-    /* تحديث قديم أو مكرر → تجاهله (يمنع ارتداد الفيديو للخلف) */
-    if (incoming.rev && incoming.rev <= session.lastAppliedRev) return;
+
+    /* صدى ذاتي (سيرفر Java يعيد الحالة لصاحبها بعد ترقيمها) → نحدّث الساعة فقط */
+    if (incoming.updatedBy === session.clientId) {
+      if (Number.isFinite(+incoming.rev) && +incoming.rev > session.revClock) session.revClock = +incoming.rev;
+      return;
+    }
+    /* تحديث قديم أو مكرر → تجاهله (يمنع ارتداد الفيديو للخلف).
+       عند تساوي rev يفوز صاحب المعرّف الأكبر — نفس القرار عند الجميع */
+    if (!U.stateWins(incoming, session.lastApplied)) return;
+    if (Number.isFinite(+incoming.rev) && +incoming.rev > session.revClock) session.revClock = +incoming.rev;
+    session.lastApplied = { rev: +incoming.rev, by: incoming.updatedBy };
 
     const first = session.lastAppliedRev < 0;
     const urlChanged = incoming.url && incoming.url !== st.url;
@@ -379,6 +427,7 @@
     session.lastAppliedRev = incoming.rev || session.lastAppliedRev;
     session.lastAppliedAt = Date.now();
     session.lastSyncAt = Date.now();
+    session.lastRemoteAt = Date.now();
     session.controllerName = incoming.updatedByName || session.controllerName;
     el.infoController.textContent = session.controllerName || '—';
 
@@ -529,13 +578,18 @@
 
   /* ============================== الحلقات الدورية ============================== */
   function startLoops() {
-    /* 1) رفع الحالة إلى قاعدة بيانات الغرفة كل 5 ثوانٍ */
+    /* 1) رفع الحالة إلى قاعدة بيانات الغرفة كل 5 ثوانٍ
+          — الذي يتحكّم الآن هو من يرفعها (لا الكل، وإلا تخاصمت الحالات)
+          وإن صمت/خرج تولاها آخر بعد مهلة */
     clearInterval(session._persistTimer);
+    const persistMs = (CFG.sync && CFG.sync.persistMs) || 5000;
     session._persistTimer = setInterval(() => {
       if (!session.ready || !session.transport) return;
       if (!player.isReady()) return;
-      publish({ persist: true });
-    }, (CFG.sync && CFG.sync.persistMs) || 5000);
+      const mine = !st.updatedBy || st.updatedBy === session.clientId;
+      const lastRemote = session.lastRemoteAt || session.lastAppliedAt || 0;
+      if (mine || Date.now() - lastRemote > persistMs * 2.5) publish({ persist: true });
+    }, persistMs);
 
     /* 2) نبضة الحضور (المنضمون الحقيقيون) */
     clearInterval(session._pingTimer);
@@ -939,7 +993,12 @@
     });
 
     /* ---- نسخ ومشاركة ---- */
-    const roomUrl = () => location.origin + location.pathname.replace(/[^/]*$/, '') + 'room.html?id=' + roomId;
+    /* الرابط يحمل كود الغرفة + رابط الفيديو، فيلتحق الصديق بنفس المشاهدة
+       حتى لو تأخّرت حالة الغرفة في الوصول */
+    const roomUrl = () => {
+      const base = location.origin + location.pathname.replace(/[^/]*$/, '') + 'room.html?id=' + roomId;
+      return st.url ? base + '&v=' + encodeURIComponent(st.url) : base;
+    };
     const copy = async (text, okMsg) => {
       const done = await U.copyText(text);
       U.toast(done ? okMsg : 'تعذّر النسخ — انسخه يدوياً: ' + text, done ? 'success' : 'error', done ? 2200 : 6000);
@@ -1209,5 +1268,24 @@
 
   /* ============================== تشغيل ============================== */
   initGate();
+
+  /* رابط تصحيح: يفيد الاختبارات الآلية، ويفيدك في الكونسول (WTRoom.state) */
+  window.WTRoom = {
+    roomId,
+    session,
+    player,
+    el,
+    get state() { return st; },
+    publish,
+    onRemoteState,
+    setVideo(url) {
+      const parsed = U.parseWatchUrl(url);
+      if (!parsed) return false;
+      st.url = parsed.src; st.kind = parsed.kind;
+      loadVideo(parsed, { autoplay: st.playing });
+      publish({ force: true });
+      return true;
+    }
+  };
 
 })();

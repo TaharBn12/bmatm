@@ -7,6 +7,11 @@
 --  الملف آمن لإعادة التشغيل.
 -- =====================================================================
 
+--  أهم سطر في هذا الملف: دونه لا تصل أحداث UPDATE المفلترة عبر Realtime،
+--  فيبدو وكأن الأصدقاء لا يدخلون نفس الغرفة (نفّذه حتى لو كنت نفّذت schema.sql)
+alter table public.rooms    replica identity full;
+alter table public.messages replica identity full;
+
 alter table public.messages add column if not exists user_id   uuid;
 alter table public.messages add column if not exists client_id text;
 alter table public.messages add column if not exists kind      text not null default 'chat';

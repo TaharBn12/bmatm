@@ -21,7 +21,7 @@
 - **التحاق المتأخرين:** من يدخل بعد بدء العرض يأخذ الوقت الحالي المحسوب — لا يبدأ من الصفر.
 - **أيقونات SVG** في كل الواجهة (بلا إيموجي) — الإيموجي فقط في تفاعل الرسائل.
 - **يعمل على استضافة عادية** (Supabase) أو عبر **سيرفر Java** مرفق (JDK فقط، بدون مكتبات).
-- **140 اختباراً** تعمل بلا متصفح: `node watch_together/docs/tests/smoke.mjs` و `room-dom.mjs`.
+- **175 اختباراً** تعمل بلا متصفح: `smoke.mjs` و `room-dom.mjs` و `join-room.mjs` في `watch_together/docs/tests/`.
 
 ```bash
 cd watch_together/java-server && ./build.sh && ./run.sh   # → http://localhost:8080

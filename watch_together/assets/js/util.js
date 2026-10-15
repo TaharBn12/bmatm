@@ -202,6 +202,58 @@
     /* تنظيف اسم المستخدم */
     cleanName(name) {
       return String(name || '').replace(/\s+/g, ' ').trim().slice(0, 24);
+    },
+
+    /* =========================================================
+       ترتيب تحديثات المزامنة (ساعة منطقية — Lamport clock)
+       ---------------------------------------------------------
+       المشكلة التي تحلّها: كل عميل كان يزيد `rev` انطلاقاً من
+       نسخته الخاصة، فإذا بثّ عميلان حالةً في نفس اللحظة ينتج
+       عنهما نفس الرقم التسلسلي → يرفض كلٌّ منهما تحديث الآخر
+       للأبد، فيبدو الوضع وكأن كل واحد «في غرفة لوحده».
+
+       الحل: ترتيب حتمي يتّفق عليه الجميع:
+         1) الرقم التسلسلي الأكبر يفوز
+         2) عند التساوي يفوز صاحب المعرّف (updatedBy) الأكبر
+         3) نفس المرسل بنفس الرقم = تحديث مكرّر ← يُرفض
+       ========================================================= */
+
+    /** الرقم التسلسلي التالي: دائماً أكبر من كل ما رآه العميل */
+    nextRev() {
+      let max = 0;
+      for (let i = 0; i < arguments.length; i++) {
+        const v = +arguments[i];
+        if (Number.isFinite(v) && v > max) max = v;
+      }
+      return max + 1;
+    },
+
+    /**
+     * هل الحالة «الواردة» أحدث من الحالة «الحالية»؟
+     * @param {{rev:number, updatedBy?:string}} incoming
+     * @param {{rev:number, updatedBy?:string}} current
+     */
+    stateWins(incoming, current) {
+      const a = incoming || {}, b = current || {};
+      if (!Number.isFinite(+a.rev)) return false;
+      const ra = +a.rev, rb = Number.isFinite(+b.rev) ? +b.rev : -1;
+      if (ra !== rb) return ra > rb;
+      const ua = String(a.updatedBy || a.hostId || '');
+      const ub = String(b.updatedBy || b.hostId || '');
+      if (ua === ub) return false;          /* نفس المرسل = مكرّر */
+      return ua > ub;                       /* كسر تعادل حتمي */
+    },
+
+    /** بصمة خفيفة للمقارنة: هل تغيّرت الحالة فعلاً؟ (تفادي إعادة بثّ نفس الحالة) */
+    stateSig(s) {
+      s = s || {};
+      return [
+        Number.isFinite(+s.rev) ? +s.rev : 0,
+        s.updatedBy || s.hostId || '',
+        s.playing ? '1' : '0',
+        (Number.isFinite(+s.pos) ? +s.pos : 0).toFixed(2),
+        s.url || ''
+      ].join('|');
     }
   };
 
