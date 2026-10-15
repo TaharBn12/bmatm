@@ -17,7 +17,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800;900&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="assets/css/app.css?v=2.3.0">
+  <link rel="stylesheet" href="assets/css/app.css?v=2.4.1">
 </head>
 <body class="room-body">
   <div class="bg-fx"></div>
@@ -110,6 +110,7 @@
 
     <main class="room-main" id="roomMain">
 
+      <div class="media-shell" id="mediaShell">
       <!-- ========== 1) المشغّل ========== -->
       <section class="stage glass" id="stage">
         <div class="player" id="player">
@@ -122,7 +123,7 @@
 
       <!-- ========== 2) أدوات التحكم ========== -->
       <section class="ctrlbar glass" id="ctrlbar">
-        <div class="ctrlbar__row">
+        <div class="ctrlbar__row" id="playbackControls">
           <button class="ctrl-btn ctrl-btn--big" id="playPauseBtn" title="تشغيل / إيقاف (مسافة)" aria-label="تشغيل أو إيقاف">
             <span id="iconPlay"><span class="ic" data-icon="play" data-size="26"></span></span>
             <span id="iconPause" hidden><span class="ic" data-icon="pause" data-size="26"></span></span>
@@ -149,7 +150,7 @@
           </button>
         </div>
 
-        <div class="ctrlbar__row ctrlbar__row--progress">
+        <div class="ctrlbar__row ctrlbar__row--progress" id="playbackProgress">
           <span class="time" id="curTime">00:00</span>
           <div class="progress__bar" id="progressBar" role="slider" tabindex="0" aria-label="شريط التقدم" aria-valuemin="0">
             <span class="progress__buffer" id="progressBuffer"></span>
@@ -186,6 +187,8 @@
           <span id="syncNoteText">آخر تحديث من <b>—</b> • الجميع على نفس اللحظة</span>
         </div>
       </section>
+
+      </div>
 
       <!-- ========== تغيير الرابط ========== -->
       <section class="change-bar glass" id="changeBar" hidden>
@@ -370,7 +373,7 @@
   <script src="assets/js/icons.js?v=2.3.0"></script>
   <script src="assets/js/auth.js?v=2.3.0"></script>
   <script src="assets/js/transport.js?v=2.3.0"></script>
-  <script src="assets/js/player.js?v=2.3.0"></script>
-  <script src="assets/js/room.js?v=2.3.0"></script>
+  <script src="assets/js/player.js?v=2.4.1"></script>
+  <script src="assets/js/room.js?v=2.4.1"></script>
 </body>
 </html>

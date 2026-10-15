@@ -315,3 +315,7 @@ room: { codeLength: 6, presenceMs: 3000, presenceTimeoutMs: 12000 }
 - سيرفر Java: يرفض مسارات `../`، يحدّ رسالة WebSocket بـ 512KB، يحفظ الحالات في
   `data/rooms.json` (مستثنى من Git)، ويقفل الغرف الفارغة.
 - لا تُخزَّن كلمات مرور في الموقع — المصادقة كلها عبر Supabase Auth.
+
+## تصفّح المواقع
+
+صفحة `discover.html`: مواقع وGoogle وإضافة بطاقات مخصصة، واستخراج روابط عبر خادم Java وyt-dlp. راجع [الإعداد والقيود والأمان](docs/video-discovery.md).

@@ -74,6 +74,7 @@ public final class Main {
                             "هذه نقطة WebSocket — افتح الموقع من المتصفح على /");
                     return;
                 }
+                if (path.equals("/api/resolve")) { VideoResolver.handle(ex); return; }
                 if (path.equals("/api/stats")) { sendJson(ex, 200, stats()); return; }
                 files.handle(ex);
             } catch (IOException e) {

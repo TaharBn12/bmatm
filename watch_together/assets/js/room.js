@@ -82,6 +82,7 @@
     codeText: $('roomCodeText'), copyCodeBtn: $('copyCodeBtn'),
     statusBadge: $('statusBadge'), statusText: $('statusText'),
     copyLinkBtn: $('copyLinkBtn'), shareBtn: $('shareBtn'), qrBtn: $('qrBtn'), leaveBtn: $('leaveBtn'),
+    mediaShell: $('mediaShell'), playbackControls: $('playbackControls'), playbackProgress: $('playbackProgress'),
     stage: $('stage'), player: $('player'), placeholder: $('playerPlaceholder'),
     ctrlbar: $('ctrlbar'),
     playPause: $('playPauseBtn'), iconPlay: $('iconPlay'), iconPause: $('iconPause'),
@@ -685,7 +686,12 @@
     el.infoProvider.textContent = parsed.label;
 
     try {
-      await player.load(parsed, { autoplay: !!opts.autoplay, controls: true });
+      // Embedded third-party players retain their own controls; synchronizable
+      // players use only the room toolbar, never two playback bars.
+      const embedded = parsed.kind === 'embed';
+      el.playbackControls.hidden = embedded;
+      el.playbackProgress.hidden = embedded;
+      await player.load(parsed, { autoplay: !!opts.autoplay, controls: false });
       if (el.placeholder) { el.placeholder.remove(); el.placeholder = null; }
 
       /* الموضع: عند الانضمام نحسب الوقت المتوقع، وإلا نستخدم الموضع المحفوظ */
@@ -1086,7 +1092,7 @@
 
     /* ---- ملء الشاشة ---- */
     el.fullBtn.addEventListener('click', () => {
-      const target = el.player;
+      const target = el.mediaShell;
       if (!document.fullscreenElement && !document.webkitFullscreenElement) {
         (target.requestFullscreen || target.webkitRequestFullscreen || function () { }).call(target);
       } else {
