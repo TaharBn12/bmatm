@@ -107,9 +107,10 @@
     mediaShell: $('mediaShell'),
     stage: $('stage'), player: $('player'), placeholder: $('playerPlaceholder'), ctrlbar: $('ctrlbar'),
     playPause: $('playPauseBtn'), iconPlay: $('iconPlay'), iconPause: $('iconPause'),
+    centerPlay: $('centerPlayBtn'), skipBack: $('skipBackBtn'), skipFwd: $('skipFwdBtn'),
     muteBtn: $('muteBtn'), iconSound: $('iconSound'), iconMuted: $('iconMuted'), fullBtn: $('fullBtn'), volRange: $('volRange'),
     progressBar: $('progressBar'), progressFill: $('progressFill'), progressBuffer: $('progressBuffer'),
-    progressKnob: $('progressKnob'), curTime: $('curTime'), durTime: $('durTime'),
+    progressKnob: $('progressKnob'), progressTip: $('progressTip'), curTime: $('curTime'), durTime: $('durTime'),
     addVideoBtn: $('addVideoBtn'), messagesBtn: $('messagesBtn'), messagesCount: $('messagesCount'),
     playlistBtn: $('playlistBtn'), playlistCount: $('playlistCount'),
     changeBar: $('changeBar'), newUrl: $('newUrl'), newTitle: $('newTitle'), applyUrlBtn: $('applyUrlBtn'), cancelUrlBtn: $('cancelUrlBtn'),
@@ -150,6 +151,7 @@
       if (d.playing === true && !st.playing) { st.playing = true; localControl('play'); }
       else if (d.playing === false && st.playing) { st.playing = false; localControl('pause'); }
       updatePlayIcon();
+      pokeVideoUI();
     },
     onEvent: (d) => { if (d.type === 'error') U.toast('حدث خطأ في المشغّل', 'error'); },
     onTime: () => updateProgressUI()
@@ -578,6 +580,9 @@
   function updateControlAccess() {
     const locked = !canControl();
     if (el.playPause) el.playPause.disabled = locked;
+    if (el.centerPlay) el.centerPlay.disabled = locked;
+    if (el.skipBack) el.skipBack.disabled = locked;
+    if (el.skipFwd) el.skipFwd.disabled = locked;
     if (el.progressBar) {
       el.progressBar.setAttribute('aria-disabled', locked ? 'true' : 'false');
       el.progressBar.classList.toggle('is-locked', locked);
@@ -611,10 +616,12 @@
     if (!session.ready || !session.transport || !canControl()) return Promise.resolve(false);
 
     let pos = st.pos || 0;
+    /* نثق بحالة st.playing (التي يضبطها التحكم) بدل player.isPlaying()،
+       لأن player.isPlaying() قد يتأخر (مثلاً buffering في يوتيوب) فينشر
+       حالة معاكسة ويمنع التشغيل/الإيقاف. */
     let playing = !!st.playing;
     if (player.isReady() && player.canSync()) {
       pos = player.getCurrentTime();
-      playing = player.isPlaying();
     }
 
     st.pos = pos;
@@ -784,6 +791,8 @@
 
     try {
       el.ctrlbar.hidden = parsed.kind === 'embed';
+      el.player.classList.toggle('is-embed', parsed.kind === 'embed');
+      pokeVideoUI();
       await player.load(parsed, { autoplay: !!opts.autoplay, controls: false });
       if (el.placeholder) { el.placeholder.remove(); el.placeholder = null; }
 
@@ -1279,8 +1288,8 @@
 
   /* ============================== ربط الواجهة ============================== */
   function wireUI() {
-    /* ---- تشغيل/إيقاف ---- */
-    el.playPause.addEventListener('click', () => {
+    /* ---- تشغيل/إيقاف (من زر التحكم، أو الزر الكبير، أو النقر على الفيديو نفسه) ---- */
+    const togglePlay = () => {
       if (!requireControl()) return;
       if (!player.isReady()) {
         if (!st.url) return openChangeBar();
@@ -1289,7 +1298,34 @@
       if (player.isPlaying()) { player.pause(); st.playing = false; }
       else { player.play(); st.playing = true; }
       updatePlayIcon();
+      pokeVideoUI();
       localControl('toggle');
+    };
+    el.playPause.addEventListener('click', togglePlay);
+    if (el.centerPlay) el.centerPlay.addEventListener('click', togglePlay);
+
+    /* النقر على سطح الفيديو نفسه يبدّل التشغيل، والنقر المزدوج لملء الشاشة.
+       نقرات شريط التحكم والزر الكبير وطبقات التحميل لا تصل إلى هنا. */
+    el.player.addEventListener('click', (e) => {
+      const t = e.target;
+      if (t && t.closest && (t.closest('.vcontrols') || t.closest('.vcenter') ||
+        t.closest('.player__overlay') || t.closest('.player__placeholder'))) return;
+      togglePlay();
+    });
+    el.player.addEventListener('dblclick', (e) => {
+      const t = e.target;
+      if (t && t.closest && (t.closest('.vcontrols') || t.closest('.vcenter'))) return;
+      if (el.fullBtn) el.fullBtn.click();
+    });
+
+    /* إظهار التحكم عند أي نشاط فوق الفيديو، وإخفاؤه بعد الخمول أثناء التشغيل */
+    el.player.addEventListener('pointermove', pokeVideoUI);
+    el.player.addEventListener('pointerdown', pokeVideoUI);
+    el.player.addEventListener('pointerleave', () => {
+      if (player.isReady() && player.isPlaying()) {
+        clearTimeout(uiHideTimer);
+        uiHideTimer = setTimeout(() => el.player.classList.add('is-ui-hidden'), 700);
+      }
     });
 
     /* ---- تقديم/ترجيع عبر مفاتيح الأسهم فقط ---- */
@@ -1301,7 +1337,10 @@
       st.pos = to;
       localControl('seek');
       updateProgressUI();
+      pokeVideoUI();
     };
+    if (el.skipBack) el.skipBack.addEventListener('click', () => skip(-10));
+    if (el.skipFwd) el.skipFwd.addEventListener('click', () => skip(10));
 
     /* ---- الصوت ---- */
     el.muteBtn.addEventListener('click', () => {
@@ -1340,14 +1379,26 @@
       }
     });
 
-    /* ---- شريط التقدم (سحب باللمس والفأرة) ---- */
+    /* ---- شريط التقدم داخل الفيديو (سحب باللمس والفأرة + معاينة الوقت) ---- */
+    const ratioFromEvent = (ev) => {
+      const rect = el.progressBar.getBoundingClientRect();
+      return U.clamp(1 - ((ev.clientX - rect.left) / rect.width), 0, 1);   /* RTL: التقدم من اليمين */
+    };
+    const showTip = (ev) => {
+      if (!el.progressTip || !player.isReady()) return;
+      const dur = player.getDuration();
+      if (!dur) return;
+      const ratio = ratioFromEvent(ev);
+      el.progressTip.textContent = U.fmtTime(ratio * dur);
+      el.progressTip.style.insetInlineStart = (ratio * 100) + '%';
+      el.progressTip.hidden = false;
+    };
+    const hideTip = () => { if (el.progressTip) el.progressTip.hidden = true; };
     const seekFromEvent = (ev) => {
       if (!canControl()) return;
       const dur = player.getDuration();
       if (!dur) return;
-      const rect = el.progressBar.getBoundingClientRect();
-      const ratio = 1 - ((ev.clientX - rect.left) / rect.width);   /* RTL: التقدم من اليمين */
-      const to = U.clamp(ratio, 0, 1) * dur;
+      const to = ratioFromEvent(ev) * dur;
       player.seek(to);
       st.pos = to;
       updateProgressUI();
@@ -1358,13 +1409,17 @@
       dragging = true;
       el.progressBar.classList.add('is-active');
       try { el.progressBar.setPointerCapture(e.pointerId); } catch (err) { }
+      showTip(e);
       seekFromEvent(e);
+      pokeVideoUI();
     });
-    el.progressBar.addEventListener('pointermove', (e) => { if (dragging) seekFromEvent(e); });
+    el.progressBar.addEventListener('pointermove', (e) => { showTip(e); if (dragging) seekFromEvent(e); });
+    el.progressBar.addEventListener('pointerleave', hideTip);
     const endDrag = () => {
       if (!dragging) return;
       dragging = false;
       el.progressBar.classList.remove('is-active');
+      hideTip();
       localControl('seek');
     };
     el.progressBar.addEventListener('pointerup', endDrag);
@@ -1652,10 +1707,29 @@
   }
 
   /* ============================== واجهة صغيرة ============================== */
+  /* طبقة التحكم داخل الفيديو: تظهر مع أي نشاط وتختفي أثناء التشغيل بعد مهلة */
+  let uiHideTimer = null;
+  function pokeVideoUI() {
+    if (!el.player) return;
+    el.player.classList.remove('is-ui-hidden');
+    clearTimeout(uiHideTimer);
+    uiHideTimer = setTimeout(() => {
+      if (player.isReady() && player.isPlaying()) el.player.classList.add('is-ui-hidden');
+    }, 2800);
+  }
+
   function updatePlayIcon() {
-    const playing = player.isReady() ? player.isPlaying() : !!st.playing;
+    const playing = player.isReady() ? (player.isPlaying() || !!st.playing) : !!st.playing;
     el.iconPlay.hidden = playing;
     el.iconPause.hidden = !playing;
+    if (el.player) {
+      el.player.classList.toggle('is-playing', playing);
+      if (!playing) el.player.classList.remove('is-ui-hidden');
+    }
+    /* الزر الكبير في المنتصف يظهر فقط عندما يكون الفيديو جاهزاً ومتوقفاً */
+    if (el.centerPlay) {
+      el.centerPlay.hidden = playing || !player.isReady() || !!(el.ctrlbar && el.ctrlbar.hidden);
+    }
   }
 
   function updateProgressUI() {
