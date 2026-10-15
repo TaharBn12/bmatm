@@ -17,7 +17,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800;900&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="assets/css/app.css?v=2.2.0">
+  <link rel="stylesheet" href="assets/css/app.css?v=2.3.0">
 </head>
 <body class="room-body">
   <div class="bg-fx"></div>
@@ -98,6 +98,9 @@
         </button>
         <button class="btn btn--sm btn--ghost" id="qrBtn" title="رمز QR للرابط">
           <span class="ic" data-icon="qr" data-size="16"></span>
+        </button>
+        <button class="btn btn--sm btn--ghost" id="diagBtn" title="تشخيص الاتصال بالسيرفر">
+          <span class="ic" data-icon="server" data-size="16"></span> تشخيص
         </button>
         <button class="btn btn--sm btn--danger" id="leaveBtn" title="مغادرة الغرفة">
           <span class="ic" data-icon="logout" data-size="16"></span> خروج
@@ -337,15 +340,37 @@
     </div>
   </div>
 
+  <!-- نافذة تشخيص الاتصال -->
+  <div class="modal" id="diagModal" hidden>
+    <div class="modal__card glass modal__card--diag">
+      <div class="modal__head">
+        <h2 class="modal__title"><span class="ic" data-icon="server" data-size="19"></span> تشخيص الاتصال بالسيرفر</h2>
+        <button class="btn btn--ghost btn--icon-sm" id="diagCloseBtn" aria-label="إغلاق"><span class="ic" data-icon="x" data-size="18"></span></button>
+      </div>
+      <div class="diag__body" id="diagBody"></div>
+      <div class="diag__actions">
+        <button class="btn btn--primary" id="diagReconnectBtn">
+          <span class="ic" data-icon="sync" data-size="16"></span> إعادة الاتصال
+        </button>
+        <button class="btn btn--ghost" id="diagRunBtn">
+          <span class="ic" data-icon="search" data-size="16"></span> إعادة الفحص
+        </button>
+        <button class="btn btn--ghost" id="diagCopyBtn">
+          <span class="ic" data-icon="copy" data-size="16"></span> نسخ التقرير
+        </button>
+      </div>
+    </div>
+  </div>
+
   <!-- ===== سكربتات ===== -->
-  <script src="assets/vendor/hls.min.js?v=2.2.0"></script>
-  <script src="assets/vendor/qrcode.min.js?v=2.2.0"></script>
-  <script src="assets/js/config.js?v=2.2.0"></script>
-  <script src="assets/js/util.js?v=2.2.0"></script>
-  <script src="assets/js/icons.js?v=2.2.0"></script>
-  <script src="assets/js/auth.js?v=2.2.0"></script>
-  <script src="assets/js/transport.js?v=2.2.0"></script>
-  <script src="assets/js/player.js?v=2.2.0"></script>
-  <script src="assets/js/room.js?v=2.2.0"></script>
+  <script src="assets/vendor/hls.min.js?v=2.3.0"></script>
+  <script src="assets/vendor/qrcode.min.js?v=2.3.0"></script>
+  <script src="assets/js/config.js?v=2.3.0"></script>
+  <script src="assets/js/util.js?v=2.3.0"></script>
+  <script src="assets/js/icons.js?v=2.3.0"></script>
+  <script src="assets/js/auth.js?v=2.3.0"></script>
+  <script src="assets/js/transport.js?v=2.3.0"></script>
+  <script src="assets/js/player.js?v=2.3.0"></script>
+  <script src="assets/js/room.js?v=2.3.0"></script>
 </body>
 </html>

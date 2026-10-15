@@ -57,7 +57,9 @@
     unread: 0,
     focusMode: false,
     videoParsed: null,
-    pendingDrift: 0
+    pendingDrift: 0,
+    lastError: null,       /* آخر خطأ اتصال (مترجم) */
+    lastReport: null       /* آخر تقرير تشخيص */
   };
 
   /** حالة الغرفة المتزامنة */
@@ -104,7 +106,10 @@
     sbMode: $('sbMode'), sbSync: $('sbSync'), sbMe: $('sbMe'), sbMeBtn: $('sbMeBtn'),
     qrModal: $('qrModal'), qrBox: $('qrBox'), qrUrl: $('qrUrl'), qrClose: $('qrClose'), qrCopy: $('qrCopy'),
     meModal: $('meModal'), meClose: $('meClose'), meAvatar: $('meAvatar'), meName: $('meName'),
-    meMail: $('meMail'), meNameInput: $('meNameInput'), meSave: $('meSave'), meSignout: $('meSignout')
+    meMail: $('meMail'), meNameInput: $('meNameInput'), meSave: $('meSave'), meSignout: $('meSignout'),
+    diagBtn: $('diagBtn'), diagModal: $('diagModal'), diagBody: $('diagBody'),
+    diagRunBtn: $('diagRunBtn'), diagCopyBtn: $('diagCopyBtn'), diagCloseBtn: $('diagCloseBtn'),
+    diagReconnectBtn: $('diagReconnectBtn')
   };
 
   el.gateCode.textContent = roomId;
@@ -182,10 +187,157 @@
    * فالأصدقاء لن يلتحقوا بك. نقولها صراحةً بدل أن تبدو «الغرفة مختلفة».
    */
   function warnLocalMode() {
-    sysMessage('السيرفر غير متصل — هذه الغرفة محلية داخل متصفحك فقط، ولن يدخلها أصدقاؤك من أجهزتهم');
+    const why = session.lastError ? (session.lastError.title + ' — ' + session.lastError.fix) : '';
+    sysMessage('السيرفر غير متصل — هذه الغرفة محلية داخل متصفحك فقط، ولن يدخلها أصدقاؤك من أجهزتهم' +
+      (why ? '\nالسبب: ' + why : ''));
     U.toast('تعذّر الاتصال بالسيرفر — المزامنة داخل هذا المتصفح فقط', 'warn', 8000);
     if (el.roomSub) el.roomSub.textContent = 'وضع محلي — الأصدقاء لن يلتحقوا (السيرفر غير متصل)';
     if (el.statusText) el.statusText.textContent = 'محلي فقط';
+    /* لا نفتح نافذة التشخيص قسراً (تزعج المستخدم) — نكتفي بتنبيه +
+       زر «تشخيص» في الشريط العلوي يكفي لمن يريد التفاصيل */
+    if (session.lastError) {
+      U.toast('السبب: ' + session.lastError.title + ' — اضغط «تشخيص» في الأعلى للحل', 'warn', 9000);
+    }
+  }
+
+  /* ============================== تشخيص الاتصال ============================== */
+  /**
+   * يفحص سيرفر المشروع الحالي (Supabase) ويعرض النتيجة:
+   * هل REST يردّ؟ هل الجداول موجودة؟ هل Realtime يعمل؟ وما الحلّ إن كان هناك خطأ.
+   */
+  async function runDiagnostics() {
+    const cfg = window.WT_CONFIG;
+    if (el.diagBody) {
+      el.diagBody.innerHTML = '<div class="diag__loading"><span class="spinner"></span> جارٍ فحص السيرفر…</div>';
+    }
+    const report = {
+      active: session.transport ? { kind: session.transport.kind, label: session.transport.label } : null,
+      activeNote: '',
+      supabase: null,
+      at: Date.now()
+    };
+    if (session.transport && session.transport.kind === 'local' && session.lastError) {
+      report.activeNote = session.lastError.title + ' — ' + session.lastError.fix;
+    }
+    try {
+      if (cfg && cfg.supabase && cfg.supabase.url && cfg.supabase.anonKey) {
+        const probe = new window.WTTransport.SupabaseTransport(cfg.supabase);
+        report.supabase = await probe.diagnose();
+      } else {
+        report.supabase = null;
+      }
+    } catch (err) {
+      report.supabase = {
+        ok: false, url: (cfg && cfg.supabase && cfg.supabase.url) || '—',
+        rest: { ok: false, error: { title: 'تعذّر الفحص', detail: String(err && err.message || err), fix: 'أعد المحاولة' } },
+        tables: {}, realtime: { ok: false }, problems: []
+      };
+    }
+    session.lastReport = report;
+    renderDiagnostics(report);
+    return report;
+  }
+
+  function diagRow(icon, label, value, cls) {
+    return '<div class="diag-row ' + (cls || '') + '">' +
+      '<span class="ic diag-row__ic" data-icon="' + icon + '" data-size="16"></span>' +
+      '<span class="diag-row__k">' + U.esc(label) + '</span>' +
+      '<span class="diag-row__v">' + value + '</span>' +
+      '</div>';
+  }
+
+  function renderDiagnostics(report) {
+    if (!el.diagBody) return;
+    const sb = report.supabase;
+    let html = '';
+
+    /* السيرفر المستخدم الآن */
+    html += '<div class="diag-sec"><h4 class="diag-sec__t">السيرفر المستخدم الآن</h4>' +
+      diagRow('server', 'الوضع', U.esc(report.active ? report.active.label : '—'),
+        report.active && report.active.kind === 'local' ? 'is-bad' : 'is-good') +
+      (report.activeNote ? '<p class="diag-note is-bad">' + U.esc(report.activeNote) + '</p>' : '') +
+      '</div>';
+
+    if (!sb) {
+      html += '<div class="diag-sec"><h4 class="diag-sec__t">مشروع Supabase</h4>' +
+        '<p class="diag-note is-bad">لا يوجد مشروع Supabase مهيّأ في assets/js/config.js — ' +
+        'شغّل: <code>node tools/sbctl.mjs create</code></p></div>';
+      el.diagBody.innerHTML = html;
+      if (window.WTIcons && WTIcons.apply) WTIcons.apply(el.diagBody);
+      return;
+    }
+
+    /* النتيجة العامة */
+    const overall = sb.ok
+      ? '<span class="diag-verdict is-good">المشروع يعمل ✓</span>'
+      : '<span class="diag-verdict is-bad">المشروع لا يعمل</span>';
+    html += '<div class="diag-sec"><h4 class="diag-sec__t">مشروع Supabase ' + overall + '</h4>' +
+      diagRow('globe', 'العنوان', '<code>' + U.esc(sb.url) + '</code>') +
+      diagRow('lock', 'المفتاح', '<code>' + U.esc(sb.key) + '</code>') +
+      diagRow('database', 'REST / الجداول',
+        (sb.rest && sb.rest.ok ? 'يستجيب ✓' : 'لا يستجيب ✕') +
+        (sb.rest && sb.rest.ms ? ' · ' + sb.rest.ms + 'ms' : ''),
+        sb.rest && sb.rest.ok ? 'is-good' : 'is-bad') +
+      diagRow('check', 'جدول الغرف (rooms)', sb.tables && sb.tables.rooms ? 'موجود ✓' : 'مفقود ✕',
+        sb.tables && sb.tables.rooms ? 'is-good' : 'is-bad') +
+      diagRow('chat', 'جدول الرسائل (messages)', sb.tables && sb.tables.messages ? 'موجود ✓' : 'مفقود ✕',
+        sb.tables && sb.tables.messages ? 'is-good' : 'is-warn') +
+      diagRow('users', 'جدول الحضور (presence)', sb.tables && sb.tables.presence ? 'موجود ✓' : 'مفقود ✕',
+        sb.tables && sb.tables.presence ? 'is-good' : 'is-warn') +
+      diagRow('broadcast', 'Realtime', sb.realtime && sb.realtime.ok ? 'يعمل ✓' : ('لا يعمل ✕ ' + U.esc((sb.realtime && sb.realtime.error) || '')),
+        sb.realtime && sb.realtime.ok ? 'is-good' : 'is-warn') +
+      '</div>';
+
+    /* المشاكل والحلول */
+    const probs = (sb.problems || []).concat(sb.warnings || []);
+    if (probs.length) {
+      html += '<div class="diag-sec"><h4 class="diag-sec__t">المشاكل والحلول</h4>';
+      probs.forEach(p => {
+        html += '<div class="diag-problem">' +
+          '<div class="diag-problem__t">' + U.esc(p.title || '') + '</div>' +
+          '<div class="diag-problem__d">' + U.esc(p.detail || '') + '</div>' +
+          '<div class="diag-problem__f">' + U.esc(p.fix || '') + '</div>' +
+          '</div>';
+      });
+      html += '</div>';
+    }
+
+    /* الغرفة نفسها */
+    if (sb.room && sb.room.id) {
+      html += '<div class="diag-sec"><h4 class="diag-sec__t">الغرفة</h4>' +
+        diagRow('info', 'كود الغرفة', '<code>' + U.esc(sb.room.id) + '</code>') +
+        diagRow('info', 'صف الغرفة في القاعدة', sb.room.found ? 'موجود ✓' : 'غير موجود ✕',
+          sb.room.found ? 'is-good' : 'is-warn') +
+        '</div>';
+    }
+
+    el.diagBody.innerHTML = html;
+    if (window.WTIcons && WTIcons.apply) WTIcons.apply(el.diagBody);
+  }
+
+  function openDiag() {
+    if (!el.diagModal) return;
+    el.diagModal.hidden = false;
+    runDiagnostics();
+  }
+
+  function closeDiag() {
+    if (el.diagModal) el.diagModal.hidden = true;
+  }
+
+  /** إعادة الاتصال من الصفر: نغلق النقل الحالي ونعيد البناء */
+  async function reconnect() {
+    try { if (session.transport) session.transport.close(); } catch (e) { }
+    session.ready = false;
+    session.transport = null;
+    session.lastError = null;
+    clearInterval(session._persistTimer);
+    clearInterval(session._pingTimer);
+    clearInterval(session._uiTimer);
+    clearInterval(session._driftTimer);
+    setStatus('connecting', 'جارٍ إعادة الاتصال…');
+    await connect();
+    U.toast('تمت إعادة الاتصال', 'success', 2500);
   }
 
   /* ============================== الدخول ============================== */
@@ -242,7 +394,14 @@
         /* من أنشأ الغرفة هو من يملك الحق في إنشاء صفّها في قاعدة البيانات؛
            البقية ينتظرونها ولا ينشئون غرفة فارغة تحمل نفس الكود */
         host: !!(createInfo && createInfo.host) || params.get('host') === '1'
-      }, (s) => setStatus(s.state, s.detail));
+      }, (s) => {
+        if (s && s.state === 'failed') {
+          /* فشل وضع معيّن — نحتفظ بالسبب لعرضه في نافذة التشخيص */
+          session.lastError = (s.error && s.error.diag) || window.WTTransport.classifyError(s.error);
+          return;
+        }
+        setStatus(s.state, s.detail);
+      });
 
       session.transport = transport;
       session.mode = transport.label;
@@ -299,8 +458,11 @@
       updateSyncBadge();
     } catch (err) {
       console.error(err);
-      setStatus('offline', String((err && err.message) || err));
-      U.toast('تعذّر الاتصال بالغرفة: ' + ((err && err.message) || ''), 'error', 6000);
+      const d = (err && err.diag) || window.WTTransport.classifyError(err);
+      session.lastError = d;
+      setStatus('offline', d.title);
+      U.toast('تعذّر الاتصال بالغرفة — ' + d.title, 'error', 6000);
+      sysMessage('تعذّر الاتصال بالغرفة: ' + d.title + (d.fix ? ' — الحل: ' + d.fix : ''));
     }
   }
 
@@ -1036,6 +1198,38 @@
     el.qrCopy.addEventListener('click', () => copy(roomUrl(), 'تم نسخ رابط الغرفة'));
     el.qrModal.addEventListener('click', (e) => { if (e.target === el.qrModal) el.qrModal.hidden = true; });
 
+    /* ---- تشخيص الاتصال ---- */
+    if (el.diagBtn) el.diagBtn.addEventListener('click', () => openDiag());
+    if (el.diagCloseBtn) el.diagCloseBtn.addEventListener('click', () => closeDiag());
+    if (el.diagRunBtn) el.diagRunBtn.addEventListener('click', () => runDiagnostics());
+    if (el.diagModal) el.diagModal.addEventListener('click', (e) => { if (e.target === el.diagModal) closeDiag(); });
+    if (el.diagReconnectBtn) el.diagReconnectBtn.addEventListener('click', async () => {
+      closeDiag();
+      await reconnect();
+    });
+    if (el.diagCopyBtn) el.diagCopyBtn.addEventListener('click', async () => {
+      const r = session.lastReport;
+      const sb = r && r.supabase;
+      const lines = [
+        'WatchTogether — تقرير تشخيص الاتصال',
+        'التاريخ: ' + new Date().toLocaleString('ar-DZ'),
+        'الغرفة: ' + roomId,
+        'السيرفر المستخدم: ' + (r && r.active ? r.active.label : '—'),
+        'المشروع: ' + (sb ? sb.url : '—'),
+        'المفتاح: ' + (sb ? sb.key : '—'),
+        'REST: ' + (sb && sb.rest && sb.rest.ok ? 'يعمل (' + sb.rest.ms + 'ms)' : 'فشل'),
+        'جدول rooms: ' + (sb && sb.tables && sb.tables.rooms ? 'موجود' : 'مفقود'),
+        'جدول messages: ' + (sb && sb.tables && sb.tables.messages ? 'موجود' : 'مفقود'),
+        'جدول presence: ' + (sb && sb.tables && sb.tables.presence ? 'موجود' : 'مفقود'),
+        'Realtime: ' + (sb && sb.realtime && sb.realtime.ok ? 'يعمل' : 'لا يعمل'),
+        ''
+      ];
+      ((sb && (sb.problems || []).concat(sb.warnings || [])) || []).forEach(p => {
+        lines.push('• ' + (p.title || ''), '  ' + (p.detail || ''), '  الحل: ' + (p.fix || ''), '');
+      });
+      await copy(lines.join('\n'), 'تم نسخ التقرير');
+    });
+
     /* ---- الحساب ---- */
     el.sbMeBtn.addEventListener('click', () => { paintMe(); el.meModal.hidden = false; });
     el.meClose.addEventListener('click', () => { el.meModal.hidden = true; });
@@ -1129,7 +1323,8 @@
       else if (e.key.toLowerCase() === 'c') copy(roomUrl(), 'تم نسخ رابط الغرفة');
       else if (e.key.toLowerCase() === 'd') setFocusMode(!session.focusMode);
       else if (e.key === 'Escape') {
-        if (!el.qrModal.hidden) el.qrModal.hidden = true;
+        if (el.diagModal && !el.diagModal.hidden) closeDiag();
+        else if (!el.qrModal.hidden) el.qrModal.hidden = true;
         else if (!el.meModal.hidden) el.meModal.hidden = true;
         else if (session.focusMode) setFocusMode(false);
       }
@@ -1278,6 +1473,10 @@
     get state() { return st; },
     publish,
     onRemoteState,
+    diagnose: runDiagnostics,
+    openDiag,
+    closeDiag,
+    reconnect,
     setVideo(url) {
       const parsed = U.parseWatchUrl(url);
       if (!parsed) return false;

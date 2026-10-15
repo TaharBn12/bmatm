@@ -28,6 +28,68 @@
     };
   }
 
+  /* ============================== تشخيص الأخطاء ============================== */
+  /**
+   * ترجمة خطأ Supabase إلى سبب مفهوم + حل عملي.
+   * الهدف: ألا يرى المستخدم «تعذّر الاتصال» بلا سبب — كل خطأ له تفسير وحل.
+   */
+  function classifyError(err) {
+    const status = Number((err && err.status) || 0);
+    const code = String((err && err.code) || '');
+    const raw = String((err && err.message) || err || '');
+    const lc = raw.toLowerCase();
+    const mk = (c, title, detail, fix) => ({ code: c, title, detail, fix, status, raw });
+
+    if (code === '42P01' || code === 'PGRST205' ||
+      lc.indexOf('does not exist') >= 0 || lc.indexOf('schema cache') >= 0) {
+      return mk('missing-table',
+        'جداول قاعدة البيانات غير موجودة',
+        'مشروع Supabase يردّ لكنه لا يعرف جداول (rooms / messages / presence) — رمز الخطأ: ' + (code || status),
+        'افتح SQL Editor في مشروع Supabase، الصق محتوى docs/bootstrap.sql (أو docs/schema.sql) ثم Run.');
+    }
+    if (code === '42501') {
+      return mk('rls',
+        'صلاحيات RLS ناقصة',
+        'الجداول موجودة، لكن دور anon (زائر بلا حساب) غير مسموح له بالقراءة أو الكتابة.',
+        'نفّذ docs/bootstrap.sql كاملاً (فيه منح الصلاحيات وسياسات RLS).');
+    }
+    if (status === 401 || status === 403 || code === 'PGRST301' || code === 'PGRST302' ||
+      lc.indexOf('invalid api key') >= 0 || lc.indexOf('jwt') >= 0) {
+      return mk('bad-key',
+        'مفتاح anon غير صالح',
+        'Supabase رفض المفتاح الموجود في assets/js/config.js — رمز الخطأ: ' + (code || status),
+        'من Project Settings → API انسخ «anon public key» الجديد، ثم: node tools/sbctl.mjs set --url <URL> --key <KEY>');
+    }
+    if (status === 404) {
+      return mk('bad-url',
+        'عنوان المشروع غير صحيح',
+        'الرابط لا يردّ بصفحة مشروع Supabase (404).',
+        'تأكد من Project URL (ينتهي بـ .supabase.co) أو شغّل: node tools/sbctl.mjs doctor');
+    }
+    if (status >= 500 || status === 522 || status === 524) {
+      return mk('project-down',
+        'مشروع Supabase متوقف أو مشغول',
+        'السيرفر الداخلي للمشروع لا يردّ (الخطأ ' + (code || status) + ') — هذا يحدث غالباً لمشروع مجاني موقوف.',
+        'من Dashboard → Project Settings اضغط «Resume» إن كان موقوفاً، أو أنشئ مشروعاً جديداً: node tools/sbctl.mjs create');
+    }
+    if (!status || lc.indexOf('failed to fetch') >= 0 || lc.indexOf('networkerror') >= 0 ||
+      lc.indexOf('timeout') >= 0 || lc.indexOf('aborted') >= 0) {
+      return mk('network',
+        'لا يوجد اتصال بمشروع Supabase',
+        'الطلب لم يخرج من المتصفح أصلاً (انقطاع الشبكة، بروكسي، أو الموقع يعمل بلا https).',
+        'تأكد من الإنترنت، وأن الموقع يعمل على https (ws/wss كذلك)، ثم أعد المحاولة.');
+    }
+    return mk('unknown', 'خطأ غير معروف', raw || '—',
+      'شغّل: node tools/sbctl.mjs doctor — أو انسخ التقرير من زر «تشخيص الاتصال» في الغرفة.');
+  }
+
+  /** بصمة قصيرة للمفتاح (لا نعرض المفتاح كاملاً أبداً) */
+  function keyFingerprint(key) {
+    const k = String(key || '');
+    if (!k) return '—';
+    return k.slice(0, 12) + '…' + k.slice(-6) + ' (' + k.length + ' حرفاً)';
+  }
+
   function makeBase(kind, label) {
     const em = Emitter();
     this.kind = kind;
@@ -160,24 +222,56 @@
     this._msgsReady = false;     /* هل اكتملت القراءة الأولى للرسائل؟ */
     this._lastStateSig = null;   /* بصمة آخر حالة (تفادي إعادة بثّ نفس الحالة) */
     this._found = false;         /* هل صفّ الغرفة موجود في قاعدة البيانات؟ */
+    this.lastError = null;       /* آخر خطأ (مفهرس ومترجم) */
+    this.warnings = [];          /* تحذيرات غير قاتلة (مثلاً جدول الرسائل مفقود) */
+    this.degraded = false;       /* يعمل لكن без Realtime (الاستطلاع يغطّي) */
   }
   SupabaseTransport.prototype = Object.create(makeBase.prototype);
 
   SupabaseTransport.prototype._fetch = function (path, options) {
     options = options || {};
-    return fetch(this.rest + path, {
+    const self = this;
+    const timeoutMs = options.timeoutMs || (this.cfg.timeoutMs || 9000);
+
+    /* مهلة قصوى للطلب: يمنع تعليق الاتصال لو الشبكة اختنقت */
+    let ctrl = null, timer = null;
+    const init = {
       method: options.method || 'GET',
       headers: Object.assign({}, this.headers, options.headers || {}),
       body: options.body ? JSON.stringify(options.body) : undefined
-    }).then(async (r) => {
+    };
+    if (typeof AbortController !== 'undefined') {
+      try {
+        ctrl = new AbortController();
+        init.signal = ctrl.signal;
+        timer = setTimeout(() => { try { ctrl.abort(); } catch (e) { } }, timeoutMs);
+      } catch (e) { ctrl = null; }
+    }
+
+    return fetch(this.rest + path, init).then(async (r) => {
+      if (timer) clearTimeout(timer);
       const text = await r.text();
       let data = null;
       try { data = text ? JSON.parse(text) : null; } catch (e) { data = text; }
       if (!r.ok) {
         const msg = (data && (data.message || data.error)) || ('HTTP ' + r.status);
-        throw new Error('supabase: ' + msg);
+        const err = new Error('supabase: ' + msg);
+        err.status = r.status;
+        err.code = (data && data.code) || '';
+        err.body = data;
+        err.diag = classifyError(err);
+        self.lastError = err.diag;
+        throw err;
       }
       return data;
+    }, (netErr) => {
+      if (timer) clearTimeout(timer);
+      const err = new Error('supabase: ' + (netErr && netErr.message ? netErr.message : 'تعذّر الاتصال'));
+      err.status = 0;
+      err.code = 'NETWORK';
+      err.diag = classifyError(err);
+      self.lastError = err.diag;
+      throw err;
     });
   };
 
@@ -199,6 +293,20 @@
           ts: Date.parse(r.created_at) || Date.now(),
           kind: r.kind || 'chat', client: r.client_id || null
         }));
+      })
+      .catch(err => {
+        /* سجلّ الرسائل اختياري: غيابه لا يمنع المزامنة (حالة الفيديو).
+           نتحذّر ونكمل بدل أن نفشل الاتصال كله بسبب جدول واحد. */
+        const d = err && err.diag ? err.diag : classifyError(err);
+        self.warnings.push(d);
+        self._msgsReady = false;
+        setTimeout(() => {
+          if (self._closedByUser) return;
+          self.emit('system', {
+            text: 'الدردشة معطّلة مؤقتاً (' + d.title + ') — المزامنة تعمل. ' + d.fix
+          });
+        }, 50);
+        return [];
       });
 
     return Promise.all([pState, pMsgs]).then(([roomRow, messages]) => {
@@ -243,8 +351,147 @@
         };
       });
     }).catch((err) => {
-      self._setStatus('offline', String(err && err.message || err));
+      const d = (err && err.diag) ? err.diag : classifyError(err);
+      self.lastError = d;
+      self._setStatus('offline', d.title);
+      err.diag = d;
       throw err;
+    });
+  };
+
+  /* ============================== فحص المشروع (تشخيص) ============================== */
+  /**
+   * يفحص مشروع Supabase كاملاً ويرجع تقريراً مفصّلاً:
+   * هل REST يردّ؟ هل الجداول موجودة؟ هل Realtime يعمل؟
+   * يُعرض في نافذة «تشخيص الاتصال» ويُستخدم في `tools/sbctl.mjs doctor`.
+   */
+  SupabaseTransport.prototype.diagnose = function (opts) {
+    opts = opts || {};
+    const self = this;
+    const report = {
+      url: this.rest,
+      key: keyFingerprint(this.cfg.anonKey),
+      checkedAt: Date.now(),
+      rest: { ok: false, status: 0, ms: 0, error: null },
+      tables: { rooms: false, messages: false, presence: false },
+      realtime: { ok: false, ms: 0, error: null },
+      room: { id: this.roomId || null, found: !!this._found },
+      transport: this.kind,
+      warnings: [],
+      problems: []
+    };
+
+    const t0 = Date.now();
+    return this._fetch('/rest/v1/rooms?select=room_id&limit=1', { timeoutMs: opts.timeoutMs || 8000 })
+      .then(() => {
+        report.rest = { ok: true, status: 200, ms: Date.now() - t0, error: null };
+        report.tables.rooms = true;
+      })
+      .catch(err => {
+        const d = (err && err.diag) ? err.diag : classifyError(err);
+        report.rest = { ok: false, status: d.status || 0, ms: Date.now() - t0, error: d };
+        report.problems.push(d);
+        /* خطأ 404/42P01 يعني غالباً أن الجداول غير منشأة أصلاً */
+        if (d.code === 'missing-table' || d.code === 'bad-url') {
+          report.tables.rooms = false;
+          return null;
+        }
+        return null;
+      })
+      .then(() => {
+        if (!report.rest.ok) return null;
+        /* بقية الجداول — كل واحد مستقل (حضور اختياري، رسائل اختيارية) */
+        return Promise.all(['messages', 'presence'].map((t) =>
+          this._fetch(`/rest/v1/${t}?select=*&limit=1`, { timeoutMs: opts.timeoutMs || 8000 })
+            .then(() => { report.tables[t] = true; })
+            .catch(err => {
+              const d = (err && err.diag) ? err.diag : classifyError(err);
+              report.tables[t] = false;
+              report.warnings.push(d);
+            })
+        ));
+      })
+      .then(() => {
+        if (!report.rest.ok) return null;
+        return this._probeRealtime(opts.realtimeMs || 4000).then((r) => { report.realtime = r; });
+      })
+      .then(() => {
+        /* ملخّص */
+        if (report.rest.ok && !report.tables.messages) {
+          report.problems.push({
+            code: 'missing-table',
+            title: 'جدول الرسائل غير موجود',
+            detail: 'الدردشة لن تعمل، لكن مزامنة الفيديو تعمل.',
+            fix: 'نفّذ docs/bootstrap.sql في مشروع Supabase.'
+          });
+        }
+        if (report.rest.ok && !report.tables.presence) {
+          report.warnings.push({
+            code: 'missing-table',
+            title: 'جدول الحضور غير موجود',
+            detail: 'قائمة المنضمين لن تتحدّث تلقائياً (المزامنة والدردشة تعملان).',
+            fix: 'نفّذ docs/bootstrap.sql في مشروع Supabase.'
+          });
+        }
+        if (report.rest.ok && !report.realtime.ok) {
+          report.warnings.push({
+            code: 'realtime-down',
+            title: 'Realtime لا يعمل',
+            detail: 'الاستطلاع كل ' + ((global.WT_CONFIG && global.WT_CONFIG.sync && global.WT_CONFIG.sync.pollMs) || 2500) +
+              ' مللي ثانية يغطّي النقص، لكن البث الفوري متأخر.',
+            fix: 'تأكد أن rooms و messages مُضافان إلى منشور supabase_realtime (docs/bootstrap.sql).'
+          });
+        }
+        report.ok = report.rest.ok && report.tables.rooms;
+        return report;
+      })
+      .catch(err => {
+        report.problems.push(classifyError(err));
+        report.ok = false;
+        return report;
+      });
+  };
+
+  /** مصافحة Realtime: هل يقبل الانضمام إلى قناة؟ */
+  SupabaseTransport.prototype._probeRealtime = function (ms) {
+    return new Promise((resolve) => {
+      let ws;
+      try { ws = new WebSocket(this._wsUrl()); }
+      catch (e) { return resolve({ ok: false, ms: 0, error: 'WebSocket غير متاح: ' + (e && e.message) }); }
+      const t0 = Date.now();
+      let done = false;
+      const finish = (r) => {
+        if (done) return;
+        done = true;
+        try { ws.close(); } catch (e) { }
+        resolve(r);
+      };
+      const timer = setTimeout(() => finish({
+        ok: false, ms: Date.now() - t0, error: 'انتهت المهلة (' + (ms || 4000) + ' مللي ثانية)'
+      }), ms || 4000);
+      ws.onopen = () => {
+        try {
+          ws.send(JSON.stringify({
+            topic: 'wt:diag', event: 'phx_join', ref: '1',
+            payload: { config: { broadcast: { self: false }, presence: { key: 'diag' } } }
+          }));
+        } catch (e) { }
+      };
+      ws.onmessage = (ev) => {
+        let msg; try { msg = JSON.parse(ev.data); } catch (e) { return; }
+        if (msg.event === 'phx_reply' && msg.payload) {
+          if (msg.payload.status === 'ok') {
+            clearTimeout(timer);
+            finish({ ok: true, ms: Date.now() - t0, error: null });
+          } else if (msg.payload.status === 'error') {
+            clearTimeout(timer);
+            const why = (msg.payload.response && msg.payload.response.message) || 'رُفض الانضمام إلى القناة';
+            finish({ ok: false, ms: Date.now() - t0, error: why });
+          }
+        }
+      };
+      ws.onerror = () => { clearTimeout(timer); finish({ ok: false, ms: Date.now() - t0, error: 'فشل اتصال Realtime' }); };
+      ws.onclose = () => { clearTimeout(timer); finish({ ok: false, ms: Date.now() - t0, error: 'أُغلق اتصال Realtime' }); };
     });
   };
 
@@ -379,7 +626,8 @@
     const reconnect = () => {
       if (self._closedByUser) return;
       self.connected = false;
-      self._setStatus('connecting', 'إعادة الاتصال بـ Supabase…');
+      self.degraded = true;          /* الاستطلاع يغطّي البث المباشر مؤقتاً */
+      self._setStatus('connecting', 'إعادة الاتصال بـ Supabase… (الاستطلاع يعمل)');
       clearInterval(self._hbTimer);
       const delay = Math.min(10000, 1000 * Math.pow(2, self._retry++));
       setTimeout(() => self._openRealtime(), delay);
@@ -611,6 +859,11 @@
         err => {
           try { t.close(); } catch (e) { }
           console.warn('[WT] فشل الوضع ' + c.tag + ':', err && err.message);
+          onStatus && onStatus({
+            state: 'failed', tag: c.tag,
+            detail: (err && err.diag) ? err.diag.title : String((err && err.message) || err),
+            error: err
+          });
           return tryNext();
         }
       );
@@ -620,6 +873,7 @@
   }
 
   global.WTTransport = {
-    WsTransport, SupabaseTransport, LocalTransport, connectRoom, forceLocal
+    WsTransport, SupabaseTransport, LocalTransport, connectRoom, forceLocal,
+    classifyError, keyFingerprint
   };
 })(window);

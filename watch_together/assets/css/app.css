@@ -1391,3 +1391,49 @@ body.chat-focus .chat-fab { display: none !important; }
   .rtopbar { padding-top: calc(9px + env(safe-area-inset-top, 0px)); }
   .toast-host { top: calc(18px + env(safe-area-inset-top, 0px)); }
 }
+
+/* =========================================================
+   نافذة تشخيص الاتصال (Supabase / Java / محلي)
+   ========================================================= */
+.modal__card--diag { width: min(560px, 100%); max-height: min(86vh, 760px); display: flex; flex-direction: column; }
+.diag__body { overflow-y: auto; display: flex; flex-direction: column; gap: 14px; padding-inline-end: 2px; }
+.diag__loading { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 13.5px; padding: 10px 2px; }
+.diag__actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+.diag__actions .btn { flex: 1 1 auto; }
+
+.diag-sec { display: flex; flex-direction: column; gap: 7px; }
+.diag-sec__t { margin: 0; font-size: 12.5px; font-weight: 800; color: var(--muted); letter-spacing: .2px; display: flex; align-items: center; gap: 8px; }
+.diag-verdict { font-size: 12px; font-weight: 800; padding: 2px 9px; border-radius: 999px; }
+.diag-verdict.is-good { background: rgba(45, 212, 167, .16); color: var(--ok); }
+.diag-verdict.is-bad { background: rgba(255, 92, 114, .16); color: var(--err); }
+
+.diag-row {
+  display: flex; align-items: center; gap: 9px;
+  padding: 9px 12px; border-radius: 12px;
+  background: var(--surface); border: 1px solid var(--border);
+  font-size: 13px;
+}
+.diag-row__ic { color: var(--muted-2); display: inline-flex; flex: 0 0 auto; }
+.diag-row__k { color: var(--muted); font-weight: 700; flex: 0 0 auto; }
+.diag-row__v { margin-inline-start: auto; font-weight: 700; text-align: left; word-break: break-all; }
+.diag-row__v code { direction: ltr; display: inline-block; font-family: ui-monospace, Menlo, monospace; font-size: 11.5px; color: var(--text); }
+.diag-row.is-good { border-color: rgba(45, 212, 167, .35); }
+.diag-row.is-good .diag-row__v { color: var(--ok); }
+.diag-row.is-warn { border-color: rgba(255, 176, 32, .32); }
+.diag-row.is-warn .diag-row__v { color: var(--warn); }
+.diag-row.is-bad { border-color: rgba(255, 92, 114, .35); }
+.diag-row.is-bad .diag-row__v { color: var(--err); }
+
+.diag-note { margin: 2px 0 0; font-size: 12.5px; line-height: 1.7; color: var(--muted); }
+.diag-note.is-bad { color: var(--err); }
+.diag-note code { direction: ltr; display: inline-block; font-family: ui-monospace, Menlo, monospace; font-size: 11.5px; background: var(--surface-2); padding: 1px 6px; border-radius: 6px; }
+
+.diag-problem {
+  padding: 11px 13px; border-radius: 12px;
+  background: rgba(255, 92, 114, .07); border: 1px solid rgba(255, 92, 114, .25);
+  display: flex; flex-direction: column; gap: 4px;
+}
+.diag-problem__t { font-size: 13px; font-weight: 800; color: var(--err); }
+.diag-problem__d { font-size: 12.3px; color: var(--muted); line-height: 1.65; }
+.diag-problem__f { font-size: 12.3px; color: var(--text); line-height: 1.65; }
+.diag-problem__f::before { content: "الحل: "; color: var(--ok); font-weight: 800; }

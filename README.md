@@ -21,13 +21,21 @@
 - **التحاق المتأخرين:** من يدخل بعد بدء العرض يأخذ الوقت الحالي المحسوب — لا يبدأ من الصفر.
 - **أيقونات SVG** في كل الواجهة (بلا إيموجي) — الإيموجي فقط في تفاعل الرسائل.
 - **يعمل على استضافة عادية** (Supabase) أو عبر **سيرفر Java** مرفق (JDK فقط، بدون مكتبات).
-- **175 اختباراً** تعمل بلا متصفح: `smoke.mjs` و `room-dom.mjs` و `join-room.mjs` في `watch_together/docs/tests/`.
+- **تشخيص الاتصال في الغرفة:** زر «تشخيص» يشرح السبب والحل بدل رسالة «تعذّر الاتصال» الغامضة.
+- **أداة سيرفر جديد:** `node watch_together/tools/sbctl.mjs create` ينشئ مشروع Supabase جديداً
+  وينفّذ المخطط وربطه بالموقع بأمر واحد.
+- **226 اختباراً** تعمل بلا متصفح: `smoke.mjs` و `room-dom.mjs` و `join-room.mjs` و
+  `supabase-server.mjs` في `watch_together/docs/tests/`.
 
 ```bash
 cd watch_together/java-server && ./build.sh && ./run.sh   # → http://localhost:8080
 ```
 
 التفاصيل الكاملة: [`watch_together/README.md`](watch_together/README.md)
+
+> 🚀 **«في الغرفة يتعذّر الاتصال» — أريد سيرفراً جديداً على Supabase**
+> → [`watch_together/docs/new-supabase-server.md`](watch_together/docs/new-supabase-server.md)
+> (إنشاء مشروع جديد بأمر واحد · فحص المشروع الحالي · تشخيص من داخل الغرفة)
 
 > 🩺 **رفعت الملفات ولم تظهر التغييرات؟** → [`watch_together/docs/troubleshooting.md`](watch_together/docs/troubleshooting.md)
 > (السببان الأكثر شيوعاً: السحب من فرع قديم، أو كاش المتصفح — الحل في أول خطوتين)
