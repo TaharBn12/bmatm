@@ -1,0 +1,46 @@
+# =====================================================================
+#  WatchTogether — إعدادات Apache (cPanel / الاستضافة المشتركة)
+# =====================================================================
+
+# 1) الصفحات لا تُخزَّن أبداً (حتى تظهر التعديلات فوراً بعد الرفع)
+<FilesMatch "\.(html|htm)$">
+  <IfModule mod_headers.c>
+    Header set Cache-Control "no-cache, no-store, must-revalidate"
+    Header set Pragma "no-cache"
+    Header set Expires "0"
+  </IfModule>
+</FilesMatch>
+
+# 2) ملفات CSS/JS تحمل رقم إصدار (?v=…) فنخزّنها أسبوعاً بأمان
+<FilesMatch "\.(css|js|mjs)$">
+  <IfModule mod_headers.c>
+    Header set Cache-Control "public, max-age=604800"
+  </IfModule>
+</FilesMatch>
+
+# 3) المكتبات المضمّنة لا تتغير إلا نادراً → تخزين طويل
+<FilesMatch "(hls\.min\.js|qrcode\.min\.js)$">
+  <IfModule mod_headers.c>
+    Header set Cache-Control "public, max-age=2592000, immutable"
+  </IfModule>
+</FilesMatch>
+
+# 4) ضغط Gzip (يسرّع التحميل كثيراً على الجوال)
+<IfModule mod_deflate.c>
+  AddOutputFilterByType DEFLATE text/html text/plain text/css text/markdown
+  AddOutputFilterByType DEFLATE application/javascript application/json image/svg+xml
+</IfModule>
+
+# 5) ترميز UTF-8 افتراضي (مهم للعربية)
+AddDefaultCharset UTF-8
+
+# 6) الصفحة الافتراضية
+DirectoryIndex index.html
+
+# 7) حماية الملفات الحساسة من الوصول المباشر
+<FilesMatch "\.(sql|mjs|sh|bat|md)$">
+  Require all denied
+</FilesMatch>
+
+# 8) إن أردت منع سرد محتويات المجلدات
+Options -Indexes
