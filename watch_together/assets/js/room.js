@@ -1423,8 +1423,9 @@
       el.drawer.setAttribute('aria-hidden', open ? 'false' : 'true');
       el.drawerOpenBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
       document.body.classList.toggle('drawer-open', !!open);
-      if (open) setTimeout(() => el.drawerCloseBtn.focus(), 30);
-      else el.drawerOpenBtn.focus();
+      /* preventScroll: منع تحريك الصفحة عند نقل التركيز (خاصة في RTL على الهاتف) */
+      if (open) setTimeout(() => el.drawerCloseBtn.focus({ preventScroll: true }), 30);
+      else el.drawerOpenBtn.focus({ preventScroll: true });
     };
     el.drawerOpenBtn.addEventListener('click', () => setDrawerOpen(true));
     el.drawerCloseBtn.addEventListener('click', () => setDrawerOpen(false));
