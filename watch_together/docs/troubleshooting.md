@@ -44,7 +44,7 @@ git ls-tree -r origin/main --name-only | grep watch_together | head
 | Android (Chrome) | ⋮ ← السجل ← مسح بيانات التصفح ← «الصور والملفات المخزنة مؤقتاً» |
 
 **الحل الدائم (مُطبَّق في المشروع الآن):**
-- كل مراجع CSS/JS تحمل رقم إصدار: `assets/css/app.css?v=2.6.2`
+- كل مراجع CSS/JS تحمل رقم إصدار: `assets/css/app.css?v=2.6.3`
   → عند أي تعديل ارفع الرقم في الملفات الثلاثة (`index.html`, `room.html`, `auth.html`).
   (أو بالأمر: `node tools/sbctl.mjs set --url … --key …` يرفع الرقم تلقائياً.)
 - ملف **`.htaccess`** يمنع تخزين صفحات HTML نهائياً ويضغط المحتوى بـ Gzip.
@@ -265,7 +265,7 @@ select id, body from public.messages limit 5;                     -- القرا�
 insert into public.messages(room_id, name, body) values ('t','اختبار','تعمل');  -- الكتابة تعمل
 ```
 
-> ✅ **منذ 2.6.2** كل الملفات (`01-bootstrap.sql` و`02-schema.sql` و`03-migration.sql` و`04-repair-messages.sql`)
+> ✅ **منذ 2.6.3** كل الملفات (`01-bootstrap.sql` و`02-schema.sql` و`03-migration.sql` و`04-repair-messages.sql`)
 > تُصلح عمود المعرّف تلقائياً، ومنح التسلسل صار داخل فحص `to_regclass`
 > فلا يفشل أي سكربت حتى لو لم يكن للتسلسل وجود. أُضيفت فحوص آلية لهذا في `docs/tests/supabase-server.mjs`.
 
@@ -366,7 +366,7 @@ console.table({
 ```
 
 النتيجة المتوقعة في نسخة سليمة:
-- **الإصدار:** `2.6.2`
+- **الإصدار:** `2.6.3`
 - **الأيقونات:** رقم أكبر من 20
 - **المزامنة/الحالة:** «Supabase متصل» أو «سيرفر Java متاح»
 

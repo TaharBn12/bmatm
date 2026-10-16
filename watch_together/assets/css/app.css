@@ -490,7 +490,7 @@ footer a:hover { color: var(--brand-2); }
 }
 
 /* ============================== صفحة الغرفة ============================== */
-.room { min-height: 100vh; display: flex; flex-direction: column; }
+.room { min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: column; }
 
 .rtopbar {
   position: sticky; top: 0; z-index: 60;
@@ -842,7 +842,7 @@ footer a:hover { color: var(--brand-2); }
 }
 
 /* ============================== صفحة الدخول ============================== */
-.auth-page { min-height: 100vh; display: grid; }
+.auth-page { min-height: 100vh; min-height: 100dvh; display: grid; }
 
 .auth-wrap {
   width: min(1080px, 100% - 28px);
@@ -1863,9 +1863,10 @@ body.drawer-open { overflow: hidden; }
 body.site-viewer-open { overflow: hidden; }
 
 /* =========================================================
-   الإصدار 2.5 — التحكم من داخل الفيديو + إعادة تصميم الغرفة
-   لا يوجد شريط تقدم/تحكم منفصل أسفل المشغّل: كل شيء فوق
-   الفيديو نفسه (يظهر عند اللمس/التحريك ويختفي أثناء التشغيل)
+   الإصدار 2.5 — إعادة تصميم الغرفة
+   (ملاحظة 2.6: قواعد طبقة التحكم فوق الفيديو أُزيلت — الشريط
+    صار أسفل المشغّل داخل بطاقة واحدة، انظر كتلة 2.6 في آخر الملف.
+    ما بقي هنا: خلفية الغرفة، المسرح السينمائي، زر التشغيل الكبير.)
    ========================================================= */
 .room-body { background: #070a11; }
 .room-body .bg-fx, .room-body .blob { display: none; }
@@ -1885,16 +1886,7 @@ body.site-viewer-open { overflow: hidden; }
 }
 .player__placeholder-icon { color: #8f9ab5; opacity: .8; }
 
-/* ---------- طبقة التحكم داخل الفيديو ---------- */
-.room-body .ctrlbar.vcontrols {
-  position: absolute; inset-inline: 0; bottom: 0; top: auto; z-index: 6;
-  display: flex; flex-direction: column; gap: 1px;
-  min-height: 0; padding: 30px 14px 10px;
-  border: 0; border-radius: 0; box-shadow: none;
-  background: linear-gradient(to top, rgba(2, 3, 8, .86) 0%, rgba(2, 3, 8, .48) 52%, transparent 100%);
-  opacity: 1; transform: translateY(0);
-  transition: opacity .25s ease, transform .25s ease;
-}
+/* ---------- (2.6) الشريط لم يعد فوق الفيديو — انتقل أسفل المشغّل، انظر كتلة 2.6 في آخر الملف ---------- */
 .room-body .ctrlbar.vcontrols[hidden] { display: none !important; }
 .player.is-embed .vcenter { display: none !important; }
 
@@ -1995,7 +1987,6 @@ body.site-viewer-open { overflow: hidden; }
   .room-main { padding-top: 10px; gap: 10px; }
   .room-body .stage, .stage .player { border-radius: 14px; }
   .vcenter { width: 62px; height: 62px; }
-  .room-body .ctrlbar.vcontrols { padding: 22px 9px 7px; }
   .vcontrols .ctrl-btn { width: 36px; height: 36px; border-radius: 11px; }
   .vcontrols .vc__play { width: 42px; height: 42px; }
   /* شريط الصوت حُذف في 2.6 */
@@ -2108,4 +2099,78 @@ body.chat-focus .room-main { gap: 10px; }
 }
 @media (max-width: 400px) {
   .vcontrols .vc__times { display: none; }      /* على الشاشات الضيقة جداً: الشريط أوسع */
+}
+
+/* =========================================================
+   الإصدار 2.6.2 — دعم الهاتف الكامل في غرفة المشاهدة
+   ---------------------------------------------------------
+   • أهداف لمس ≥ 44px على الأجهزة اللمسية (pointer: coarse)
+   • لا تكبير نصّي تلقائي ولا وميض لمس على iOS
+   • أوضاع الأفق القصيرة (هاتف مقلوب) لا تخنق الرسائل
+   • دراور الغرفة: عرضه يبقى ≤ عرض الشاشة - 22px ليظل شريط
+     التعتيم قابلاً للنقر دائماً، وتمريره ناعم داخل الشاشة
+   ========================================================= */
+
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+html, body, a, button, input, textarea, select, label, summary { -webkit-tap-highlight-color: transparent; }
+
+/* دراور الغرفة على الهاتف: تمرير ناعم + قفل خلفية بلا ارتداد */
+.room-drawer { -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
+/* الظلّ يتّجه إلى داخل الصفحة دائماً (الواجهة عربية RTL → الدراور من اليمين) */
+[dir="rtl"] .room-drawer { box-shadow: -22px 0 55px rgba(0, 0, 0, .42); }
+body.drawer-open { overscroll-behavior: none; }
+
+/* أهداف اللمس */
+@media (pointer: coarse) {
+  .vcontrols .ctrl-btn { width: 44px; height: 44px; border-radius: 13px; }
+  .vcontrols .vc__play { width: 50px; height: 50px; border-radius: 15px; }
+  .vcenter { width: 68px; height: 68px; }
+  .chat__send { width: 46px; height: 46px; border-radius: 14px; }
+  .chat__input { min-height: 46px; font-size: 16px; }   /* 16px يمنع تكبير iOS عند الكتابة */
+  .input, .field, textarea, select, input[type="text"], input[type="email"], input[type="password"] { font-size: 16px; }
+  .drawer-open, .room-bar .drawer-open { min-height: 44px; padding: 8px 12px; }
+  .drawer-action { min-height: 44px; font-size: 12px; }
+  .member-role-btn { min-height: 38px; padding: 7px 10px; font-size: 11px; }
+  .code-pill { min-height: 40px; padding: 4px 6px; }
+  .emoji-btn { min-height: 40px; padding: 8px 11px; font-size: 17px; }
+  .react-btn { min-width: 42px; height: 40px; }
+  .room-bar .player-action { width: 44px; height: 44px; }
+  .modal__card .btn { min-height: 46px; }
+  .player-action { min-height: 46px; }
+}
+
+/* الدردشة والمودالات على الهاتف */
+@media (max-width: 640px) {
+  .chat__foot { padding-bottom: calc(9px + env(safe-area-inset-bottom, 0px)); }
+  .modal { padding: 12px; }
+  .modal__card { width: min(100%, 560px); max-height: 88dvh; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+  .room-bar { min-height: 48px; }
+  .room-bar .rtopbar { min-width: 0; }
+}
+
+/* هواتف ضيّقة جداً: الدراور يملأ العرض تقريباً مع إبقاء شريط نقر للإغلاق */
+@media (max-width: 420px) {
+  .room-drawer {
+    width: min(calc(100vw - 22px), 420px);
+    padding-inline: 14px; gap: 14px;
+  }
+  .drawer__actions { gap: 8px; }
+  .room-drawer .room-members .drawer__people { grid-template-columns: repeat(auto-fill, minmax(78px, 1fr)); }
+  .room-main > #chat { min-height: 220px; }
+}
+
+/* الهاتف مقلوباً (أفقياً) وارتفاعه قصير: صغّر الفيديو لتبقى الرسائل ظاهرة */
+@media (max-height: 540px) and (orientation: landscape) {
+  .room-body .stage { width: min(100%, max(280px, 44vh)); }
+  .room-main > #chat { min-height: 200px; }
+  .room-drawer { width: min(460px, calc(100vw - 28px)); }
+  .room-bar { min-height: 46px; }
+}
+
+/* محاذاة الرسائل والخانة على الشاشات الصغيرة جداً */
+@media (max-width: 360px) {
+  .room-main { padding-inline: 7px; }
+  .chat__foot { padding: 8px 7px calc(8px + env(safe-area-inset-bottom, 0px)); }
+  .msg__bubble { max-width: 92%; }
+  .room-body .ctrlbar.vcontrols { padding: 7px 7px; gap: 6px; }
 }
