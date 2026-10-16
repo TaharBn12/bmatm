@@ -331,7 +331,7 @@ async function testLegacyMessagesTable() {
   /* التنبيه الودي يظهر مرة واحدة داخل الدردشة */
   const chat = env.byId.get('chatBody').children.map(c => String(c.innerHTML || '')).join(' ');
   t('جدول قديم: تنبيه بأن الجدول قديم والعميل تكيّف معه',
-    chat.includes('جدول messages قديم') || chat.includes('repair-messages.sql'), chat.slice(0, 200));
+    chat.includes('جدول messages قديم') || chat.includes('04-repair-messages.sql'), chat.slice(0, 200));
 
   /* التشخيص يكتشف الحالة ويشرح الحل */
   const probe = new env.sandbox.WTTransport.SupabaseTransport({ url: 'http://127.0.0.1:9', anonKey: 'k' });
@@ -391,16 +391,16 @@ function testSbctl() {
 
   /* مخطط القاعدة يحتوي قسم إصلاح جدول الرسائل (وإلا عاد خطأ عمود body أو خطأ التسلسل) */
   const boot = bootstrapSql();
-  t('sbctl: bootstrap.sql يصلح العمود body', /rename column %I to body/.test(boot), '');
-  t('sbctl: bootstrap.sql يعيد تحميل كاش PostgREST', /notify pgrst, 'reload schema'/.test(boot), '');
+  t('sbctl: 01-bootstrap.sql يصلح العمود body', /rename column %I to body/.test(boot), '');
+  t('sbctl: 01-bootstrap.sql يعيد تحميل كاش PostgREST', /notify pgrst, 'reload schema'/.test(boot), '');
   const repair = repairSql();
-  t('sbctl: repair-messages.sql موجود ويصلح العمود',
+  t('sbctl: 04-repair-messages.sql موجود ويصلح العمود',
     /alter table public\.messages/.test(repair) && /notify pgrst/.test(repair), '');
 
   /* خطأ relation "public.messages_id_seq" does not exist:
      لا يجوز منح التسلسل منحاً غير محمي — الجداول القديمة قد لا تملك تسلسلاً أصلاً */
-  const sqlDir = path.join(ROOT, 'docs');   /* ROOT = مجلد watch_together */
-  const sqlFiles = ['bootstrap.sql', 'schema.sql', 'migration.sql', 'repair-messages.sql'];
+  const sqlDir = path.join(ROOT, 'docs', 'sql');   /* ROOT = مجلد watch_together */
+  const sqlFiles = ['01-bootstrap.sql', '02-schema.sql', '03-migration.sql', '04-repair-messages.sql'];
   const rawGrant = 'grant usage, select on sequence public.messages_id_seq to anon, authenticated;';
   for (const f of sqlFiles) {
     const sql = fs.readFileSync(path.join(sqlDir, f), 'utf8');
@@ -418,7 +418,53 @@ function testSbctl() {
     return sql.slice(sql.indexOf('-- 1)'));
   };
   t('sql: bootstrap/schema/migration متطابقة في المتن',
-    bodyOf('bootstrap.sql') === bodyOf('schema.sql') && bodyOf('bootstrap.sql') === bodyOf('migration.sql'), '');
+    bodyOf('01-bootstrap.sql') === bodyOf('02-schema.sql') && bodyOf('01-bootstrap.sql') === bodyOf('03-migration.sql'), '');
+
+  /* الترتيب بالأرقام في مجلد واحد: 00…06 + دليل */
+  const numbered = ['00-reset-drop-all.sql', '01-bootstrap.sql', '02-schema.sql', '03-migration.sql',
+    '04-repair-messages.sql', '05-health-check.sql', '06-cleanup-cron.sql'];
+  t('sql: كل الملفات مرقّمة في docs/sql',
+    numbered.every(f => fs.existsSync(path.join(sqlDir, f))), numbered.join(','));
+  t('sql: دليل docs/sql/README.md موجود ويشرح الترتيب',
+    fs.existsSync(path.join(sqlDir, 'README.md')) &&
+    /00-reset-drop-all\.sql/.test(fs.readFileSync(path.join(sqlDir, 'README.md'), 'utf8')), '');
+
+  /* 00: يحذف كل الجداول فعلاً، وأوامره محمية بـ if exists، ويطلب إعادة تحميل المخطط */
+  const reset = fs.readFileSync(path.join(sqlDir, '00-reset-drop-all.sql'), 'utf8');
+  for (const tbl of ['rooms', 'messages', 'presence', 'room_members', 'room_queue']) {
+    t(`sql: 00-reset يحذف جدول ${tbl}`,
+      new RegExp('drop table if exists public\\.' + tbl + '\\s+cascade').test(reset), '');
+  }
+  t('sql: 00-reset يحذف مخطط الأسرار والتسلسلات والعرض',
+    /drop schema if exists wt_private cascade/.test(reset) &&
+    /drop sequence if exists public\.messages_id_seq/.test(reset) &&
+    /drop view if exists public\.wt_health/.test(reset), '');
+  t('sql: 00-reset ينبّه أنه يحذف كل شيء ويوجّه إلى 01',
+    /يحذف كل شيء/.test(reset) && /01-bootstrap\.sql/.test(reset), '');
+  t('sql: 00-reset يعيد تحميل كاش PostgREST', /notify pgrst, 'reload schema'/.test(reset), '');
+
+  /* 05: فحص للقراءة فقط يتحقق من body وid والتسلسل */
+  const health = fs.readFileSync(path.join(sqlDir, '05-health-check.sql'), 'utf8');
+  t('sql: 05-health يفحص الأعمدة والتسلسل والصلاحيات وRealtime',
+    /information_schema\.columns/.test(health) && /pg_get_serial_sequence/.test(health) &&
+    /role_table_grants/.test(health) && /pg_publication_tables/.test(health), '');
+  t('sql: 05-health يرسل رسالة فحص ويحذفها فوراً (بلا أثر)',
+    /insert into public\.messages/.test(health) && /delete from public\.messages where id = v_id/.test(health), '');
+
+  /* 06: تنظيف دوري اختياري */
+  const cron = fs.readFileSync(path.join(sqlDir, '06-cleanup-cron.sql'), 'utf8');
+  t('sql: 06-cleanup يستعمل pg_cron ويُنشئ المهام بأسماء ثابتة',
+    /create extension if not exists pg_cron/.test(cron) && /cron\.schedule\('wt-cleanup-/.test(cron), '');
+  t('sql: 06-cleanup آمن للتكرار (unschedule قبل schedule)',
+    cron.indexOf('cron.unschedule') < cron.indexOf('cron.schedule'), '');
+
+  /* لا إشارات قديمة إلى مسارات الملفات قبل ترقيمها */
+  const staleRe = /docs\/(bootstrap|schema|migration|repair-messages)\.sql/;
+  const scanFiles = ['README.md', 'docs/troubleshooting.md', 'docs/supabase-setup.md',
+    'docs/deployment.md', 'docs/new-supabase-server.md', 'tools/sbctl.mjs',
+    'assets/js/transport.js', 'assets/js/config.js', 'assets/js/home.js'];
+  const stale = scanFiles.filter(f => staleRe.test(fs.readFileSync(path.join(ROOT, f), 'utf8')));
+  t('sql: لا إشارات إلى مسارات SQL القديمة (كلها docs/sql/NN-*.sql)', stale.length === 0, stale.join(','));
 
   /* استخراج مفتاح anon من صيغ api-keys المختلفة */
   t('sbctl: يستخرج anon من صيغة القائمة',
@@ -584,7 +630,7 @@ async function testDoctor() {
   const r6 = await doctorProject({ url: legacyId.url, anonKey: 'k', realtime: false, write: false });
   t('doctor: يكشف عمود المعرّف القديم (legacy-id)',
     r6.problems.some(p => p.code === 'legacy-id'), JSON.stringify(r6.problems.map(p => p.code)));
-  t('doctor: حلّ المعرّف القديم يذكر repair-messages.sql',
+  t('doctor: حلّ المعرّف القديم يذكر 04-repair-messages.sql',
     r6.problems.some(p => p.code === 'legacy-id' && /repair-messages\.sql/.test(String(p.fix || ''))));
   await legacyId.close();
 

@@ -106,7 +106,7 @@
           let body = {};
           try { body = await r.json(); } catch (e) { body = {}; }
           if (r.ok) finish('Supabase متصل', 'badge--live');
-          else if (body && (body.code === '42P01' || r.status === 404)) finish('أنشئ الجداول (docs/schema.sql)', 'badge--host');
+          else if (body && (body.code === '42P01' || r.status === 404)) finish('أنشئ الجداول (docs/sql/02-schema.sql)', 'badge--host');
           else if (body && body.code === '42501') finish('فعّل صلاحيات RLS', 'badge--host');
           else finish('Supabase: ' + (body.message || r.status), 'badge--host');
         }).catch(() => { clearTimeout(t); finish('وضع محلي (بدون سيرفر)', ''); });

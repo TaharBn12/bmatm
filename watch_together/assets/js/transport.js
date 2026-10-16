@@ -86,7 +86,7 @@
       return mk('schema-mismatch',
         'عمود «' + col + '» غير موجود في جدول ' + tbl,
         'الجدول موجود لكن شكله أقدم من الموقع (أو أن كاش PostgREST قديم) — رمز الخطأ: PGRST204.',
-        'افتح SQL Editor ونفّذ docs/repair-messages.sql (أو docs/bootstrap.sql كاملاً)، ثم: NOTIFY pgrst, \'reload schema\';');
+        'افتح SQL Editor ونفّذ docs/sql/04-repair-messages.sql (أو docs/sql/01-bootstrap.sql كاملاً)، ثم: NOTIFY pgrst, \'reload schema\';');
     }
 
     /* جدول قديم بلا تسلسل للمعرّف: العميل لا يرسل id ويعتمد على messages_id_seq،
@@ -96,7 +96,7 @@
       return mk('legacy-id',
         'جدول messages قديم: المعرّف id بلا قيمة افتراضية',
         'الموقع يرسل نصّ الرسالة فقط ويعتمد على القاعدة لتوليد id من تسلسل messages_id_seq — وجدولك القديم لا يملكه.',
-        'افتح SQL Editor ونفّذ docs/repair-messages.sql (يُنشئ التسلسل ويربطه بعمود id)، ثم: NOTIFY pgrst, \'reload schema\';');
+        'افتح SQL Editor ونفّذ docs/sql/04-repair-messages.sql (يُنشئ التسلسل ويربطه بعمود id)، ثم: NOTIFY pgrst, \'reload schema\';');
     }
 
     if (code === '42P01' || code === 'PGRST205' ||
@@ -104,13 +104,13 @@
       return mk('missing-table',
         'جداول قاعدة البيانات غير موجودة',
         'مشروع Supabase يردّ لكنه لا يعرف جداول (rooms / messages / presence) — رمز الخطأ: ' + (code || status),
-        'افتح SQL Editor في مشروع Supabase، الصق محتوى docs/bootstrap.sql (أو docs/schema.sql) ثم Run.');
+        'افتح SQL Editor في مشروع Supabase، الصق محتوى docs/sql/01-bootstrap.sql (أو docs/sql/02-schema.sql) ثم Run.');
     }
     if (code === '42501') {
       return mk('rls',
         'صلاحيات RLS ناقصة',
         'الجداول موجودة، لكن دور anon (زائر بلا حساب) غير مسموح له بالقراءة أو الكتابة.',
-        'نفّذ docs/bootstrap.sql كاملاً (فيه منح الصلاحيات وسياسات RLS).');
+        'نفّذ docs/sql/01-bootstrap.sql كاملاً (فيه منح الصلاحيات وسياسات RLS).');
     }
     if (status === 401 || status === 403 || code === 'PGRST301' || code === 'PGRST302' ||
       lc.indexOf('invalid api key') >= 0 || lc.indexOf('jwt') >= 0) {
@@ -606,7 +606,7 @@
             report.problems.push(Object.assign({}, d, {
               title: d.title || 'عمود نصّ الرسالة («' + field + '») غير موجود في جدول messages',
               detail: 'جدول الرسائل في مشروعك بُني بنسخة قديمة من المخطط، فلا يقبل الموقع الكتابة فيه.',
-              fix: 'نفّذ docs/repair-messages.sql في SQL Editor (يضيف/يُعيد تسمية العمود ثم يعيد تحميل كاش PostgREST).'
+              fix: 'نفّذ docs/sql/04-repair-messages.sql في SQL Editor (يضيف/يُعيد تسمية العمود ثم يعيد تحميل كاش PostgREST).'
             }));
             return this._detectMessageColumns().then(cols => {
               const f = pickMessageField(cols);
@@ -626,7 +626,7 @@
             code: 'missing-table',
             title: 'جدول الرسائل غير موجود',
             detail: 'الدردشة لن تعمل، لكن مزامنة الفيديو تعمل.',
-            fix: 'نفّذ docs/bootstrap.sql في مشروع Supabase.'
+            fix: 'نفّذ docs/sql/01-bootstrap.sql في مشروع Supabase.'
           });
         }
         if (report.rest.ok && report.tables.messages && report.messageField && report.messageField !== 'body') {
@@ -634,7 +634,7 @@
             code: 'schema-mismatch',
             title: 'جدول messages قديم (العمود «' + report.messageField + '» بدل «body»)',
             detail: 'العميل تكيّف معه والدردشة تعمل، لكن الأنسب توحيد المخطط.',
-            fix: 'نفّذ docs/repair-messages.sql في SQL Editor.'
+            fix: 'نفّذ docs/sql/04-repair-messages.sql في SQL Editor.'
           });
         }
         if (report.rest.ok && !report.tables.presence) {
@@ -642,16 +642,16 @@
             code: 'missing-table',
             title: 'جدول الحضور غير موجود',
             detail: 'قائمة الحضور القديمة غير متاحة؛ أدوار الغرفة تستخدم room_members.',
-            fix: 'نفّذ docs/bootstrap.sql في مشروع Supabase.'
+            fix: 'نفّذ docs/sql/01-bootstrap.sql في مشروع Supabase.'
           });
         }
         if (report.rest.ok && !report.tables.room_members) {
           report.problems.push({ code: 'missing-table', title: 'جدول الأدوار غير موجود',
-            detail: 'لن يمكن التحقق من المنشئ والمنظّمين على الخادم.', fix: 'نفّذ docs/bootstrap.sql في مشروع Supabase.' });
+            detail: 'لن يمكن التحقق من المنشئ والمنظّمين على الخادم.', fix: 'نفّذ docs/sql/01-bootstrap.sql في مشروع Supabase.' });
         }
         if (report.rest.ok && !report.tables.room_queue) {
           report.problems.push({ code: 'missing-table', title: 'جدول قائمة التشغيل غير موجود',
-            detail: 'القائمة المشتركة غير متاحة.', fix: 'نفّذ docs/bootstrap.sql في مشروع Supabase.' });
+            detail: 'القائمة المشتركة غير متاحة.', fix: 'نفّذ docs/sql/01-bootstrap.sql في مشروع Supabase.' });
         }
         if (report.rest.ok && !report.realtime.ok) {
           report.warnings.push({
@@ -659,7 +659,7 @@
             title: 'Realtime لا يعمل',
             detail: 'الاستطلاع كل ' + ((global.WT_CONFIG && global.WT_CONFIG.sync && global.WT_CONFIG.sync.pollMs) || 2500) +
               ' مللي ثانية يغطّي النقص، لكن البث الفوري متأخر.',
-            fix: 'تأكد أن rooms و messages و room_members و room_queue مُضافة إلى منشور supabase_realtime (docs/bootstrap.sql).'
+            fix: 'تأكد أن rooms و messages و room_members و room_queue مُضافة إلى منشور supabase_realtime (docs/sql/01-bootstrap.sql).'
           });
         }
         report.ok = report.rest.ok && report.tables.rooms && report.problems.length === 0;
@@ -976,7 +976,7 @@
       code: 'schema-mismatch', column: field,
       title: 'جدول messages قديم (العمود «' + field + '» بدل «body»)',
       detail: 'الرسائل تُقرأ وتُكتب في العمود «' + field + '»، والدردشة تعمل الآن.',
-      fix: 'نفّذ docs/repair-messages.sql في SQL Editor ليعود الجدول مطابقاً للمخطط (ثم NOTIFY pgrst, \'reload schema\';).'
+      fix: 'نفّذ docs/sql/04-repair-messages.sql في SQL Editor ليعود الجدول مطابقاً للمخطط (ثم NOTIFY pgrst, \'reload schema\';).'
     };
     const self = this;
     setTimeout(() => {

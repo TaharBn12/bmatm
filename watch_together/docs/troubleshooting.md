@@ -44,7 +44,7 @@ git ls-tree -r origin/main --name-only | grep watch_together | head
 | Android (Chrome) | ⋮ ← السجل ← مسح بيانات التصفح ← «الصور والملفات المخزنة مؤقتاً» |
 
 **الحل الدائم (مُطبَّق في المشروع الآن):**
-- كل مراجع CSS/JS تحمل رقم إصدار: `assets/css/app.css?v=2.6.1`
+- كل مراجع CSS/JS تحمل رقم إصدار: `assets/css/app.css?v=2.6.2`
   → عند أي تعديل ارفع الرقم في الملفات الثلاثة (`index.html`, `room.html`, `auth.html`).
   (أو بالأمر: `node tools/sbctl.mjs set --url … --key …` يرفع الرقم تلقائياً.)
 - ملف **`.htaccess`** يمنع تخزين صفحات HTML نهائياً ويضغط المحتوى بـ Gzip.
@@ -135,8 +135,8 @@ https://موقعك.com/.htaccess        (قد يخفيه الخادم — هذا
 | الشارة | المعنى | الحل |
 |--------|--------|------|
 | **«Supabase متصل»** | كل شيء سليم ✅ | — |
-| **«أنشئ الجداول (docs/schema.sql)»** | الجداول غير منشأة | نفّذ `docs/schema.sql` في SQL Editor |
-| **«صلاحيات RLS أو مفتاح العضو»** | المخطط قديم أو رمز العضو غير مطابق | أعد تنفيذ `docs/schema.sql`؛ رابط الدعوة يسمح بالمشاهدة ولا يمنح التحكم |
+| **«أنشئ الجداول (docs/sql/02-schema.sql)»** | الجداول غير منشأة | نفّذ `docs/sql/02-schema.sql` في SQL Editor |
+| **«صلاحيات RLS أو مفتاح العضو»** | المخطط قديم أو رمز العضو غير مطابق | أعد تنفيذ `docs/sql/02-schema.sql`؛ رابط الدعوة يسمح بالمشاهدة ولا يمنح التحكم |
 | **«وضع محلي (بدون سيرفر)»** | تعذّر الوصول لـ Supabase | تحقّق من `url` و `anonKey` في `config.js`، وأن الموقع يعمل بـ **HTTPS** |
 | **«سيرفر Java متاح»** | يعمل عبر السيرفر ✅ | — |
 
@@ -189,11 +189,41 @@ node tools/sbctl.mjs create --name wt-new \
   --org-id <ORGANIZATION_ID> --db-password "<كلمة مرور قوية>"
 ```
 
-الأمر ينشئ المشروع، ينفّذ `docs/bootstrap.sql`، جلب المفتاح، يربطه بالموقع،
+الأمر ينشئ المشروع، ينفّذ `docs/sql/01-bootstrap.sql`، جلب المفتاح، يربطه بالموقع،
 ثم يفحصه ويطبع النتيجة. الدليل الكامل: [`new-supabase-server.md`](new-supabase-server.md).
 
 > 💡 حتى لا يسقط الاتصال بسبب جدول واحد ناقص: التطبيق الآن **لا يسقط بالكامل** إذا كان
 > جدول `messages` مفقوداً — المزامنة (الفيديو) تعمل والدردشة فقط تتعطّل مع تنبيه واضح.
+
+---
+
+## 6ب‑1) ملفات SQL مرتّبة بالأرقام — ماذا تنفّذ ولماذا 🗂️
+
+كل ملفات قاعدة البيانات في [`docs/sql/`](sql/) بترتيب التنفيذ:
+
+| # | الملف | متى تنفّذه |
+|---|-------|-----------|
+| **00** | [`00-reset-drop-all.sql`](sql/00-reset-drop-all.sql) | ⚠️ يحذف **كل** الجداول والرسائل والغرف والدوال — فقط للبدء من الصفر، ثم نفّذ **01** فوراً |
+| **01** | [`01-bootstrap.sql`](sql/01-bootstrap.sql) | ✅ الأساسي: مشروع جديد أو قائم. آمن للتكرار، ولا يحذف بيانات |
+| **02** | [`02-schema.sql`](sql/02-schema.sql) | نفس 01 (ترويسة مختلفة) — نفّذ واحداً منهما |
+| **03** | [`03-migration.sql`](sql/03-migration.sql) | نفس 01 لقاعدة قائمة |
+| **04** | [`04-repair-messages.sql`](sql/04-repair-messages.sql) | إصلاح جدول الرسائل (body + id/التسلسل) بلا حذف |
+| **05** | [`05-health-check.sql`](sql/05-health-check.sql) | فحص للقراءة فقط + كتابة تجريبية تُحذف فوراً |
+| **06** | [`06-cleanup-cron.sql`](sql/06-cleanup-cron.sql) | اختياري: تنظيف دوري (pg_cron) |
+
+**متى أحذف كل شيء وأبدأ من الصفر؟**
+
+أنسب حلّ إذا كان الجدول القديم تالفاً ولا تحتاج بياناته:
+
+```sql
+-- نفّذ 00 ثم 01 بالترتيب (لا تتوقف بعد 00 وإلا بقي المشروع بلا جداول)
+-- 00: يحذف rooms · messages · presence · room_members · room_queue + الدوال wt_* + wt_private
+-- 01: يعيد بناء كل شيء صحيحاً (جداول + صلاحيات + RLS + Realtime + دوال RPC)
+```
+
+> 🧪 ما جُرِّب فعلياً على PostgreSQL 16: تنفيذ **00** على مشروع سليم، وعلى جدول قديم معطوب،
+> وعلى مشروع فارغ مرّتين (آمن للتكرار)، وباسم دور يملك الجداول ولا يملك منشور `supabase_realtime`
+> (كما في Supabase) — نجحت كلها، ثم نجح **01** وبعده إرسال رسالة بدور `anon`.
 
 ---
 
@@ -207,7 +237,7 @@ ERROR: 42P01: relation "public.messages_id_seq" does not exist
 
 **ما يعنيه:** جدول `messages` في مشروعك **قديم**: أُنشئ يدوياً أو بأداة قديمة،
 فعمود المعرّف `id` فيه **بلا `identity` وبلا `default`** — لذلك لا يوجد تسلسل باسم
-`messages_id_seq` إطلاقاً. النسخ السابقة من `bootstrap.sql` كانت تمنح التسلسل
+`messages_id_seq` إطلاقاً. النسخ السابقة من `01-bootstrap.sql` كانت تمنح التسلسل
 منحاً مباشراً بلا فحص، فيفشل السكربت عند هذا السطر ويبدو كأن السكربت «تالف».
 
 ولأن الجدول نفسه قديم، فإرسال أي رسالة يفشل أيضاً بالخطأ الثاني:
@@ -222,7 +252,7 @@ null value in column "id" of relation "messages" violates not-null constraint
 ### الحل (30 ثانية)
 
 1. افتح **Supabase Dashboard → SQL Editor → New query**.
-2. الصق محتوى [`repair-messages.sql`](repair-messages.sql) كاملاً → **Run**.
+2. الصق محتوى [`04-repair-messages.sql`](04-repair-messages.sql) كاملاً → **Run**.
    يُصلح الآن ثلاثة أشياء معاً: عمود النصّ `body`، و**عمود المعرّف `id`**
    (يُنشئ `messages_id_seq` مملوكاً للعمود ويربطه كافتراضي، أو يعيّن
    `gen_random_uuid()` إن كان المعرّف `uuid`/نصّياً)، والصلاحيات + Realtime.
@@ -235,7 +265,7 @@ select id, body from public.messages limit 5;                     -- القرا�
 insert into public.messages(room_id, name, body) values ('t','اختبار','تعمل');  -- الكتابة تعمل
 ```
 
-> ✅ **منذ 2.6.1** كل الملفات (`bootstrap.sql` و`schema.sql` و`migration.sql` و`repair-messages.sql`)
+> ✅ **منذ 2.6.2** كل الملفات (`01-bootstrap.sql` و`02-schema.sql` و`03-migration.sql` و`04-repair-messages.sql`)
 > تُصلح عمود المعرّف تلقائياً، ومنح التسلسل صار داخل فحص `to_regclass`
 > فلا يفشل أي سكربت حتى لو لم يكن للتسلسل وجود. أُضيفت فحوص آلية لهذا في `docs/tests/supabase-server.mjs`.
 
@@ -256,7 +286,7 @@ supabase: Could not find the 'body' column of 'messages' in the schema cache
 
 **ما يعنيه:** جدول `messages` في مشروعك **قديم** — أُنشئ بنسخة سابقة من المخطط
 (اسم عمود النصّ فيه `text` أو `message` أو `content` بدل `body`)، أو ينقصه أحد
-الأعمدة الجديدة. ولأن `bootstrap.sql` يستعمل `create table if not exists`
+الأعمدة الجديدة. ولأن `01-bootstrap.sql` يستعمل `create table if not exists`
 فإنه **يتجاهل الجدول القائم** ولا يضيف العمود أبداً → ترفض الدردشة الكتابة.
 
 > ✅ **منذ 2.5.0** الموقع لا يتعطّل بسبب ذلك: يكتشف العميل العمود الفعلي من الخادم
@@ -266,8 +296,8 @@ supabase: Could not find the 'body' column of 'messages' in the schema cache
 ### الحل (30 ثانية)
 
 1. افتح **Supabase Dashboard → SQL Editor → New query**.
-2. الصق محتوى الملف [`repair-messages.sql`](repair-messages.sql) كاملاً → **Run**.
-   (أو نفّذ `docs/bootstrap.sql` كاملاً — يحتوي الآن القسم نفسه.)
+2. الصق محتوى الملف [`04-repair-messages.sql`](04-repair-messages.sql) كاملاً → **Run**.
+   (أو نفّذ `docs/sql/01-bootstrap.sql` كاملاً — يحتوي الآن القسم نفسه.)
 3. تحقّق من النتيجة، يجب أن يظهر `body` في العمود `body` و `is_nullable = NO`:
 
 ```sql
@@ -296,7 +326,7 @@ notify pgrst, 'reload schema';
 drop table if exists public.messages;
 ```
 
-ثم نفّذ `docs/bootstrap.sql` كاملاً — سينشئ الجدول بالشكل الصحيح (مع RLS وRealtime).
+ثم نفّذ `docs/sql/01-bootstrap.sql` كاملاً — سينشئ الجدول بالشكل الصحيح (مع RLS وRealtime).
 
 ### كيف تتحقق أن الإصلاح نجح؟
 
@@ -336,7 +366,7 @@ console.table({
 ```
 
 النتيجة المتوقعة في نسخة سليمة:
-- **الإصدار:** `2.6.1`
+- **الإصدار:** `2.6.2`
 - **الأيقونات:** رقم أكبر من 20
 - **المزامنة/الحالة:** «Supabase متصل» أو «سيرفر Java متاح»
 
@@ -350,8 +380,8 @@ console.table({
 
 | # | السبب | كيف تكشفه | الحل |
 |---|-------|-----------|------|
-| 1 | **السيرفر غير متصل** → الموقع يعمل في «الوضع المحلي»، وكل جهاز له غرفة مستقلة | شارة الحالة تقول **«وضع محلي»**، وتظهر رسالة صفراء في الدردشة | شغّل سيرفر Java، أو فعّل Supabase في `config.js` ونفّذ `docs/schema.sql` |
-| 2 | **Realtime غير مفعّل أو الفلتر لا يعمل** على Supabase | المزامنة تتأخر أو تنتقل للاستطلاع | أعد تنفيذ `docs/schema.sql` وتأكد من إضافة `rooms`, `messages`, `room_members`, `room_queue` إلى `supabase_realtime`؛ الاستطلاع يبقى بديلاً تلقائياً |
+| 1 | **السيرفر غير متصل** → الموقع يعمل في «الوضع المحلي»، وكل جهاز له غرفة مستقلة | شارة الحالة تقول **«وضع محلي»**، وتظهر رسالة صفراء في الدردشة | شغّل سيرفر Java، أو فعّل Supabase في `config.js` ونفّذ `docs/sql/02-schema.sql` |
+| 2 | **Realtime غير مفعّل أو الفلتر لا يعمل** على Supabase | المزامنة تتأخر أو تنتقل للاستطلاع | أعد تنفيذ `docs/sql/02-schema.sql` وتأكد من إضافة `rooms`, `messages`, `room_members`, `room_queue` إلى `supabase_realtime`؛ الاستطلاع يبقى بديلاً تلقائياً |
 | 3 | **أنت على سيرفر Java وصديقك على Supabase** (أو العكس) — غرفتان مختلفتان تماماً | في شارة الاتصال أعلى الغرفة: أنت «سيرفر Java» وهو «Supabase» | استضف الجميع على نفس الخادم؛ أو اجعل `javaServer.enabled = false` إن كان موقعك لا يدعم Java |
 | 4 | **الضيف كتب الكود خطأ** أو المضيف خرج | رسالة نظام: «لم يتم العثور على هذه الغرفة…» | انسخ **الرابط** من زر «نسخ الرابط» (يحمل الكود + الفيديو) بدل الكود وحده |
 | 5 | **ملفات MP4 كانت لا تتزامن أصلاً** (خلل قديم في `canSync`) | يوتيوب يتزامن والملفات المباشرة لا | حُلّ — حدّث الملفات وارفع رقم الإصدار `?v=` |
