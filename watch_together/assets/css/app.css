@@ -1212,7 +1212,6 @@ body.chat-focus #chat {
   min-height: 0;
   border-radius: 16px;
 }
-body.chat-focus #backToVideoBtn { display: inline-flex; }
 
 #backToVideoBtn {
   position: fixed;
@@ -1567,15 +1566,13 @@ body.chat-focus .chat-fab { display: none !important; }
 body.chat-focus .room-main > #chat { display: flex; }
 body.chat-focus #stage,
 body.chat-focus #changeBar,
-body.chat-focus .ctrlbar,
-body.chat-focus .player-actions { display: none !important; }
+body.chat-focus .ctrlbar { display: none !important; }
 body.chat-focus .room-main { gap: 0; padding-top: 10px; }
 body.chat-focus #chat {
   height: min(76dvh, 760px); min-height: 360px; flex: 1;
   border-radius: 16px; background: rgba(15, 20, 29, .93);
 }
 body.chat-focus .chat__head { background: transparent; }
-body.chat-focus #backToVideoBtn { display: inline-flex; }
 #backToVideoBtn {
   display: none; left: 50%; inset-inline-start: 50%; transform: translateX(50%);
   bottom: calc(16px + env(safe-area-inset-bottom, 0px));
@@ -2313,3 +2310,19 @@ body.drawer-open { overscroll-behavior: none; }
 @media (pointer: coarse) {
   .msg-menu__btn { min-height: 42px; }
 }
+
+/* Minimal video controls and an eight-message scroll window. */
+.video-fullscreen {
+  position: absolute; bottom: 12px; inset-inline-end: 12px; z-index: 15;
+  display: grid; place-items: center; width: 42px; height: 42px;
+  border: 1px solid rgba(255,255,255,.25); border-radius: 12px;
+  background: rgba(0,0,0,.6); color: #fff; cursor: pointer;
+}
+.video-fullscreen:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+#stage:fullscreen { width: 100%; height: 100%; background: #000; display: flex; flex-direction: column; }
+#stage:fullscreen .player { flex: 1; width: 100%; height: auto; aspect-ratio: auto; }
+#ctrlbar { gap: 0; }
+.room-main > #chat { flex: 0 0 auto; height: auto; min-height: 0; }
+.room-main > #chat .chat__body { flex: 0 0 auto; min-height: 90px; overflow-y: auto; overflow-anchor: auto; }
+.chat__body > .msg { flex-shrink: 0; }
+body.chat-focus .room-main > #chat { flex: 0 0 auto; }

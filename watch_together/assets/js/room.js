@@ -101,7 +101,7 @@
   const el = {
     gate: $('gate'), gateCode: $('gateCode'), gateName: $('gateName'), gateForm: $('gateForm'),
     gateError: $('gateError'), gateSubmit: $('gateSubmit'), avatarPreview: $('avatarPreview'), gateAuthLink: $('gateAuthLink'),
-    room: $('room'), roomTitle: $('roomTitle'), roomSub: $('roomSub'),
+    room: $('room'), roomSub: $('roomSub'),
     codeText: $('roomCodeText'), copyCodeBtn: $('copyCodeBtn'),
     statusBadge: $('statusBadge'), statusText: $('statusText'),
     copyLinkBtn: $('copyLinkBtn'), shareBtn: $('shareBtn'), qrBtn: $('qrBtn'), leaveBtn: $('leaveBtn'),
@@ -109,18 +109,17 @@
     membersCount: $('membersCount'), organizerList: $('organizerList'), organizerCount: $('organizerCount'), organizerEmpty: $('organizerEmpty'),
     mediaShell: $('mediaShell'),
     stage: $('stage'), player: $('player'), placeholder: $('playerPlaceholder'), ctrlbar: $('ctrlbar'),
-    playPause: $('playPauseBtn'), iconPlay: $('iconPlay'), iconPause: $('iconPause'),
+    videoFullscreen: $('videoFullscreenBtn'),
     centerPlay: $('centerPlayBtn'),
-    muteBtn: $('muteBtn'), iconSound: $('iconSound'), iconMuted: $('iconMuted'),
     progressBar: $('progressBar'), progressFill: $('progressFill'), progressBuffer: $('progressBuffer'),
-    progressKnob: $('progressKnob'), progressTip: $('progressTip'), curTime: $('curTime'), durTime: $('durTime'),
-    addVideoBtn: $('addVideoBtn'), messagesBtn: $('messagesBtn'), messagesCount: $('messagesCount'),
+    progressKnob: $('progressKnob'), progressTip: $('progressTip'),
+    addVideoBtn: $('addVideoBtn'), messagesBtn: $('messagesBtn'), messagesIcon: $('messagesIcon'), messagesCount: $('messagesCount'),
     playlistBtn: $('playlistBtn'), playlistCount: $('playlistCount'),
     changeBar: $('changeBar'), newUrl: $('newUrl'), newTitle: $('newTitle'), applyUrlBtn: $('applyUrlBtn'), cancelUrlBtn: $('cancelUrlBtn'),
-    collapseBtn: $('collapseBtn'), membersPanel: $('membersPanel'), membersList: $('membersList'), sideMembersCount: $('sideMembersCount'),
+    membersPanel: $('membersPanel'), membersList: $('membersList'), sideMembersCount: $('sideMembersCount'),
     chat: $('chat'), chatBody: $('chatBody'), chatEmpty: $('chatEmpty'), chatCount: $('chatCount'),
     clearChatBtn: $('clearChatBtn'), reactRow: $('reactRow'), chatForm: $('chatForm'),
-    chatInput: $('chatInput'), chatSend: $('chatSend'), typing: $('typing'), backToVideoBtn: $('backToVideoBtn'),
+    chatInput: $('chatInput'), chatSend: $('chatSend'), typing: $('typing'),
     composerBar: $('composerBar'), composerBarLabel: $('composerBarLabel'), composerBarText: $('composerBarText'), composerBarCancel: $('composerBarCancel'),
     playlistModal: $('playlistModal'), playlistCloseBtn: $('playlistCloseBtn'), queueList: $('queueList'), queueEmpty: $('queueEmpty'),
     sbMeBtn: $('sbMeBtn'), qrModal: $('qrModal'), qrBox: $('qrBox'), qrUrl: $('qrUrl'), qrClose: $('qrClose'), qrCopy: $('qrCopy'),
@@ -390,7 +389,7 @@
     }
 
     const title = (createInfo && createInfo.title) || U.store.get('roomTitle:' + roomId) || '';
-    el.roomTitle.textContent = title || ('غرفة ' + roomId);
+    session.roomTitle = title || ('غرفة ' + roomId);
     if (title) U.store.set('roomTitle:' + roomId, title);
 
     paintMe();
@@ -419,7 +418,7 @@
         name: session.name,
         userId: session.userId,
         videoUrl: st.url || null,
-        title: (createInfo && createInfo.title) || el.roomTitle.textContent || 'غرفة مشاهدة',
+        title: (createInfo && createInfo.title) || session.roomTitle || 'غرفة مشاهدة',
         /* من أنشأ الغرفة هو من يملك الحق في إنشاء صفّها في قاعدة البيانات؛
            البقية ينتظرونها ولا ينشئون غرفة فارغة تحمل نفس الكود */
         host: !!(createInfo && createInfo.host) || params.get('host') === '1',
@@ -593,7 +592,6 @@
 
   function updateControlAccess() {
     const locked = !canControl();
-    if (el.playPause) el.playPause.disabled = locked;
     if (el.centerPlay) el.centerPlay.disabled = locked;
     if (el.progressBar) {
       el.progressBar.setAttribute('aria-disabled', locked ? 'true' : 'false');
@@ -1159,12 +1157,14 @@
       row.dataset.name = String(m.name || '');
     }
 
+    const followLatest = el.chatBody.scrollHeight - el.chatBody.scrollTop - el.chatBody.clientHeight < 80;
     el.chatBody.appendChild(row);
     if (window.WTIcons && window.WTIcons.apply) window.WTIcons.apply(row);
     const limit = (CFG.chat && CFG.chat.historyLimit) || 200;
     while (el.chatBody.children.length > limit) el.chatBody.removeChild(el.chatBody.firstChild);
 
-    if (!opts.silent) scrollChat();
+    sizeChatWindow();
+    if (!opts.silent && followLatest) scrollChat(true);
     updateChatCount();
     return row;
   }
@@ -1232,7 +1232,23 @@
     addChatMessage({ text, kind: 'system', ts: Date.now(), name: 'النظام' }, { system: true });
   }
 
+  // Keep eight recent message rows visible; older rows remain in the scroll area.
+  function sizeChatWindow() {
+    const body = el.chatBody;
+    const rows = Array.from(body.children).filter(row => row.classList.contains('msg'));
+    const recent = rows.slice(-8);
+    if (!recent.length || !window.getComputedStyle) return;
+    const style = window.getComputedStyle(body);
+    const gap = parseFloat(style.rowGap) || 0;
+    const height = recent.reduce((sum, row) => sum + row.getBoundingClientRect().height, 0)
+      + gap * Math.max(0, recent.length - 1)
+      + (parseFloat(style.paddingTop) || 0) + (parseFloat(style.paddingBottom) || 0);
+    body.style.height = Math.ceil(height) + 'px';
+  }
+  window.addEventListener('resize', () => { sizeChatWindow(); });
+
   function scrollChat(force) {
+    sizeChatWindow();
     const b = el.chatBody;
     const near = b.scrollHeight - b.scrollTop - b.clientHeight < 180;
     if (near || force) b.scrollTop = b.scrollHeight;
@@ -1554,8 +1570,14 @@
   function setFocusMode(on) {
     session.focusMode = !!on;
     document.body.classList.toggle('chat-focus', session.focusMode);
-    if (el.messagesBtn) el.messagesBtn.classList.toggle('is-on', session.focusMode);
-    el.backToVideoBtn.hidden = !session.focusMode;
+    if (el.messagesBtn) {
+      el.messagesBtn.classList.toggle('is-on', session.focusMode);
+      el.messagesBtn.setAttribute('aria-expanded', String(session.focusMode));
+      const label = session.focusMode ? 'تصغير الرسائل' : 'تكبير الرسائل';
+      el.messagesBtn.setAttribute('aria-label', label);
+      el.messagesBtn.setAttribute('title', label + ' (D)');
+      el.messagesIcon.innerHTML = IC.html(session.focusMode ? 'chatUp' : 'chatDown', 19);
+    }
     if (session.focusMode) {
       session.unread = 0;
       updateMessagesBadge();
@@ -1675,7 +1697,6 @@
       pokeVideoUI();
       localControl('toggle');
     };
-    el.playPause.addEventListener('click', togglePlay);
     if (el.centerPlay) el.centerPlay.addEventListener('click', togglePlay);
 
     /* النقر على سطح الفيديو نفسه يبدّل التشغيل (النقرة المزدوجة تُحسب نقرة واحدة).
@@ -1683,7 +1704,7 @@
     let lastPlayerClick = 0;
     el.player.addEventListener('click', (e) => {
       const t = e.target;
-      if (t && t.closest && (t.closest('.vcontrols') || t.closest('.vcenter') ||
+      if (t && t.closest && (t.closest('.vcontrols') || t.closest('.vcenter') || t.closest('.video-fullscreen') ||
         t.closest('.player__overlay') || t.closest('.player__placeholder'))) return;
       const now = Date.now();
       if (now - lastPlayerClick < 320) return;   /* تفادي النقر المزدوج */
@@ -1703,22 +1724,15 @@
       pokeVideoUI();
     };
 
-    /* ---- الصوت: زر كتم فقط (لا شريط صوت) ---- */
-    el.muteBtn.addEventListener('click', () => {
-      const m = !player.isMuted();
-      player.setMuted(m);
-      el.iconSound.hidden = m;
-      el.iconMuted.hidden = !m;
+    el.videoFullscreen.addEventListener('click', async () => {
+      const target = document.getElementById('stage');
+      try {
+        if (document.fullscreenElement) await document.exitFullscreen();
+        else if (target.requestFullscreen) await target.requestFullscreen();
+        else if (player._video && player._video.webkitEnterFullscreen) player._video.webkitEnterFullscreen();
+        else U.toast('التكبير غير مدعوم في هذا المتصفح', 'warn');
+      } catch (e) { U.toast('تعذر تكبير الفيديو', 'warn'); }
     });
-
-    /* ---- طيّ الفيديو وإظهاره (يبقى الصوت والتحكم يعملان) ---- */
-    if (el.collapseBtn) {
-      el.collapseBtn.addEventListener('click', () => {
-        const collapsed = el.room.classList.toggle('is-media-collapsed');
-        el.collapseBtn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
-        el.collapseBtn.classList.toggle('is-on', collapsed);
-      });
-    }
 
     /* ---- شريط التقدم داخل الفيديو (سحب باللمس والفأرة + معاينة الوقت) ---- */
     const ratioFromEvent = (ev) => {
@@ -1779,7 +1793,6 @@
     el.cancelUrlBtn.addEventListener('click', () => { el.changeBar.hidden = true; });
     el.applyUrlBtn.addEventListener('click', addQueueItem);
     el.newUrl.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); addQueueItem(); } });
-    el.backToVideoBtn.addEventListener('click', () => setFocusMode(false));
 
     /* ---- القائمة الجانبية ---- */
     const setDrawerOpen = (open) => {
@@ -1938,6 +1951,7 @@
       el.chatBody.innerHTML = '';
       el.chatEmpty.style.display = '';
       el.chatBody.appendChild(el.chatEmpty);
+      el.chatBody.style.height = '';
       clearComposer();
       updateChatCount();
     });
@@ -1959,10 +1973,9 @@
     document.addEventListener('keydown', (e) => {
       const tag = (e.target.tagName || '').toLowerCase();
       if (tag === 'input' || tag === 'textarea' || e.target.isContentEditable) return;
-      if (e.key === ' ' || e.code === 'Space') { e.preventDefault(); el.playPause.click(); }
+      if (e.key === ' ' || e.code === 'Space') { e.preventDefault(); el.centerPlay.click(); }
       else if (e.key === 'ArrowLeft') { e.preventDefault(); skip(+10); }
       else if (e.key === 'ArrowRight') { e.preventDefault(); skip(-10); }
-      else if (e.key.toLowerCase() === 'm') el.muteBtn.click();
       else if (e.key.toLowerCase() === 'c') copy(roomUrl(), 'تم نسخ رابط الغرفة');
       else if (e.key.toLowerCase() === 'd') setFocusMode(!session.focusMode);
       else if (e.key === 'Escape') {
@@ -2060,8 +2073,6 @@
 
   function updatePlayIcon() {
     const playing = player.isReady() ? (player.isPlaying() || !!st.playing) : !!st.playing;
-    el.iconPlay.hidden = playing;
-    el.iconPause.hidden = !playing;
     if (el.player) {
       el.player.classList.toggle('is-playing', playing);
       if (!playing) el.player.classList.remove('is-ui-hidden');
@@ -2074,14 +2085,10 @@
 
   function updateProgressUI() {
     if (!player.isReady()) {
-      el.curTime.textContent = U.fmtTime(st.pos || 0);
-      el.durTime.textContent = '—';
       return;
     }
     const cur = player.getCurrentTime();
     const dur = player.getDuration();
-    el.curTime.textContent = U.fmtTime(cur);
-    el.durTime.textContent = dur ? U.fmtTime(dur) : '—';
     const pct = dur ? U.clamp((cur / dur) * 100, 0, 100) : 0;
     el.progressFill.style.width = pct + '%';
     el.progressKnob.style.insetInlineStart = pct + '%';

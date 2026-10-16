@@ -30,23 +30,24 @@ const run = async () => {
 
   const needed = [
     'gate', 'gateCode', 'gateName', 'gateForm', 'gateError', 'gateSubmit', 'avatarPreview',
-    'room', 'roomTitle', 'roomSub', 'roomCodeText', 'copyCodeBtn', 'statusBadge', 'statusText',
+    'room', 'roomSub', 'roomCodeText', 'copyCodeBtn', 'statusBadge', 'statusText',
     'copyLinkBtn', 'shareBtn', 'qrBtn', 'diagBtn', 'leaveBtn', 'drawerOpenBtn', 'drawerCloseBtn',
     'drawerScrim', 'roomDrawer', 'organizerList', 'organizerCount', 'membersList', 'membersCount',
-    'sideMembersCount', 'stage', 'player', 'playerPlaceholder', 'ctrlbar', 'playPauseBtn',
+    'sideMembersCount', 'stage', 'player', 'playerPlaceholder', 'ctrlbar', 'videoFullscreenBtn',
     'centerPlayBtn',
-    'iconPlay', 'iconPause', 'muteBtn', 'iconSound', 'iconMuted',
-    'progressBar', 'progressFill', 'progressBuffer', 'progressKnob', 'progressTip', 'curTime', 'durTime',
+    'progressBar', 'progressFill', 'progressBuffer', 'progressKnob', 'progressTip',
     'addVideoBtn', 'messagesBtn', 'messagesCount', 'playlistBtn', 'playlistCount',
     'changeBar', 'newUrl', 'newTitle', 'applyUrlBtn', 'cancelUrlBtn', 'chat', 'chatBody',
     'chatEmpty', 'chatCount', 'clearChatBtn', 'reactRow', 'chatForm', 'chatInput', 'chatSend',
-    'typing', 'backToVideoBtn', 'playlistModal', 'playlistCloseBtn', 'queueList', 'queueEmpty',
+    'typing', 'messagesIcon', 'playlistModal', 'playlistCloseBtn', 'queueList', 'queueEmpty',
     'sbMeBtn', 'qrModal', 'qrBox', 'qrUrl', 'qrClose', 'qrCopy', 'meModal', 'meClose',
     'meAvatar', 'meName', 'meMail', 'meNameInput', 'meSave', 'meSignout', 'diagModal',
     'diagBody', 'diagReconnectBtn', 'diagRunBtn', 'diagCopyBtn', 'diagCloseBtn'
   ];
   const missing = needed.filter(id => !byId.has(id));
   t('كل عناصر الواجهة الجديدة موجودة', missing.length === 0, missing.join(','));
+
+  t('إزالة العنوان والشعار وأزرار الفيديو الزائدة', !/id="(roomTitle|collapseBtn|backToVideoBtn)"|rtopbar__brand/.test(html));
 
   const roomJs = fs.readFileSync(path.join(base, 'assets/js/room.js'), 'utf8');
   const refs = [...roomJs.matchAll(/\$\(['"]([^'"]+)['"]\)/g)].map(m => m[1]);
@@ -62,8 +63,8 @@ const run = async () => {
   const mainSlice = html.slice(html.indexOf('id="roomMain"'), html.indexOf('<!-- ===== سكربتات'));
   const chatTag = mainSlice.indexOf('<section class="chat');           /* بداية بطاقة الرسائل نفسها */
   const between = mainSlice.slice(mainSlice.indexOf('id="mediaShell"'), chatTag);
-  const allowedIds = new Set(['mediaShell', 'stage', 'player', 'playerPlaceholder', 'centerPlayBtn', 'clickLayer',
-    'ctrlbar', 'playPauseBtn', 'iconPlay', 'iconPause', 'curTime', 'durTime', 'progressBar', 'progressBuffer',
+  const allowedIds = new Set(['mediaShell', 'stage', 'player', 'playerPlaceholder', 'centerPlayBtn', 'videoFullscreenBtn', 'clickLayer',
+    'ctrlbar', 'videoFullscreenBtn', 'iconPlay', 'iconPause', 'curTime', 'durTime', 'progressBar', 'progressBuffer',
     'progressFill', 'progressKnob', 'progressTip', 'muteBtn', 'iconSound', 'iconMuted']);
   const strayIds = [...between.matchAll(/id="([^"]+)"/g)].map(m => m[1]).filter(id => !allowedIds.has(id));
   const strayClasses = [...between.matchAll(/class="([^"]+)"/g)].map(m => m[1])
@@ -84,7 +85,7 @@ const run = async () => {
     html.indexOf('id="membersPanel"') < html.indexOf('id="roomMain"') &&
     html.indexOf('id="membersPanel"') < html.indexOf('id="chat"'));
   t('الشاشة بلا شريط صوت أو ملء شاشة أو تقديم/ترجيع',
-    !/id="(volRange|fullBtn|skipBackBtn|skipFwdBtn)"/.test(html));
+    !/id="(volRange|playPauseBtn|muteBtn|curTime|durTime|skipBackBtn|skipFwdBtn)"/.test(html));
   t('أزرار الأدوات الثلاثة تحت المشغّل',
     html.indexOf('id="addVideoBtn"') < html.indexOf('id="messagesBtn"') && html.indexOf('id="messagesBtn"') < html.indexOf('id="playlistBtn"'));
   t('شبكة معلومات المشاركين القديمة محذوفة', !/id="info(Grid|Transport|Provider|Controller|Role|Sync|Code)"/.test(html));
@@ -108,7 +109,7 @@ const run = async () => {
   t('الاسم حُفظ محلياً', store['wt:name'] === '"أمين بن علي"', String(store['wt:name']));
   t('مؤشر الاتصال المحلي ظاهر', byId.get('statusText').textContent === 'محلي فقط', byId.get('statusText').textContent);
   t('مؤشر اتصال صغير فقط في رأس الغرفة', !!byId.get('statusBadge').querySelector('.dot'));
-  t('المستخدم الحالي منشئ ويملك التحكم', sandbox.WTRoom.session.role === 'owner' && !byId.get('playPauseBtn').disabled, sandbox.WTRoom.session.role);
+  t('المستخدم الحالي منشئ ويملك التحكم', sandbox.WTRoom.session.role === 'owner' && !byId.get('centerPlayBtn').disabled, sandbox.WTRoom.session.role);
 
   await wait(80);
   t('أنا في قائمة المشاركين', byId.get('membersList').innerHTML.includes('أمين بن علي'));
@@ -144,9 +145,9 @@ const run = async () => {
 
   byId.get('messagesBtn').dispatch('click', {});
   await wait(40);
-  t('زر الرسائل يكبّر المحادثة', documentStub.body.classList.contains('chat-focus') && !byId.get('backToVideoBtn').hidden);
-  byId.get('backToVideoBtn').dispatch('click', {});
-  t('العودة للفيديو تغلق وضع المحادثة', !documentStub.body.classList.contains('chat-focus') && byId.get('backToVideoBtn').hidden);
+  t('زر الرسائل يكبّر المحادثة', documentStub.body.classList.contains('chat-focus') && byId.get('messagesBtn').getAttribute('aria-expanded') === 'true' && byId.get('messagesIcon').innerHTML === sandbox.WTIcons.html('chatUp', 19));
+  byId.get('messagesBtn').dispatch('click', {});
+  t('العودة للفيديو تغلق وضع المحادثة', !documentStub.body.classList.contains('chat-focus') && byId.get('messagesBtn').getAttribute('aria-expanded') === 'false' && byId.get('messagesIcon').innerHTML === sandbox.WTIcons.html('chatDown', 19));
 
   byId.get('addVideoBtn').dispatch('click', {});
   t('إضافة فيديو تفتح حقل الرابط', !byId.get('changeBar').hidden);
@@ -163,7 +164,7 @@ const run = async () => {
   byId.get('playlistCloseBtn').dispatch('click', {});
   t('زر إغلاق قائمة التشغيل يعمل', byId.get('playlistModal').hidden);
 
-  const clickIds = ['playPauseBtn', 'centerPlayBtn', 'muteBtn', 'progressBar', 'addVideoBtn', 'messagesBtn', 'playlistBtn',
+  const clickIds = ['videoFullscreenBtn', 'centerPlayBtn', 'progressBar', 'addVideoBtn', 'messagesBtn', 'playlistBtn',
     'drawerOpenBtn', 'drawerCloseBtn', 'copyCodeBtn', 'copyLinkBtn', 'qrBtn', 'leaveBtn', 'clearChatBtn',
     'sbMeBtn', 'meClose', 'meSave', 'meSignout', 'cancelUrlBtn', 'applyUrlBtn', 'playlistCloseBtn'];
   clickIds.forEach(id => {
