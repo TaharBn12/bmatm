@@ -44,7 +44,7 @@ git ls-tree -r origin/main --name-only | grep watch_together | head
 | Android (Chrome) | ⋮ ← السجل ← مسح بيانات التصفح ← «الصور والملفات المخزنة مؤقتاً» |
 
 **الحل الدائم (مُطبَّق في المشروع الآن):**
-- كل مراجع CSS/JS تحمل رقم إصدار: `assets/css/app.css?v=2.6.0`
+- كل مراجع CSS/JS تحمل رقم إصدار: `assets/css/app.css?v=2.6.1`
   → عند أي تعديل ارفع الرقم في الملفات الثلاثة (`index.html`, `room.html`, `auth.html`).
   (أو بالأمر: `node tools/sbctl.mjs set --url … --key …` يرفع الرقم تلقائياً.)
 - ملف **`.htaccess`** يمنع تخزين صفحات HTML نهائياً ويضغط المحتوى بـ Gzip.
@@ -197,6 +197,55 @@ node tools/sbctl.mjs create --name wt-new \
 
 ---
 
+## 6ب‑2) خطأ تنفيذ سكربت SQL: `relation "public.messages_id_seq" does not exist` 🧨
+
+نصّ الخطأ كما يظهر في **Supabase → SQL Editor**:
+
+```
+ERROR: 42P01: relation "public.messages_id_seq" does not exist
+```
+
+**ما يعنيه:** جدول `messages` في مشروعك **قديم**: أُنشئ يدوياً أو بأداة قديمة،
+فعمود المعرّف `id` فيه **بلا `identity` وبلا `default`** — لذلك لا يوجد تسلسل باسم
+`messages_id_seq` إطلاقاً. النسخ السابقة من `bootstrap.sql` كانت تمنح التسلسل
+منحاً مباشراً بلا فحص، فيفشل السكربت عند هذا السطر ويبدو كأن السكربت «تالف».
+
+ولأن الجدول نفسه قديم، فإرسال أي رسالة يفشل أيضاً بالخطأ الثاني:
+
+```
+null value in column "id" of relation "messages" violates not-null constraint
+```
+
+(الموقع يرسل نصّ الرسالة فقط ولا يرسل `id` — والمخطط الجديد يولّده تلقائياً من `messages_id_seq`،
+لكن الجدول القديم لا يملك هذا التسلسل.)
+
+### الحل (30 ثانية)
+
+1. افتح **Supabase Dashboard → SQL Editor → New query**.
+2. الصق محتوى [`repair-messages.sql`](repair-messages.sql) كاملاً → **Run**.
+   يُصلح الآن ثلاثة أشياء معاً: عمود النصّ `body`، و**عمود المعرّف `id`**
+   (يُنشئ `messages_id_seq` مملوكاً للعمود ويربطه كافتراضي، أو يعيّن
+   `gen_random_uuid()` إن كان المعرّف `uuid`/نصّياً)، والصلاحيات + Realtime.
+3. النتيجة المتوقّعة: `Success. No rows returned`، ويظهر في الإشعارات
+   `WatchTogether: أُنشئ تسلسل messages_id_seq ورُبط بعمود id في جدول messages.`
+4. تأكيد سريع:
+
+```sql
+select id, body from public.messages limit 5;                     -- القراءة تعمل
+insert into public.messages(room_id, name, body) values ('t','اختبار','تعمل');  -- الكتابة تعمل
+```
+
+> ✅ **منذ 2.6.1** كل الملفات (`bootstrap.sql` و`schema.sql` و`migration.sql` و`repair-messages.sql`)
+> تُصلح عمود المعرّف تلقائياً، ومنح التسلسل صار داخل فحص `to_regclass`
+> فلا يفشل أي سكربت حتى لو لم يكن للتسلسل وجود. أُضيفت فحوص آلية لهذا في `docs/tests/supabase-server.mjs`.
+
+> 🧪 ما جُرِّب فعلياً على PostgreSQL 16 مقابل 6 أشكال مختلفة من الجداول القديمة
+> (`uuid` مع/بلا default · `bigint` بلا تسلسل · معرّف `text` · جدول بلا عمود `id`
+> إطلاقاً · مشروع نظيف): نجحت جميعها في التنفيذ ثم في **إدراج رسالة بدور `anon`**
+> كما يفعل PostgREST — مع بقاء الرسائل القديمة سليمة بلا حذف.
+
+---
+
 ## 6ج) «تعذّر إرسال الرسالة» — عمود `body` غير موجود (PGRST204) 💬
 
 نصّ الخطأ كما يظهر في Console أو في تقرير التشخيص:
@@ -287,7 +336,7 @@ console.table({
 ```
 
 النتيجة المتوقعة في نسخة سليمة:
-- **الإصدار:** `2.6.0`
+- **الإصدار:** `2.6.1`
 - **الأيقونات:** رقم أكبر من 20
 - **المزامنة/الحالة:** «Supabase متصل» أو «سيرفر Java متاح»
 

@@ -15,7 +15,7 @@ import os from 'os';
 import path from 'path';
 import http from 'http';
 import { createRoomEnv, wait, base } from './harness.mjs';
-import { readConfig, writeConfig, bumpVersion, pickAnonKey, doctorProject, bootstrapSql, repairSql } from '../../tools/sbctl.mjs';
+import { ROOT, readConfig, writeConfig, bumpVersion, pickAnonKey, doctorProject, bootstrapSql, repairSql } from '../../tools/sbctl.mjs';
 
 let pass = 0, fail = 0;
 const errors = [];
@@ -64,6 +64,13 @@ function testClassify() {
   t('خطأ: عمود مفقود → schema-mismatch (لا missing-table)', colErr.code === 'schema-mismatch', colErr.code);
   t('خطأ: يذكر اسم العمود والجدول', /body/.test(colErr.title) && /messages/.test(colErr.title), colErr.title);
   t('خطأ: يعطي حلاً بملف الإصلاح', /repair-messages\.sql|bootstrap\.sql/.test(colErr.fix), colErr.fix);
+  /* 23502: عمود المعرّف id بلا تسلسل/افتراضي في جدول قديم — يمنع إرسال الرسائل */
+  const idErr = mk(400, '23502', 'null value in column "id" of relation "messages" violates not-null constraint');
+  t('خطأ: معرّف قديم → legacy-id (لا missing-table)', idErr.code === 'legacy-id', idErr.code);
+  t('خطأ: يشرح سبب المعرّف ويقدّم ملف الإصلاح',
+    /id/.test(idErr.title) && /repair-messages\.sql/.test(idErr.fix), idErr.title);
+  const seqErr = C(new Error('relation "public.messages_id_seq" does not exist'));
+  t('خطأ: غياب تسلسل messages_id_seq → legacy-id', seqErr.code === 'legacy-id', seqErr.code);
   const parsedCol = env.sandbox.WTTransport.parseMissingColumn(colErr.raw);
   t('خطأ: يستخرج العمود والجدول', parsedCol && parsedCol.column === 'body' && parsedCol.table === 'messages');
   t('كل خطأ له عنوان وحل بالعربية',
@@ -377,18 +384,41 @@ function testSbctl() {
   fs.mkdirSync(tmpRoot, { recursive: true });
   fs.writeFileSync(path.join(tmpRoot, 'index.html'), '<script src="assets/js/config.js?v=2.2.0"></script>', 'utf8');
   fs.writeFileSync(path.join(tmpRoot, 'room.html'), '<script src="assets/js/room.js?v=2.2.0"></script>', 'utf8');
-  const changed = bumpVersion('2.5.0', tmpRoot);
+  const changed = bumpVersion('2.6.1', tmpRoot);
   t('sbctl: يرفع رقم الكاش في الصفحات', changed.length === 2, changed.join(','));
   t('sbctl: الرقم الجديد صحيح',
-    fs.readFileSync(path.join(tmpRoot, 'index.html'), 'utf8').includes('?v=2.5.0'));
+    fs.readFileSync(path.join(tmpRoot, 'index.html'), 'utf8').includes('?v=2.6.1'));
 
-  /* مخطط القاعدة يحتوي قسم إصلاح جدول الرسائل (وإلا عاد خطأ عمود body) */
+  /* مخطط القاعدة يحتوي قسم إصلاح جدول الرسائل (وإلا عاد خطأ عمود body أو خطأ التسلسل) */
   const boot = bootstrapSql();
   t('sbctl: bootstrap.sql يصلح العمود body', /rename column %I to body/.test(boot), '');
   t('sbctl: bootstrap.sql يعيد تحميل كاش PostgREST', /notify pgrst, 'reload schema'/.test(boot), '');
   const repair = repairSql();
   t('sbctl: repair-messages.sql موجود ويصلح العمود',
     /alter table public\.messages/.test(repair) && /notify pgrst/.test(repair), '');
+
+  /* خطأ relation "public.messages_id_seq" does not exist:
+     لا يجوز منح التسلسل منحاً غير محمي — الجداول القديمة قد لا تملك تسلسلاً أصلاً */
+  const sqlDir = path.join(ROOT, 'docs');   /* ROOT = مجلد watch_together */
+  const sqlFiles = ['bootstrap.sql', 'schema.sql', 'migration.sql', 'repair-messages.sql'];
+  const rawGrant = 'grant usage, select on sequence public.messages_id_seq to anon, authenticated;';
+  for (const f of sqlFiles) {
+    const sql = fs.readFileSync(path.join(sqlDir, f), 'utf8');
+    t(`sql: ${f} لا يمنح messages_id_seq منحاً غير محمي`, !sql.includes(rawGrant), '');
+    t(`sql: ${f} يفحص وجود التسلسل قبل منحه`, sql.includes("to_regclass('public.messages_id_seq')"), '');
+    t(`sql: ${f} يُصلح عمود المعرّف id (لا خطأ not-null على id)`,
+      /pg_get_serial_sequence\('public\.messages', 'id'\)/.test(sql) &&
+      /create sequence if not exists public\.messages_id_seq/.test(sql), '');
+    t(`sql: ${f} يعالج معرّفاً نصّياً/uuid بلا default`,
+      /gen_random_uuid\(\)/.test(sql), '');
+  }
+  /* الملفات الثلاثة للمخطط يجب أن تبقى متطابقة في المتن (تختلف في الترويسة فقط) */
+  const bodyOf = (f) => {
+    const sql = fs.readFileSync(path.join(sqlDir, f), 'utf8');
+    return sql.slice(sql.indexOf('-- 1)'));
+  };
+  t('sql: bootstrap/schema/migration متطابقة في المتن',
+    bodyOf('bootstrap.sql') === bodyOf('schema.sql') && bodyOf('bootstrap.sql') === bodyOf('migration.sql'), '');
 
   /* استخراج مفتاح anon من صيغ api-keys المختلفة */
   t('sbctl: يستخرج anon من صيغة القائمة',
@@ -464,6 +494,16 @@ function startFakePostgrest(opts) {
     }
     if (url.startsWith('/rest/v1/messages')) {
       if (opts.missingMessages) return send(404, { code: '42P01', message: 'relation "public.messages" does not exist' });
+      /* جدول قديم بلا تسلسل للمعرّف: id موجود لكن الإدراج يفشل بـ 23502 */
+      if (opts.legacyMessagesId) {
+        if (/select=id/.test(url)) {
+          return send(400, { code: 'PGRST204', message: "Could not find the 'id' column of 'messages' in the schema cache" });
+        }
+        if (req.method === 'POST') {
+          return send(400, { code: '23502', message: 'null value in column "id" of relation "messages" violates not-null constraint' });
+        }
+        return send(200, [{ id: 3, room_id: 'X', name: 'زائر', body: 'مرحبا', created_at: new Date().toISOString() }]);
+      }
       /* جدول قديم: لا عمود body — نصّ الرسالة في text */
       if (opts.legacyMessagesText) {
         if (/select=body/.test(url)) {
@@ -538,6 +578,15 @@ async function testDoctor() {
     JSON.stringify(r5.problems.map(p => p.code)));
   t('doctor: يشرح أن الجدول قديم', r5.problems.some(p => /بدل «body»|body/.test(String(p.title))));
   await legacy.close();
+
+  /* حالة: جدول قديم بلا تسلسل للمعرّف (id) → doctor يكشفه ويقترح الإصلاح */
+  const legacyId = await startFakePostgrest({ legacyMessagesId: true });
+  const r6 = await doctorProject({ url: legacyId.url, anonKey: 'k', realtime: false, write: false });
+  t('doctor: يكشف عمود المعرّف القديم (legacy-id)',
+    r6.problems.some(p => p.code === 'legacy-id'), JSON.stringify(r6.problems.map(p => p.code)));
+  t('doctor: حلّ المعرّف القديم يذكر repair-messages.sql',
+    r6.problems.some(p => p.code === 'legacy-id' && /repair-messages\.sql/.test(String(p.fix || ''))));
+  await legacyId.close();
 
   /* حالة: لا يوجد مشروع مهيّأ */
   const r4 = await doctorProject({ url: '', anonKey: '' });

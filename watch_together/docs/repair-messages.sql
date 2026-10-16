@@ -17,6 +17,9 @@
 --   ثم افتح الغرفة من جديد (أو اضغط «إعادة الاتصال» في نافذة التشخيص).
 --
 -- آمن تماماً للتكرار: لا يحذف أي رسالة ولا أي غرفة.
+--
+-- إن ظهر أثناء تنفيذ سكربت آخر: relation "public.messages_id_seq" does not exist
+--   فالسبّب جدول قديم بلا تسلسل لعمود id؛ هذا الملف يُصلحه (القسم 2ج).
 -- =====================================================================
 
 -- 0) إن لم يكن الجدول موجوداً أصلاً، أنشئه بالشكل الصحيح (وإلا فنحن نُصلح القائم)
@@ -32,6 +35,7 @@ create table if not exists public.messages (
 );
 
 -- 0ب) أعمدة أساسية قد تكون ناقصة في الجداول القديمة
+alter table public.messages add column if not exists id bigint;
 alter table public.messages add column if not exists room_id text;
 alter table public.messages add column if not exists name text;
 alter table public.messages add column if not exists created_at timestamptz not null default now();
@@ -74,6 +78,54 @@ update public.messages set name = 'زائر' where name is null;
 update public.messages set room_id = 'legacy' where room_id is null;
 
 create index if not exists messages_room_created_idx on public.messages (room_id, created_at desc);
+
+-- 2ج) عمود المعرّف: جدول بلا identity وبلا default لعمود id يرفض الإدراج بـ
+--     «null value in column "id" of relation "messages" violates not-null
+--      constraint» — والعميل لا يرسل id أصلاً. نُصلح العمود حسب نوعه.
+--     (وهذا سبب الخطأ الشائع: relation "public.messages_id_seq" does not exist)
+do $$
+declare
+  ident  text;
+  idtype text;
+  adef   text;
+begin
+  select a.attidentity::text, format_type(a.atttypid, null), pg_get_expr(d.adbin, d.adrelid)
+    into ident, idtype, adef
+    from pg_attribute a
+    left join pg_attrdef d on d.adrelid = a.attrelid and d.adnum = a.attnum
+   where a.attrelid = 'public.messages'::regclass
+     and a.attname = 'id'
+     and not a.attisdropped;
+
+  if ident is null then
+    return;                                   /* لا عمود id إطلاقاً */
+  end if;
+
+  if ident in ('a', 'd') or adef is not null then
+    if idtype in ('bigint', 'integer', 'smallint')
+       and pg_get_serial_sequence('public.messages', 'id') is not null then
+      execute 'select setval(pg_get_serial_sequence(''public.messages'', ''id''), coalesce((select max(id) from public.messages), 0) + 1, false)';
+    end if;
+    return;
+  end if;
+
+  if idtype in ('bigint', 'integer', 'smallint') then
+    execute 'create sequence if not exists public.messages_id_seq';
+    execute 'alter sequence public.messages_id_seq owned by public.messages.id';
+    execute 'alter table public.messages alter column id set default nextval(''public.messages_id_seq''::regclass)';
+    execute 'select setval(''public.messages_id_seq'', coalesce((select max(id) from public.messages), 0) + 1, false)';
+    raise notice 'WatchTogether: أُنشئ تسلسل messages_id_seq ورُبط بعمود id في جدول messages.';
+  elsif idtype = 'uuid' then
+    execute 'alter table public.messages alter column id set default gen_random_uuid()';
+    raise notice 'WatchTogether: عُيّن الافتراضي gen_random_uuid() لعمود id (uuid) في جدول messages.';
+  elsif idtype in ('text', 'character varying', 'character') then
+    execute 'alter table public.messages alter column id set default gen_random_uuid()::text';
+    raise notice 'WatchTogether: عُيّن الافتراضي gen_random_uuid()::text لعمود id في جدول messages.';
+  else
+    raise notice 'WatchTogether: عمود id في messages نوعه % — لم نتمكّن من إصلاحه تلقائياً. للمطابقة الكاملة: drop table public.messages; ثم أعِد تنفيذ bootstrap.sql كاملاً.', idtype;
+  end if;
+end
+$$;
 
 -- 3) الصلاحيات والسياسة (كالمخطط الأساسي)
 grant select, insert on public.messages to anon, authenticated;

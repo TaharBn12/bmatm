@@ -183,6 +183,16 @@ function explain(r) {
       fix: 'نفّذ docs/repair-messages.sql في SQL Editor، ثم: NOTIFY pgrst, \'reload schema\';'
     };
   }
+  /* جدول قديم بلا تسلسل للمعرّف: null value in column "id" … violates not-null constraint
+     أو relation "public.messages_id_seq" does not exist */
+  if (code === '23502' || code === '42703' || /null value in column "id"|messages_id_seq/i.test(String(msg))) {
+    return {
+      code: 'legacy-id',
+      title: 'جدول messages قديم: المعرّف id بلا قيمة افتراضية',
+      detail: 'الموقع يرسل نصّ الرسالة فقط ويعتمد على توليد id من تسلسل messages_id_seq وجدولك لا يملكه.',
+      fix: 'نفّذ docs/repair-messages.sql في SQL Editor (يُنشئ التسلسل ويربطه بعمود id)، ثم: NOTIFY pgrst, \'reload schema\';'
+    };
+  }
   if (code === '42P01' || code === 'PGRST205' || /does not exist|schema cache/i.test(String(msg))) {
     return { code: 'missing-table', title: 'الجداول غير موجودة', fix: 'نفّذ docs/bootstrap.sql في SQL Editor' };
   }
@@ -312,6 +322,21 @@ export async function doctorProject({ url, anonKey, realtime = true, write = fal
     }
   }
 
+  /* 2ج) عمود المعرّف id: جدول قديم قد ينقصه العمود أو يكون بلا default/تسلسل،
+     فيفشل إرسال الرسائل بـ «null value in column "id" … violates not-null constraint» */
+  if (report.tables.messages) {
+    const idField = await restGet(url, anonKey, '/rest/v1/messages?select=id&limit=1');
+    const idErr = String((idField.body && (idField.body.message || idField.body.error)) || '');
+    if (!idField.ok && /could not find the 'id' column/i.test(idErr)) {
+      report.problems.push(Object.assign({}, explain(idField), {
+        code: 'legacy-id', column: 'id', table: 'messages',
+        title: 'جدول messages قديم: عمود المعرّف id غير مطابق للمخطط',
+        detail: 'الموقع لا يرسل id ويرفض PostgREST الكتابة في جدول بهذا الشكل.',
+        fix: 'نفّذ docs/repair-messages.sql في SQL Editor (يُنشئ تسلسل messages_id_seq ويربطه بعمود id)، ثم: NOTIFY pgrst, \'reload schema\';'
+      }));
+    }
+  }
+
   /* 3) Realtime */
   if (realtime) {
     const rt = await probeRealtime(url, anonKey);
@@ -394,6 +419,9 @@ export function renderReport(r) {
   lines.push('  ' + (r.tables.room_members ? ok('جدول room_members موجود (الأدوار)') : bad('جدول room_members مفقود (التحكم الآمن لن يعمل)')));
   lines.push('  ' + (r.tables.room_queue ? ok('جدول room_queue موجود (القائمة المشتركة)') : bad('جدول room_queue مفقود')));
   lines.push('  ' + (r.tables.presence ? ok('جدول presence موجود') : warn('جدول presence القديم مفقود (اختياري)')));
+  if (r.tables.messages && r.problems.some(p => p.code === 'legacy-id')) {
+    lines.push('  ' + warn('عمود المعرّف id في messages قديم (بلا تسلسل) — نفّذ docs/repair-messages.sql'));
+  }
   if (r.realtime && !r.realtime.skipped) {
     lines.push('  ' + (r.realtime.ok ? ok(`Realtime يعمل (${r.realtime.ms}ms)`) : warn('Realtime لا يعمل — ' + (r.realtime.error || ''))));
   }
@@ -719,7 +747,7 @@ async function cmdSmoke(args) {
 /* =========================================================
    نقطة الدخول
    ========================================================= */
-const DEFAULT_VERSION = '2.6.0';
+const DEFAULT_VERSION = '2.6.1';
 
 const HELP = `
   ${C.bold('أداة سيرفر Supabase — WatchTogether')}

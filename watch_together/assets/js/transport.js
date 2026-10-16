@@ -89,6 +89,16 @@
         'افتح SQL Editor ونفّذ docs/repair-messages.sql (أو docs/bootstrap.sql كاملاً)، ثم: NOTIFY pgrst, \'reload schema\';');
     }
 
+    /* جدول قديم بلا تسلسل للمعرّف: العميل لا يرسل id ويعتمد على messages_id_seq،
+       فيردّ Postgres: null value in column "id" … violates not-null constraint */
+    if (code === '23502' || code === '42703' ||
+      lc.indexOf('null value in column "id"') >= 0 || lc.indexOf('messages_id_seq') >= 0) {
+      return mk('legacy-id',
+        'جدول messages قديم: المعرّف id بلا قيمة افتراضية',
+        'الموقع يرسل نصّ الرسالة فقط ويعتمد على القاعدة لتوليد id من تسلسل messages_id_seq — وجدولك القديم لا يملكه.',
+        'افتح SQL Editor ونفّذ docs/repair-messages.sql (يُنشئ التسلسل ويربطه بعمود id)، ثم: NOTIFY pgrst, \'reload schema\';');
+    }
+
     if (code === '42P01' || code === 'PGRST205' ||
       lc.indexOf('does not exist') >= 0 || lc.indexOf('schema cache') >= 0) {
       return mk('missing-table',
@@ -1063,7 +1073,7 @@
       self._chatError = d;
       /* سبب واضح + حل مرة واحدة (بدل إعادة محاولة صامتة لا تنتهي أبداً) */
       const now = Date.now();
-      if (['schema-mismatch', 'missing-table', 'rls', 'bad-key'].indexOf(d.code) >= 0 &&
+      if (['schema-mismatch', 'legacy-id', 'missing-table', 'rls', 'bad-key'].indexOf(d.code) >= 0 &&
         now - (self._chatErrorAt || 0) > 20000) {
         self._chatErrorAt = now;
         self.emit('chat-error', d);
