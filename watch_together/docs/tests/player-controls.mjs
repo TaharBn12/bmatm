@@ -1,11 +1,12 @@
 /* =========================================================
    WatchTogether — اختبار هيكل التحكم في المشغّل (بلا متصفح)
    ---------------------------------------------------------
-   العقد الحالي (الإصدار 2.6):
-     1) شريط التحكم أسفل الفيديو (خارج الصورة) لا فوقه
-     2) فيه فقط: تشغيل/إيقاف + الوقت + شريط التقدم + كتم الصوت
-     3) محذوف نهائياً: شريط الصوت، ملء الشاشة، التقديم/الترجيع
-     4) الرسائل ظاهرة دائماً وتأخذ المساحة الكبيرة
+   العقد الحالي (الإصدار 2.7):
+     1) كل التحكم داخل الفيديو: ترجيع/تقديم 10 ثوانٍ على الحافتين،
+        تشغيل/إيقاف في المنتصف، وشريط التنقل (وقت + تقدم) أسفله بوسطه
+     2) لا شريط تحكم أسفل الفيديو إطلاقاً
+     3) محذوف نهائياً: شريط الصوت/الكتم، ملء الشاشة، الشريط القديم ctrlbar
+     4) صندوق الرسائل: آخر 6 رسائل مرئية والأقدم بالتمرير
    ========================================================= */
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
@@ -27,55 +28,68 @@ function elementRange(source, id) {
   return null;
 }
 
-/* ---------- 1) البنية: شريط التحكم أسفل الفيديو لا فوقه ---------- */
+/* ---------- 1) البنية: كل التحكم داخل الفيديو ---------- */
 const stage = elementRange(html, 'stage');
 const player = elementRange(html, 'player');
-const bar = elementRange(html, 'ctrlbar');
-assert.ok(stage && player && bar, 'stage/player/ctrlbar موجودة');
+assert.ok(stage && player, 'stage/player موجودة');
 assert.ok(stage.start < player.start && player.end <= stage.end, 'المشغّل داخل المسرح');
-assert.ok(player.end <= bar.start, 'شريط التحكم بعد إغلاق المشغّل (أسفل الفيديو وليس فوقه)');
-assert.ok(bar.end <= stage.end, 'شريط التحكم داخل بطاقة المسرح (فيُخفي مع طيّ الفيديو)');
-assert.ok(html.indexOf('id="ctrlbar"') < html.indexOf('id="progressBar"'), 'شريط التقدم داخل شريط التحكم');
-assert.ok(html.indexOf('id="playPauseBtn"') < html.indexOf('id="progressBar"'), 'زر التشغيل مع شريط التقدم في الشريط نفسه');
+assert.ok(!html.includes('id="ctrlbar"'), 'الشريط القديم أسفل الفيديو محذوف');
+assert.ok(!html.includes('id="playPauseBtn"'), 'زر التشغيل القديم أسفل الفيديو محذوف');
+assert.ok(!html.includes('id="muteBtn"'), 'زر الكتم محذوف');
+
+/* أزرار الحافتين + المنتصف + شريط التنقل كلها داخل المشغّل */
+for (const id of ['seekBackBtn', 'seekFwdBtn', 'centerPlayBtn', 'vbar', 'progressBar']) {
+  const r = elementRange(html, id);
+  assert.ok(r && r.start > player.start && r.end <= player.end, `${id} داخل الفيديو`);
+}
+assert.ok(html.indexOf('id="vbar"') > html.indexOf('id="centerPlayBtn"'), 'شريط التنقل بعد زر المنتصف (أسفله)');
+assert.ok(html.indexOf('id="progressBar"') > html.indexOf('id="vbar"'), 'شريط التقدم داخل شريط التنقل');
 
 /* ---------- 2) عناصر التحكم المطلوبة ---------- */
-for (const id of ['centerPlayBtn', 'playPauseBtn', 'progressBar', 'progressTip', 'curTime', 'durTime', 'muteBtn']) {
+for (const id of ['centerPlayBtn', 'iconPlay', 'iconPause', 'progressBar', 'progressTip', 'curTime', 'durTime', 'seekBackBtn', 'seekFwdBtn', 'vbar']) {
   assert.ok(html.includes(`id="${id}"`), `عنصر التحكم ${id} موجود`);
 }
-/* الشريط ظاهر في الغرفة الفارغة (يُخفى فقط لفيديوهات التضمين عبر room.js) */
-assert.ok(!/<div class="ctrlbar vcontrols" id="ctrlbar"[^>]*\shidden/.test(html), 'شريط التحكم ظاهر افتراضياً');
+/* شريط التنقل ظاهر في الغرفة الفارغة (يُخفى فقط لفيديوهات التضمين عبر room.js) */
+assert.ok(!/<div class="vbar vcontrols" id="vbar"[^>]*\shidden/.test(html), 'شريط التنقل ظاهر افتراضياً');
 
-/* ---------- 3) المحذوف نهائياً: شريط الصوت + ملء الشاشة + التقديم/الترجيع ---------- */
-for (const id of ['volRange', 'fullBtn', 'skipBackBtn', 'skipFwdBtn']) {
+/* ---------- 3) المحذوف نهائياً: الكتم + ملء الشاشة ---------- */
+for (const id of ['volRange', 'fullBtn', 'iconSound', 'iconMuted', 'playPauseBtn', 'muteBtn', 'ctrlbar']) {
   assert.ok(!html.includes(`id="${id}"`), `${id} يجب أن يكون محذوفاً من الغرفة`);
-  assert.ok(!js.includes(`'${id}'`), `${id} لا يُستعمل في room.js`);
 }
 assert.doesNotMatch(js, /fullscreen|RequestFullscreen|exitFullscreen/i, 'لا كود ملء شاشة في الغرفة');
 assert.doesNotMatch(js, /setVolume\(|volRange/, 'لا كود شريط صوت في الغرفة');
 assert.doesNotMatch(js, /e\.key\.toLowerCase\(\) === 'f'/, 'لا اختصار ملء شاشة');
-/* أزرار التقديم/الترجيع محذوفة — يبقى مفتاحا السهمين للتنقل بلا واجهة */
-assert.doesNotMatch(js, /el\.skip(Back|Fwd)/, 'لا مراجع لأزرار التقديم/الترجيع');
+assert.doesNotMatch(js, /el\.muteBtn/, 'لا مراجع لزر الكتم');
+assert.doesNotMatch(js, /el\.ctrlbar/, 'لا مراجع للشريط القديم');
+assert.doesNotMatch(js, /el\.playPause\b/, 'لا مراجع لزر التشغيل القديم');
+
+/* أزرار التقدم/الترجيع تعمل على الحافتين + السهمان محفوظان */
+assert.match(js, /el\.seekBackBtn\.addEventListener\('click', \(\) => skip\(-10\)\)/, 'الترجيع من زر الحافة');
+assert.match(js, /el\.seekFwdBtn\.addEventListener\('click', \(\) => skip\(\+10\)\)/, 'التقديم من زر الحافة');
 assert.match(js, /skip\(-10\)/, 'الترجيع بمفتاح السهم الأيمن');
 assert.match(js, /skip\(\+10\)/, 'التقديم بمفتاح السهم الأيسر');
 assert.doesNotMatch(css, /\.vol\b(?!ume)/, 'لا تنسيق لشريط الصوت');
-assert.doesNotMatch(css, /\.vcontrols \.vol/, 'لا تنسيق لشريط الصوت داخل شريط التحكم');
 
 /* ---------- 4) المشغّل بلا أزرار أصلية، والتحكم عبر الطبقة الموحّدة ---------- */
 assert.match(js, /player\.load\(parsed, \{ autoplay: !!opts\.autoplay, controls: false \}\)/);
-assert.match(js, /el\.ctrlbar\.hidden = parsed\.kind === 'embed'/);
+assert.match(js, /el\.vbar\.hidden = isEmbed/, 'إخفاء شريطنا لفيديوهات التضمين');
 assert.match(js, /player\._video\.controls = false/);
 assert.match(js, /el\.player\.addEventListener\('click'/, 'النقر على الفيديو يبدّل التشغيل');
 assert.match(js, /function pokeVideoUI\(\)/, 'طبقة التحكم موحّدة');
+assert.match(js, /if \(el\.centerPlay\) el\.centerPlay\.addEventListener\('click', togglePlay\)/, 'الزر الأوسط يبدّل التشغيل/الإيقاف');
 
-/* ---------- 5) CSS: الشريط أسفل الفيديو وظاهر دائماً، والرسائل كبيرة ---------- */
-assert.match(css, /\.room-body \.ctrlbar\.vcontrols \{[^}]*position: static/, 'شريط التحكم أسفل الفيديو (بلا تعويم فوق الصورة)');
-assert.match(css, /\.room-body \.stage \{[^}]*flex-direction: column/, 'المسرح عمودي: الفيديو ثم الشريط');
-assert.doesNotMatch(css, /\.player\.is-playing\.is-ui-hidden \.vcontrols \{ opacity: 0/, 'لا إخفاء تلقائي للتحكم');
+/* ---------- 5) CSS: التحكم داخل الفيديو، والرسائل محدودة بآخر 6 ---------- */
+assert.match(css, /\.vbar \{[^}]*position: absolute/, 'شريط التنقل مثبّت داخل الفيديو');
+assert.match(css, /\.vseek--back \{[^}]*inset-inline-start/, 'زر الترجيع على الحافة اليمنى (بداية RTL)');
+assert.match(css, /\.vseek--fwd \{[^}]*inset-inline-end/, 'زر التقديم على الحافة اليسرى (نهاية RTL)');
+assert.match(css, /\.vcenter \{[^}]*position: absolute/, 'زر المنتصف داخل الفيديو');
+assert.match(css, /\.vcenter\.is-playing/, 'الزر الأوسط يبقى ظاهراً (خفيف) أثناء التشغيل');
+assert.match(css, /\.ctrlbar \{ display: none !important; \}/, 'كل قواعد الشريط القديم ملغاة صراحة');
+assert.match(css, /\.chat__body \{[^}]*max-height: 342px/, 'صندوق الرسائل له سقف (آخر 6 رسائل)');
+assert.match(js, /CHAT_VISIBLE_MAX = 6/, 'السقف يحسبه fitChatViewport لآخر 6 رسائل');
+assert.match(js, /function fitChatViewport\(\)/, 'ضبط سقف الصندوق ديناميكياً');
 assert.match(css, /\.room-main > #chat \{[^}]*display: flex/, 'الرسائل ظاهرة دائماً');
-assert.match(css, /\.room-main > #chat \{[^}]*flex: 1 1 auto/, 'الرسائل تأخذ المساحة المتبقية');
-assert.match(css, /\.room-main > #chat \{[^}]*min-height: 240px/, 'الرسائل ذات ارتفاع أدنى معقول');
 assert.match(css, /width: min\(100%, max\(320px, 54vh\)\)/, 'ارتفاع الفيديو محدود لتبقى للرسائل المساحة الأكبر');
-assert.match(css, /\.vcenter \{/, 'الزر المركزي ما زال موجوداً');
 assert.match(css, /\.room\.is-media-collapsed \.stage \.player \{ display: none; \}/, 'طيّ الفيديو يُخفي الصورة ويُبقي التحكم');
-assert.match(css, /\.vcontrols\[hidden\], |\.room-body \.ctrlbar\.vcontrols\[hidden\] \{ display: none !important; \}/, 'إخفاء الشريط للتضمينات');
+assert.match(css, /\.vbar\[hidden\] \{ display: none !important; \}/, 'إخفاء الشريط للتضمينات');
 console.log('Player control regression checks passed');

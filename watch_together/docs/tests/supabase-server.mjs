@@ -174,8 +174,8 @@ async function testPartialProject() {
   await wait(400);
 
   t('مشروع ناقص: ما زال متصلاً بـ Supabase (لم يسقط للوضع المحلي)',
-    env.sandbox.WTRoom.session.transport.kind === 'supabase' && env.byId.get('statusBadge').getAttribute('data-state') === 'online',
-    env.byId.get('statusText').textContent);
+    env.sandbox.WTRoom.session.transport.kind === 'supabase' && env.byId.get('reconnectBtn').getAttribute('data-state') === 'online',
+    env.byId.get('reconnectBtn').getAttribute('data-state'));
   t('مشروع ناقص: صف الغرفة أُنشئ', sb.db.rooms.has('PART01'));
   t('مشروع ناقص: حاول قراءة الرسائل (وتوقّع الفشل)', sb.calls.msgSelect > 0);
 
@@ -683,8 +683,8 @@ async function testRoomDiagnostics() {
   env.byId.get('diagReconnectBtn').dispatch('click', {});
   await wait(400);
   t('غرفة: إعادة الاتصال تُبقي الاتصال حياً',
-    env.sandbox.WTRoom.session.transport.kind === 'supabase' && env.byId.get('statusBadge').getAttribute('data-state') === 'online',
-    env.byId.get('statusText').textContent);
+    env.sandbox.WTRoom.session.transport.kind === 'supabase' && env.byId.get('reconnectBtn').getAttribute('data-state') === 'online',
+    env.byId.get('reconnectBtn').getAttribute('data-state'));
 
   /* نافذة التشخيص تُغلق بزر الإغلاق */
   env.byId.get('diagBtn').dispatch('click', {});

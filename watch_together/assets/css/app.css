@@ -2313,3 +2313,184 @@ body.drawer-open { overscroll-behavior: none; }
 @media (pointer: coarse) {
   .msg-menu__btn { min-height: 42px; }
 }
+
+/* =========================================================
+   الإصدار 2.7.0 — شريط علوي بثلاث أيقونات · التحكم داخل الفيديو · سقف الرسائل
+   ---------------------------------------------------------
+   • الشريط العلوي: 3 أيقونات فقط — 🔍 بحث/تغيير الفيديو · ⤴ إنزال/رفع الفيديو · 🔄 إعادة الاتصال.
+     بلا عنوان غرفة، بلا دراور، بلا مؤشرات أخرى.
+   • التحكم بالفيديو كله داخل الإطار: ترجيع/تقديم 10 ثوانٍ على الحافتين،
+     تشغيل/إيقاف في المنتصف، وشريط التنقل (الوقت + التقدم) أسفل الفيديو بوسطه.
+     لا شريط تحكم أسفل الفيديو إطلاقاً، ولا زر كتم (اختصار M محفوظ في المشغّل).
+   • صندوق الرسائل: آخر 6 رسائل فقط مرئية، والأقدم عبر التمرير (fitChatViewport).
+   • الدراور حُذف؛ المشاركون والمنظّمون والأدوات انتقلوا إلى نافذة «قائمة الغرفة».
+   ========================================================= */
+
+/* ---- الشريط العلوي: 3 أيقونات ---- */
+.room-bar {
+  display: flex; align-items: center; justify-content: center;
+  gap: 10px; flex-wrap: nowrap; width: 100%;
+  min-height: 52px; padding: 4px 8px;
+  background: var(--grad-card, transparent);
+}
+.bar-actions {
+  display: flex; align-items: center; gap: 8px;
+  flex: none; flex-wrap: nowrap;
+}
+.bar-action {
+  position: relative; flex: none;
+  width: 44px; height: 44px;
+  display: grid; place-items: center;
+  border: 1px solid var(--border);
+  border-radius: 13px;
+  background: rgba(255, 255, 255, .05);
+  color: var(--text); cursor: pointer;
+  transition: background .18s, border-color .18s, transform .12s;
+}
+.bar-action:hover, .bar-action:focus-visible {
+  background: rgba(124, 92, 255, .18);
+  border-color: rgba(124, 92, 255, .45);
+}
+.bar-action:active { transform: scale(.94); }
+.bar-action.is-on { background: var(--grad); color: #0a0715; border-color: transparent; }
+.bar-action .dot {
+  position: absolute; top: 7px; inset-inline-end: 7px;
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--muted-2);
+}
+.bar-action.is-online .dot { background: #3ddc97; box-shadow: 0 0 6px rgba(61, 220, 151, .8); }
+.bar-action.is-offline .dot { background: #e5644e; }
+.bar-action.is-connecting .dot { background: #f0b429; }
+.bar-action.is-local .dot { background: #9b8cff; }
+.bar-action__count {
+  position: absolute; bottom: -6px; inset-inline-start: -6px;
+  min-width: 17px; height: 17px; padding: 0 4px;
+  display: grid; place-items: center;
+  border-radius: 999px;
+  background: var(--brand-2, #7c5cff); color: #fff;
+  font-size: 10px; font-weight: 800;
+}
+.bar-action__count[hidden] { display: none !important; }
+
+/* ---- التحكم داخل الفيديو ---- */
+.vcenter {
+  position: absolute; inset: 0; margin: auto;
+  width: 62px; height: 62px; border-radius: 50%;
+  display: grid; place-items: center;
+  background: rgba(10, 7, 21, .55);
+  border: 1px solid rgba(255, 255, 255, .2);
+  backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+  color: #fff; cursor: pointer; z-index: 4;
+  transition: opacity .22s, transform .15s, background .18s;
+}
+.vcenter:hover, .vcenter:focus-visible { background: rgba(124, 92, 255, .55); transform: scale(1.06); opacity: 1; }
+.vcenter:active { transform: scale(.95); }
+.vcenter.is-playing { opacity: .32; }         /* خفيف أثناء التشغيل — يظهر بوضوح عند التوقف */
+.vcenter.is-playing:hover, .vcenter.is-playing:focus-visible { opacity: 1; }
+.vcenter:disabled { opacity: .22; cursor: not-allowed; }
+.vcenter[hidden] { display: none !important; }
+
+/* ترجيع/تقديم 10 ثوانٍ على الحافتين (البداية=يمين في RTL للرجوع، النهاية=يسار للتقديم) */
+.vseek {
+  position: absolute; top: 50%; transform: translateY(-50%);
+  z-index: 4;
+  width: 54px; height: 78px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px;
+  border: 1px solid rgba(255, 255, 255, .14);
+  border-radius: 16px;
+  background: rgba(10, 7, 21, .35);
+  backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);
+  color: #fff; cursor: pointer; opacity: .8;
+  transition: opacity .18s, background .18s, transform .12s;
+}
+.vseek small { font-size: 10px; font-weight: 800; line-height: 1; opacity: .9; }
+.vseek:hover, .vseek:focus-visible { opacity: 1; background: rgba(10, 7, 21, .6); }
+.vseek:active { transform: translateY(-50%) scale(.93); }
+.vseek:disabled { opacity: .22; cursor: not-allowed; }
+.vseek[hidden] { display: none !important; }
+.vseek--back { inset-inline-start: 10px; }    /* الحافة اليمنى (RTL) = رجوع */
+.vseek--fwd { inset-inline-end: 10px; }       /* الحافة اليسرى (RTL) = تقديم */
+
+/* شريط التنقل أسفل الفيديو بوسطه: الوقت + شريط التقدم */
+.vbar {
+  position: absolute; inset-inline: 0; bottom: 10px;
+  margin-inline: auto;
+  width: min(88%, 720px);
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 13px;
+  background: rgba(10, 7, 21, .5);
+  border: 1px solid rgba(255, 255, 255, .12);
+  border-radius: 12px;
+  backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+  z-index: 5;
+}
+.vbar[hidden] { display: none !important; }
+.vbar__times {
+  display: flex; align-items: center; gap: 4px;
+  font-size: 11.5px; font-weight: 700;
+  color: #d4d7e6; font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+.vbar__sep { opacity: .55; }
+.vbar__progress { flex: 1; min-width: 0; display: flex; align-items: center; }
+.vbar__progress .progress__bar { width: 100%; }
+
+/* لا شريط تحت الفيديو: كل القواعد القديمة لـ .ctrlbar ملغاة فعلياً */
+.ctrlbar { display: none !important; }
+
+/* ---- سقف الرسائل: آخر 6 رسائل مرئية، والأقدم بالتمرير ---- */
+.chat__body {
+  gap: 7px;
+  max-height: 342px;              /* تُضبط بدقة عبر fitChatViewport */
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+/* ---- نافذة «قائمة الغرفة»: رأس مرن + ترويسة الأدوات ---- */
+.modal__head-actions {
+  display: flex; align-items: center; gap: 8px; flex: none;
+}
+.modal__card--playlist .drawer__section {
+  border-top: 1px solid var(--border);
+  margin-top: 12px; padding-top: 12px;
+}
+.modal__card--playlist .drawer__actions {
+  border-top: 1px solid var(--border);
+  margin-top: 12px; padding-top: 12px;
+  display: flex; flex-wrap: wrap; gap: 8px;
+}
+
+/* ---- الهاتف: أهداف لمس ≥ 44px، الشريط لا يلتف ---- */
+@media (max-width: 420px) {
+  .room-bar { padding: 4px 6px; }
+  .bar-actions { gap: 6px; }
+  .vseek { width: 50px; height: 72px; }
+  .vbar { width: min(94%, 720px); bottom: 8px; gap: 8px; padding: 7px 10px; }
+}
+
+/* خانة الكتابة تبقى أسفل بطاقة الرسائل دائماً (والرسائل محدودة بآخر 6) */
+.chat__foot { margin-top: auto; }
+
+/* الشاشات الصغيرة جداً: إخفاء الوقت الرقمي ليوسّع شريط التنقل */
+@media (max-width: 400px) {
+  .vbar__times { display: none !important; }
+}
+
+/* بطاقة نافذة الغرفة: تمرير داخلي حتى تصل «مغادرة» على أصغر شاشة */
+.modal__card--playlist {
+  max-height: min(88dvh, 780px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+/* النص التوضيحي للفيديو الفارغ لا يختفي خلف شريط التنقل */
+.player__placeholder { padding-bottom: 64px; }
+
+/* تمرير موحّد: البطاقة كلها تتمرير واحد، وقائمة التشغيل جزء منها بلا انكماش */
+.modal__card--playlist .queue-list {
+  flex: 0 0 auto;
+  min-height: 0;
+  overflow-y: visible;
+  max-height: none;
+}
+.modal__card--playlist .drawer__section,
+.modal__card--playlist .drawer__actions { flex: 0 0 auto; }

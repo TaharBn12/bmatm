@@ -101,26 +101,24 @@
   const el = {
     gate: $('gate'), gateCode: $('gateCode'), gateName: $('gateName'), gateForm: $('gateForm'),
     gateError: $('gateError'), gateSubmit: $('gateSubmit'), avatarPreview: $('avatarPreview'), gateAuthLink: $('gateAuthLink'),
-    room: $('room'), roomTitle: $('roomTitle'), roomSub: $('roomSub'),
+    room: $('room'),
     codeText: $('roomCodeText'), copyCodeBtn: $('copyCodeBtn'),
-    statusBadge: $('statusBadge'), statusText: $('statusText'),
+    reconnectBtn: $('reconnectBtn'),
     copyLinkBtn: $('copyLinkBtn'), shareBtn: $('shareBtn'), qrBtn: $('qrBtn'), leaveBtn: $('leaveBtn'),
-    drawer: $('roomDrawer'), drawerScrim: $('drawerScrim'), drawerOpenBtn: $('drawerOpenBtn'), drawerCloseBtn: $('drawerCloseBtn'),
-    membersCount: $('membersCount'), organizerList: $('organizerList'), organizerCount: $('organizerCount'), organizerEmpty: $('organizerEmpty'),
+    organizerList: $('organizerList'), organizerCount: $('organizerCount'), organizerEmpty: $('organizerEmpty'),
     mediaShell: $('mediaShell'),
-    stage: $('stage'), player: $('player'), placeholder: $('playerPlaceholder'), ctrlbar: $('ctrlbar'),
-    playPause: $('playPauseBtn'), iconPlay: $('iconPlay'), iconPause: $('iconPause'),
-    centerPlay: $('centerPlayBtn'),
-    muteBtn: $('muteBtn'), iconSound: $('iconSound'), iconMuted: $('iconMuted'),
+    stage: $('stage'), player: $('player'), placeholder: $('playerPlaceholder'), vbar: $('vbar'),
+    centerPlay: $('centerPlayBtn'), iconPlay: $('iconPlay'), iconPause: $('iconPause'),
+    seekBackBtn: $('seekBackBtn'), seekFwdBtn: $('seekFwdBtn'),
     progressBar: $('progressBar'), progressFill: $('progressFill'), progressBuffer: $('progressBuffer'),
     progressKnob: $('progressKnob'), progressTip: $('progressTip'), curTime: $('curTime'), durTime: $('durTime'),
-    addVideoBtn: $('addVideoBtn'), messagesBtn: $('messagesBtn'), messagesCount: $('messagesCount'),
-    playlistBtn: $('playlistBtn'), playlistCount: $('playlistCount'),
-    changeBar: $('changeBar'), newUrl: $('newUrl'), newTitle: $('newTitle'), applyUrlBtn: $('applyUrlBtn'), cancelUrlBtn: $('cancelUrlBtn'),
+    addVideoBtn: $('addVideoBtn'),
+    playlistCount: $('playlistCount'),
+    newUrl: $('newUrl'), newTitle: $('newTitle'), applyUrlBtn: $('applyUrlBtn'),
     collapseBtn: $('collapseBtn'), membersPanel: $('membersPanel'), membersList: $('membersList'), sideMembersCount: $('sideMembersCount'),
     chat: $('chat'), chatBody: $('chatBody'), chatEmpty: $('chatEmpty'), chatCount: $('chatCount'),
     clearChatBtn: $('clearChatBtn'), reactRow: $('reactRow'), chatForm: $('chatForm'),
-    chatInput: $('chatInput'), chatSend: $('chatSend'), typing: $('typing'), backToVideoBtn: $('backToVideoBtn'),
+    chatInput: $('chatInput'), chatSend: $('chatSend'), typing: $('typing'),
     composerBar: $('composerBar'), composerBarLabel: $('composerBarLabel'), composerBarText: $('composerBarText'), composerBarCancel: $('composerBarCancel'),
     playlistModal: $('playlistModal'), playlistCloseBtn: $('playlistCloseBtn'), queueList: $('queueList'), queueEmpty: $('queueEmpty'),
     sbMeBtn: $('sbMeBtn'), qrModal: $('qrModal'), qrBox: $('qrBox'), qrUrl: $('qrUrl'), qrClose: $('qrClose'), qrCopy: $('qrCopy'),
@@ -214,8 +212,7 @@
     sysMessage('السيرفر غير متصل — هذه الغرفة محلية داخل متصفحك فقط، ولن يدخلها أصدقاؤك من أجهزتهم' +
       (why ? '\nالسبب: ' + why : ''));
     U.toast('تعذّر الاتصال بالسيرفر — المزامنة داخل هذا المتصفح فقط', 'warn', 8000);
-    if (el.roomSub) el.roomSub.textContent = 'وضع محلي — الأصدقاء لن يلتحقوا (السيرفر غير متصل)';
-    if (el.statusText) el.statusText.textContent = 'محلي فقط';
+    setStatus('local', 'وضع محلي — الأصدقاء لن يلتحقوا (السيرفر غير متصل)');
     /* لا نفتح نافذة التشخيص قسراً (تزعج المستخدم) — نكتفي بتنبيه +
        زر «تشخيص» في الشريط العلوي يكفي لمن يريد التفاصيل */
     if (session.lastError) {
@@ -390,7 +387,6 @@
     }
 
     const title = (createInfo && createInfo.title) || U.store.get('roomTitle:' + roomId) || '';
-    el.roomTitle.textContent = title || ('غرفة ' + roomId);
     if (title) U.store.set('roomTitle:' + roomId, title);
 
     paintMe();
@@ -419,7 +415,7 @@
         name: session.name,
         userId: session.userId,
         videoUrl: st.url || null,
-        title: (createInfo && createInfo.title) || el.roomTitle.textContent || 'غرفة مشاهدة',
+        title: (createInfo && createInfo.title) || U.store.get('roomTitle:' + roomId) || 'غرفة مشاهدة',
         /* من أنشأ الغرفة هو من يملك الحق في إنشاء صفّها في قاعدة البيانات؛
            البقية ينتظرونها ولا ينشئون غرفة فارغة تحمل نفس الكود */
         host: !!(createInfo && createInfo.host) || params.get('host') === '1',
@@ -484,7 +480,7 @@
 
       pingPresence(true);
       sysMessage(session.name + ' انضم إلى الغرفة');
-      el.roomSub.textContent = 'متصل • ' + transport.label;
+      setStatus('online', 'متصل • ' + transport.label);
       startLoops();
 
       if (result && result.messages && result.messages.length) {
@@ -593,8 +589,9 @@
 
   function updateControlAccess() {
     const locked = !canControl();
-    if (el.playPause) el.playPause.disabled = locked;
     if (el.centerPlay) el.centerPlay.disabled = locked;
+    if (el.seekBackBtn) el.seekBackBtn.disabled = locked;
+    if (el.seekFwdBtn) el.seekFwdBtn.disabled = locked;
     if (el.progressBar) {
       el.progressBar.setAttribute('aria-disabled', locked ? 'true' : 'false');
       el.progressBar.classList.toggle('is-locked', locked);
@@ -786,8 +783,8 @@
   function updateSyncBadge() {
     const d = session.pendingDrift || 0;
     /* تفاصيل الانحراف لا تُعرض باستمرار لتبقى الواجهة هادئة؛ تصحيحها يعمل في الخلفية. */
-    if (el.statusBadge) {
-      el.statusBadge.title = !player.isReady() ? 'حالة اتصال الغرفة' :
+    if (el.reconnectBtn) {
+      el.reconnectBtn.title = !player.isReady() ? 'إعادة الاتصال بالسيرفر' :
         (d <= 0.35 ? 'المشاهدة متزامنة' : 'يُصحّح الانحراف تلقائياً (' + d.toFixed(1) + ' ث)');
     }
   }
@@ -802,8 +799,12 @@
     st.kind = parsed.kind;
 
     try {
-      el.ctrlbar.hidden = parsed.kind === 'embed';
-      el.player.classList.toggle('is-embed', parsed.kind === 'embed');
+      /* فيديوهات التضمين (يوتيوب) تأتي بعناصر تحكمها الخاصة — نُخفي شريطنا */
+      const isEmbed = parsed.kind === 'embed';
+      if (el.vbar) el.vbar.hidden = isEmbed;
+      if (el.seekBackBtn) el.seekBackBtn.hidden = isEmbed;
+      if (el.seekFwdBtn) el.seekFwdBtn.hidden = isEmbed;
+      el.player.classList.toggle('is-embed', isEmbed);
       pokeVideoUI();
       await player.load(parsed, { autoplay: !!opts.autoplay, controls: false });
       if (el.placeholder) { el.placeholder.remove(); el.placeholder = null; }
@@ -1016,8 +1017,7 @@
       : '';
     el.organizerEmpty.hidden = organizers.length > 1 || (organizers.length === 1 && organizers[0].role === 'organizer');
     el.organizerCount.textContent = String(organizers.filter(m => m.role === 'organizer').length);
-    el.membersCount.textContent = String(list.length);
-    el.sideMembersCount.textContent = String(list.length);
+    if (el.sideMembersCount) el.sideMembersCount.textContent = String(list.length);
 
     el.membersList.querySelectorAll('[data-set-role]').forEach(btn => {
       btn.addEventListener('click', (event) => {
@@ -1241,6 +1241,22 @@
   function updateChatCount() {
     const n = el.chatBody.querySelectorAll('.msg:not(.msg--system)').length;
     el.chatCount.textContent = n + (n === 1 ? ' رسالة' : ' رسائل');
+    fitChatViewport();
+  }
+
+  /* سقف صندوق الرسائل: آخر 6 رسائل فقط، والأقدم عبر التمرير */
+  const CHAT_VISIBLE_MAX = 6;
+  function fitChatViewport() {
+    const body = el.chatBody;
+    if (!body || !body.style) return;
+    const kids = (body.querySelectorAll ? body.querySelectorAll('.msg') : (body.children || [])) || [];
+    const rows = Array.from(kids).slice(-CHAT_VISIBLE_MAX);
+    if (!rows.length) { body.style.maxHeight = ''; return; }
+    let h = 10; /* حشو */
+    for (let i = 0; i < rows.length; i++) {
+      h += (rows[i].offsetHeight || 52) + 7; /* ارتفاع الصف + الفجوة */
+    }
+    body.style.maxHeight = Math.min(Math.max(h, 120), 380) + 'px';
   }
 
   /* الدردشة ظاهرة دائماً في الغرفة (تأخذ المساحة الكبيرة) → لا عدّاد «غير مقروء» */
@@ -1551,18 +1567,13 @@
   }
 
   /* ============================== وضع الرسائل ============================== */
-  function setFocusMode(on) {
-    session.focusMode = !!on;
-    document.body.classList.toggle('chat-focus', session.focusMode);
-    if (el.messagesBtn) el.messagesBtn.classList.toggle('is-on', session.focusMode);
-    el.backToVideoBtn.hidden = !session.focusMode;
-    if (session.focusMode) {
-      session.unread = 0;
-      updateMessagesBadge();
-      setTimeout(() => { scrollChat(true); el.chatInput.focus(); }, 90);
-    } else {
-      scrollChat(true);
-    }
+  /* طيّ الفيديو/إظهاره — الزر الوحيد لرفع الفيديو وإنزاله */
+  function toggleCollapse() {
+    el.room.classList.toggle('is-media-collapsed');
+    const collapsed = el.room.classList.contains('is-media-collapsed');
+    el.collapseBtn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+    el.collapseBtn.classList.toggle('is-on', collapsed);
+    setTimeout(() => fitChatViewport(), 60);
   }
 
   /* ============================== قائمة التشغيل المشتركة ============================== */
@@ -1573,7 +1584,10 @@
 
   function renderQueue() {
     const queue = session.queue || [];
-    el.playlistCount.textContent = String(queue.length);
+    if (el.playlistCount) {
+      el.playlistCount.textContent = String(queue.length);
+      el.playlistCount.hidden = queue.length === 0;
+    }
     el.queueEmpty.hidden = queue.length > 0;
     if (!queue.length) { el.queueList.innerHTML = ''; return; }
     el.queueList.innerHTML = queue.map((item, index) => {
@@ -1610,7 +1624,7 @@
       if (Array.isArray(result)) setQueue(result);
       el.newUrl.value = '';
       el.newTitle.value = '';
-      el.changeBar.hidden = true;
+      /* النافذة تبقى مفتوحة ليشاهد الفيديو في القائمة */
       U.toast('أُضيف الفيديو إلى قائمة الغرفة', 'success', 2200);
     } catch (err) {
       U.toast('تعذّر إضافة الفيديو — تحقق من الاتصال ثم أعد المحاولة', 'error', 3200);
@@ -1649,15 +1663,15 @@
       offline: { txt: 'يعيد الاتصال', cls: 'is-offline', pulse: true }
     };
     const m = map[state] || map.offline;
-    if (el.statusBadge) {
-      el.statusBadge.className = 'badge room-connection ' + m.cls;
-      el.statusBadge.setAttribute('data-state', state || 'offline');
-      el.statusBadge.title = detail || 'حالة اتصال الغرفة';
+    /* مؤشر الحالة انتقل إلى زر إعادة الاتصال نفسه (الشريط العلوي = 3 أيقونات فقط) */
+    if (el.reconnectBtn) {
+      el.reconnectBtn.className = 'bar-action ' + m.cls;
+      el.reconnectBtn.setAttribute('data-state', state || 'offline');
+      el.reconnectBtn.title = (detail || m.txt) + ' — اضغط لإعادة الاتصال';
+      el.reconnectBtn.setAttribute('aria-label', el.reconnectBtn.title);
+      const dot = el.reconnectBtn.querySelector('.dot');
+      if (dot) dot.className = 'dot' + (m.pulse ? ' dot--pulse' : '');
     }
-    if (el.statusText) el.statusText.textContent = m.txt;
-    const dot = el.statusBadge && el.statusBadge.querySelector('.dot');
-    if (dot) dot.className = 'dot' + (m.pulse ? ' dot--pulse' : '');
-    if (detail && el.roomSub) el.roomSub.textContent = detail;
   }
 
   /* ============================== ربط الواجهة ============================== */
@@ -1666,7 +1680,7 @@
     const togglePlay = () => {
       if (!requireControl()) return;
       if (!player.isReady()) {
-        if (!st.url) return openChangeBar();
+        if (!st.url) return openRoomModal();
         return U.toast('لم يكتمل تحميل الفيديو بعد', 'warn');
       }
       if (player.isPlaying()) { player.pause(); st.playing = false; }
@@ -1675,15 +1689,14 @@
       pokeVideoUI();
       localControl('toggle');
     };
-    el.playPause.addEventListener('click', togglePlay);
     if (el.centerPlay) el.centerPlay.addEventListener('click', togglePlay);
 
     /* النقر على سطح الفيديو نفسه يبدّل التشغيل (النقرة المزدوجة تُحسب نقرة واحدة).
-       نقرات شريط التحكم والزر الكبير وطبقات التحميل لا تصل إلى هنا. */
+       نقرات أزرار التحكم وطبقات التحميل لا تصل إلى هنا. */
     let lastPlayerClick = 0;
     el.player.addEventListener('click', (e) => {
       const t = e.target;
-      if (t && t.closest && (t.closest('.vcontrols') || t.closest('.vcenter') ||
+      if (t && t.closest && (t.closest('.vcontrols') || t.closest('.vcenter') || t.closest('.vseek') ||
         t.closest('.player__overlay') || t.closest('.player__placeholder'))) return;
       const now = Date.now();
       if (now - lastPlayerClick < 320) return;   /* تفادي النقر المزدوج */
@@ -1691,7 +1704,7 @@
       togglePlay();
     });
 
-    /* ---- تقديم/ترجيع بمفاتيح الأسهم فقط (لا أزرار في الواجهة) ---- */
+    /* ---- تقديم/ترجيع 10 ثوانٍ: أزرار على حافتي الفيديو + مفاتيح الأسهم ---- */
     const skip = (delta) => {
       if (!requireControl()) return;
       if (!player.isReady()) return U.toast('لا يوجد فيديو يعمل', 'warn');
@@ -1702,23 +1715,11 @@
       updateProgressUI();
       pokeVideoUI();
     };
+    if (el.seekBackBtn) el.seekBackBtn.addEventListener('click', () => skip(-10));
+    if (el.seekFwdBtn) el.seekFwdBtn.addEventListener('click', () => skip(+10));
 
-    /* ---- الصوت: زر كتم فقط (لا شريط صوت) ---- */
-    el.muteBtn.addEventListener('click', () => {
-      const m = !player.isMuted();
-      player.setMuted(m);
-      el.iconSound.hidden = m;
-      el.iconMuted.hidden = !m;
-    });
-
-    /* ---- طيّ الفيديو وإظهاره (يبقى الصوت والتحكم يعملان) ---- */
-    if (el.collapseBtn) {
-      el.collapseBtn.addEventListener('click', () => {
-        const collapsed = el.room.classList.toggle('is-media-collapsed');
-        el.collapseBtn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
-        el.collapseBtn.classList.toggle('is-on', collapsed);
-      });
-    }
+    /* ---- طيّ الفيديو وإظهاره (يبقى الصوت يعمل) ---- */
+    if (el.collapseBtn) el.collapseBtn.addEventListener('click', toggleCollapse);
 
     /* ---- شريط التقدم داخل الفيديو (سحب باللمس والفأرة + معاينة الوقت) ---- */
     const ratioFromEvent = (ev) => {
@@ -1771,30 +1772,15 @@
     });
 
     /* ---- أدوات المشاهدة ---- */
-    el.addVideoBtn.addEventListener('click', openChangeBar);
-    el.messagesBtn.addEventListener('click', () => setFocusMode(!session.focusMode));
-    el.playlistBtn.addEventListener('click', () => { renderQueue(); el.playlistModal.hidden = false; });
+    el.addVideoBtn.addEventListener('click', openRoomModal);
+    el.reconnectBtn.addEventListener('click', async () => {
+      U.toast('جارٍ إعادة الاتصال بالسيرفر…', 'info', 1800);
+      await reconnect();
+    });
     el.playlistCloseBtn.addEventListener('click', () => { el.playlistModal.hidden = true; });
     el.playlistModal.addEventListener('click', (e) => { if (e.target === el.playlistModal) el.playlistModal.hidden = true; });
-    el.cancelUrlBtn.addEventListener('click', () => { el.changeBar.hidden = true; });
     el.applyUrlBtn.addEventListener('click', addQueueItem);
     el.newUrl.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); addQueueItem(); } });
-    el.backToVideoBtn.addEventListener('click', () => setFocusMode(false));
-
-    /* ---- القائمة الجانبية ---- */
-    const setDrawerOpen = (open) => {
-      el.drawer.classList.toggle('is-open', !!open);
-      el.drawerScrim.hidden = !open;
-      el.drawer.setAttribute('aria-hidden', open ? 'false' : 'true');
-      el.drawerOpenBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
-      document.body.classList.toggle('drawer-open', !!open);
-      /* preventScroll: منع تحريك الصفحة عند نقل التركيز (خاصة في RTL على الهاتف) */
-      if (open) setTimeout(() => el.drawerCloseBtn.focus({ preventScroll: true }), 30);
-      else el.drawerOpenBtn.focus({ preventScroll: true });
-    };
-    el.drawerOpenBtn.addEventListener('click', () => setDrawerOpen(true));
-    el.drawerCloseBtn.addEventListener('click', () => setDrawerOpen(false));
-    el.drawerScrim.addEventListener('click', () => setDrawerOpen(false));
 
     /* ---- نسخ ومشاركة ---- */
     /* الرابط يحمل كود الغرفة + رابط الفيديو، فيلتحق الصديق بنفس المشاهدة
@@ -1959,19 +1945,16 @@
     document.addEventListener('keydown', (e) => {
       const tag = (e.target.tagName || '').toLowerCase();
       if (tag === 'input' || tag === 'textarea' || e.target.isContentEditable) return;
-      if (e.key === ' ' || e.code === 'Space') { e.preventDefault(); el.playPause.click(); }
+      if (e.key === ' ' || e.code === 'Space') { e.preventDefault(); togglePlay(); }
       else if (e.key === 'ArrowLeft') { e.preventDefault(); skip(+10); }
       else if (e.key === 'ArrowRight') { e.preventDefault(); skip(-10); }
-      else if (e.key.toLowerCase() === 'm') el.muteBtn.click();
       else if (e.key.toLowerCase() === 'c') copy(roomUrl(), 'تم نسخ رابط الغرفة');
-      else if (e.key.toLowerCase() === 'd') setFocusMode(!session.focusMode);
+      else if (e.key.toLowerCase() === 'd') toggleCollapse();
       else if (e.key === 'Escape') {
         if (!el.playlistModal.hidden) el.playlistModal.hidden = true;
         else if (el.diagModal && !el.diagModal.hidden) closeDiag();
         else if (!el.qrModal.hidden) el.qrModal.hidden = true;
         else if (!el.meModal.hidden) el.meModal.hidden = true;
-        else if (el.drawer.classList.contains('is-open')) setDrawerOpen(false);
-        else if (session.focusMode) setFocusMode(false);
       }
     });
 
@@ -1979,15 +1962,14 @@
     window.addEventListener('pagehide', () => goodbye(true));
     window.addEventListener('beforeunload', () => goodbye(true));
     document.addEventListener('visibilitychange', () => { if (document.hidden) goodbye(true); });
-    window.addEventListener('focus', () => { if (session.focusMode) { session.unread = 0; updateMessagesBadge(); } });
   }
 
-  function openChangeBar() {
-    el.changeBar.hidden = false;
+  function openRoomModal() {
+    renderQueue();
+    el.playlistModal.hidden = false;
     el.newUrl.value = '';
     el.newTitle.value = '';
-    el.newUrl.focus();
-    el.changeBar.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    setTimeout(() => el.newUrl.focus({ preventScroll: true }), 30);
   }
 
   function setVideoNow(raw) {
@@ -2066,9 +2048,13 @@
       el.player.classList.toggle('is-playing', playing);
       if (!playing) el.player.classList.remove('is-ui-hidden');
     }
-    /* الزر الكبير في المنتصف يظهر فقط عندما يكون الفيديو جاهزاً ومتوقفاً */
+    /* زر المنتصف: تشغيل/إيقاف — يبقى ظاهراً دائماً (خفيف أثناء التشغيل)،
+       ولا يظهر فقط مع فيديوهات التضمين التي تحكمها الخاص */
     if (el.centerPlay) {
-      el.centerPlay.hidden = playing || !player.isReady() || !!(el.ctrlbar && el.ctrlbar.hidden);
+      const isEmbed = el.player && el.player.classList && el.player.classList.contains('is-embed');
+      el.centerPlay.hidden = !!isEmbed;
+      el.centerPlay.classList.toggle('is-playing', playing);
+      el.centerPlay.setAttribute('aria-label', playing ? 'إيقاف' : 'تشغيل');
     }
   }
 

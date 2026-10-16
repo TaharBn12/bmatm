@@ -74,17 +74,13 @@ function chainOf(el) { const chain = []; let n = el; while (n) { chain.push(n); 
 function insideOf(el, ancestorId) { let n = el.parent; while (n) { if (n.id === ancestorId) return true; n = n.parent; } return false; }
 
 const roomTree = parseTree(roomHtml);
-const drawerEl = findById(roomTree, 'roomDrawer');
-const scrimEl = findById(roomTree, 'drawerScrim');
+const modalEl = findById(roomTree, 'playlistModal');
 const chatEl = findById(roomTree, 'chat');
 const stageEl = findById(roomTree, 'stage');
 const membersEl = findById(roomTree, 'membersPanel');
 
-t('دراور الغرفة موجود في الصفحة', !!drawerEl);
-t('شريط التعتيم (scrim) موجود في الصفحة', !!scrimEl);
-t('محتوى الغرفة (#room) هو الأب المباشر للدراور', !!drawerEl && !!drawerEl.parent && drawerEl.parent.id === 'room');
-t('الدراور خارج تدفّق المحتوى (ليس داخل #roomMain)',
-  !!drawerEl && !insideOf(drawerEl, 'roomMain'));
+t('الدراور محذوف بالكامل (لوحة + زر + تعتيم)', !findById(roomTree, 'roomDrawer') && !findById(roomTree, 'drawerOpenBtn') && !findById(roomTree, 'drawerScrim'));
+t('نافذة «قائمة الغرفة» موجودة بدل الدراور', !!modalEl);
 t('الرسائل (#chat) داخل #roomMain', !!chatEl && insideOf(chatEl, 'roomMain'));
 /* الشجرة الحقيقية: هل الرسائل هي العنصر التالي للمشغّل مباشرة في #roomMain؟ */
 const roomMainEl = findById(roomTree, 'roomMain');
@@ -98,18 +94,13 @@ const posOf = (idOrClass) => siblings.findIndex(c => c.id === idOrClass || c.cla
   t('الرسائل هي العنصر التالي للمشغّل مباشرة داخل #roomMain',
     mediaIdx >= 0 && chatIdx === mediaIdx + 1,
     siblings.map(c => (c.tag + (c.id ? '#' + c.id : '.' + c.classes.join('.')))).join(' → '));
-  t('لا يوجد أي عنصر آخر بين المشغّل والرسائل',
-    chatIdx === mediaIdx + 1 && siblings.length === 4);
-  t('رأس الغرفة (الاسم · الأدوات · القائمة) قبل المشغّل',
-    barIdx === 0 && mediaIdx === 2, siblings.map(c => c.id || c.classes.join('.')).join(','));
-  t('نموذج إضافة الرابط بين الرأس والمشغّل (يظهر عند الطلب فقط)',
-    changeIdx === 1 && 'hidden' in (siblings[changeIdx].attrs || {}));
+  t('لا يوجد أي عنصر آخر بين المشغّل والرسائل (الشريط والنموذج القديمان غائبان)',
+    chatIdx === mediaIdx + 1 && siblings.length === 3);
+  t('الشريط العلوي (3 أيقونات) قبل المشغّل مباشرة',
+    barIdx === 0 && mediaIdx === 1, siblings.map(c => c.id || c.classes.join('.')).join(','));
 }
-t('المشاركون انتقلوا إلى الدراور', !!membersEl && insideOf(membersEl, 'roomDrawer'));
-t('المشاركون آخر أقسام الدراور (بعد المنظّمين)', (() => {
-  const sections = drawerEl.children.filter(c => c.tag === 'section');
-  return sections.length === 2 && sections[1].id === 'membersPanel';
-})(), drawerEl.children.map(c => c.tag + (c.id ? '#' + c.id : '')).join(','));
+t('المشاركون انتقلوا إلى نافذة «قائمة الغرفة»', !!membersEl && insideOf(membersEl, 'playlistModal'));
+t('قائمة المنظّمين بجانبهم داخل النافذة', !!findById(roomTree, 'organizerList') && insideOf(findById(roomTree, 'organizerList'), 'playlistModal'));
 
 /* =========================================================
    2) محرّك تتابع CSS مبسّط: من app.css الحقيقي
@@ -331,86 +322,25 @@ const VIEWPORTS = [
 const ctxOf = v => ({ width: v.width, height: v.height, pointer: v.pointer, orientation: v.width >= v.height ? 'landscape' : 'portrait' });
 
 /* =========================================================
-   3) موضع الدراور — أرقام فعلية لكل مقاس
+   3) نافذة «قائمة الغرفة» — بديل الدراور المحذوف
    ========================================================= */
-/* نسخة من الدراور مع الصنف is-open — لحساب حالته المفتوحة بلا متصفح */
-function openDrawerProbe() {
-  const clone = { tag: drawerEl.tag, id: drawerEl.id, classes: drawerEl.classes.concat('is-open'), attrs: drawerEl.attrs, children: [], parent: drawerEl.parent };
-  return clone;
-}
-
-const report = [];
 for (const v of VIEWPORTS) {
   const ctx = ctxOf(v);
-  const pos = val(drawerEl, 'position', ctx);
-  const widthExpr = val(drawerEl, 'width', ctx);
-  const width = evalLength(widthExpr, ctx);
-  const insetStart = val(drawerEl, 'inset-inline-start', ctx);
-  const left = val(drawerEl, 'left', ctx);
-  const right = val(drawerEl, 'right', ctx);
-  const z = val(drawerEl, 'z-index', ctx);
-  const closedT = val(drawerEl, 'transform', ctx);
-  const openT = val({ ...openDrawerProbe() }, 'transform', ctx);
-
-  report.push({
-    v: v.name, w: v.width,
-    width: Math.round(width), gap: Math.round(v.width - (typeof width === 'number' ? width : 0)),
-    side: 'يمين (RTL)', z, state: 'translateX(105%) ← خارج الشاشة', open: 'translateX(0) ← داخل الشاشة'
-  });
-
-  t(`[${v.name}] الدراور position: fixed (لا ينزلق مع التمرير)`, pos === 'fixed', pos);
-  t(`[${v.name}] الدراور ملتصق بحافة الشاشة (inset-inline-start: 0)`, insetStart === '0', insetStart);
-  t(`[${v.name}] موضع أفقي معرّف منطقياً فقط (لا left/right مطلق), يتّبع RTL`,
-    left === '' && right === '', `left=${left}, right=${right}`);
-  t(`[${v.name}] الدراور فوق شريط التعتيم (z-index ≥ 110)`, parseInt(z, 10) >= 110, z);
-  t(`[${v.name}] عرض الدراور لا يغطي الشاشة كاملة (يظل 22px+ للنقر خارجاً)`,
-    width !== null && width <= v.width - 22, `${width} من ${v.width}`);
-  t(`[${v.name}] عرض الدراور كافٍ للاستعمال (≥ 280px)`, width !== null && width >= 280, String(width));
-  t(`[${v.name}] الدراور مخفيّ افتراضياً بدفعه إلى حافّته (+X لأن الاتجاه RTL)`,
-    /translateX\(\s*1\d\d%/.test(closedT.replace(/\s+/g, '')), closedT);
-  /* الجهة الفعلية: RTL + inset-inline-start:0 ⇒ الحافة اليمنى، والدفع +X يخرجه يميناً */
-  t(`[${v.name}] جهة الدراور الفعلية: الحافة اليمنى (RTL) والخروج للأسفل عنها`,
-    /dir="rtl"/.test(roomHtml) && insetStart === '0' && /translateX\(\s*1\d\d%/.test(closedT.replace(/\s+/g, '')),
-    `dir=rtl, inline-start=${insetStart}, closed=${closedT}`);
-  t(`[${v.name}] عند الفتح يعود إلى مكانه (translateX(0))`, openT === 'translateX(0)', openT);
+  t(`[${v.name}] نافذة الغرفة position: fixed (تغطي الشاشة عند الفتح)`, val(modalEl, 'position', ctx) === 'fixed', val(modalEl, 'position', ctx));
+  t(`[${v.name}] النافذة مخفية افتراضياً ([hidden] → display: none)`, val(modalEl, 'display', ctx) === 'none', val(modalEl, 'display', ctx));
+  t(`[${v.name}] النافذة فوق المحتوى (z-index ≥ 110)`, parseInt(val(modalEl, 'z-index', ctx), 10) >= 110, val(modalEl, 'z-index', ctx));
 }
-console.log('\n  📐 أين يقف دراور الغرفة على كل مقاس (محسوب فعلياً من app.css + room.html):');
-report.forEach(r => {
-  console.log(`  • ${r.v} — الشاشة ${r.w}px · الدراور ${r.width}px من الحافة اليمنى (RTL) · ` +
-    `يبقى ${r.gap}px للنقر خارجاً · z-index ${r.z} · مغلق: خارج الشاشة، مفتوح: translateX(0)`);
-});
+console.log('\n  📐 نافذة «قائمة الغرفة» (بديل الدراور): fixed · مخفية بالـ hidden · z-index عالٍ · المحتوى كامل داخلها');
 console.log('');
 
-/* النافذة الكاملة: الشريط يغطي الشاشة والدراور فوقه */
 {
   const ctx = ctxOf(VIEWPORTS[1]);
-  t('شريط التعتيم يغطي الشاشة كاملة', val(scrimEl, 'position', ctx) === 'fixed' && val(scrimEl, 'inset', ctx) === '0');
-  t('شريط التعتيم لا يعلو الدراور', parseInt(val(scrimEl, 'z-index', ctx), 10) < parseInt(val(drawerEl, 'z-index', ctx), 10));
-  t('الشريط مخفيّ عن الإغلاق ([hidden] → display: none)',
-    val(scrimEl, 'display', ctx) === 'none', val(scrimEl, 'display', ctx));
-  t('الدراور يُخفى كلياً عندما يكون مغلقاً (visibility: hidden)',
-    val(drawerEl, 'visibility', ctx) === 'hidden', val(drawerEl, 'visibility', ctx));
-  t('الدراور قابل للتمرير داخلياً على الهاتف (overflow: auto)',
-    ['auto', 'scroll'].includes(val(drawerEl, 'overflow', ctx)), val(drawerEl, 'overflow', ctx));
-  t('تمرير داخل الدراور لا يجرّ الصفحة (overscroll-behavior: contain)',
-    /contain/.test(val(drawerEl, 'overscroll-behavior', ctx)), val(drawerEl, 'overscroll-behavior', ctx));
-  const bodyOpen = { tag: 'body', id: '', classes: ['room-body', 'drawer-open'], attrs: {}, children: [], parent: { tag: 'html', id: '', classes: [], attrs: {}, children: [], parent: null } };
+  const cardEl = (modalEl.children || []).find(c => c.classes.includes('modal__card')) || modalEl;
+  t('بطاقة النافذة تلائم الشاشة (min() لا عرض ثابت)', /^min\(/.test(val(cardEl, 'width', ctx)), val(cardEl, 'width', ctx));
   const bodyClosed = { tag: 'body', id: '', classes: ['room-body'], attrs: {}, children: [], parent: { tag: 'html', id: '', classes: [], attrs: {}, children: [], parent: null } };
-  t('فتح الدراور يقفل تمرير الصفحة خلفه (body.drawer-open → overflow: hidden)',
-    val(bodyOpen, 'overflow', ctx) === 'hidden', val(bodyOpen, 'overflow', ctx));
-  t('بلا فتح الدراور لا يُقفل التمرير', val(bodyClosed, 'overflow', ctx) !== 'hidden', val(bodyClosed, 'overflow', ctx));
   t('التمرير الأفقي محجوب على الغرفة (لا تمرير جانبي عارض)',
     val(bodyClosed, 'overflow-x', ctx) === 'hidden', val(bodyClosed, 'overflow-x', ctx));
-}
-
-/* منطقة الأمان (iPhone notch / شريط سفلي) */
-{
-  const ctx = ctxOf(VIEWPORTS[0]);
-  const pad = val(drawerEl, 'padding', ctx);
-  t('الدراور يحترم منطقة الأمان العلوية', /env\(safe-area-inset-top/.test(pad), pad);
-  t('الدراور يحترم منطقة الأمان السفلية', /env\(safe-area-inset-bottom/.test(pad), pad);
-  t('الدراور يستعمل 100dvh (أدقّ من 100vh على الهاتف)',
-    /100dvh/.test(val(drawerEl, 'height', ctx)), val(drawerEl, 'height', ctx));
+  t('التمرير الأفقي محجوب على الغرفة (overflow-x: hidden) محفوظ', val(bodyClosed, 'overflow-x', ctx) === 'hidden');
 }
 
 /* =========================================================
@@ -420,7 +350,7 @@ const BREAKERS = ['transform', 'filter', 'backdrop-filter', '-webkit-backdrop-fi
 const transformKeyframes = keyframes.filter(k => /transform\s*:/.test(k.body)).map(k => k.name);
 for (const v of VIEWPORTS) {
   const ctx = ctxOf(v);
-  const ancestors = chainOf(drawerEl).slice(1);
+  const ancestors = chainOf(modalEl).slice(1);
   const bad = [];
   for (const a of ancestors) {
     for (const prop of BREAKERS) {
@@ -430,7 +360,14 @@ for (const v of VIEWPORTS) {
     const anim = val(a, 'animation', ctx) + ' ' + val(a, 'animation-name', ctx);
     if (anim.trim() && transformKeyframes.some(n => anim.includes(n))) bad.push(`${a.tag}:animation=${anim}`);
   }
-  t(`[${v.name}] لا يوجد جدّ للدراور يكسر position: fixed`, bad.length === 0, bad.join(' | '));
+  t(`[${v.name}] لا يوجد جدّ للنافذة يكسر position: fixed`, bad.length === 0, bad.join(' | '));
+}
+
+const missingIds = [];
+function byIdProbe(id) {
+  const el = findById(roomTree, id);
+  if (!el) { missingIds.push(id); return { tag: 'div', id, classes: [], attrs: {}, children: [], parent: { tag: 'body', classes: ['room-body'], attrs: {}, children: [], id: '' } }; }
+  return el;
 }
 
 /* =========================================================
@@ -441,10 +378,12 @@ for (const v of VIEWPORTS) {
 
   const ctx = ctxOf(VIEWPORTS[1]);
   const tapChecks = [
-    ['زر التشغيل/الإيقاف', 'playPauseBtn', ['width', 'height'], 44],
-    ['زر كتم الصوت', 'muteBtn', ['width', 'height'], 44],
+    ['زر التشغيل/الإيقاف (منتصف الفيديو)', 'centerPlayBtn', ['width', 'height'], 44],
+    ['زر الترجيع (حافة الفيديو)', 'seekBackBtn', ['width', 'height'], 44],
+    ['زر التقديم (حافة الفيديو)', 'seekFwdBtn', ['width', 'height'], 44],
     ['زر الإرسال في الدردشة', 'chatSend', ['width', 'height'], 44],
-    ['زر فتح القائمة', 'drawerOpenBtn', ['min-height', 'height'], 44],
+    ['زر إعادة الاتصال', 'reconnectBtn', ['min-height', 'height', 'width'], 44],
+    ['زر بحث/تغيير الفيديو', 'addVideoBtn', ['min-height', 'height', 'width'], 44],
     ['خانة الكتابة', 'chatInput', ['min-height', 'height'], 44],
   ];
   for (const [label, id, props, min] of tapChecks) {
@@ -471,7 +410,7 @@ for (const v of VIEWPORTS) {
   t('سحب شريط التقدّم لا يمرّر الصفحة (touch-action: none)',
     val(byIdProbe('progressBar'), 'touch-action', ctx) === 'none', val(byIdProbe('progressBar'), 'touch-action', ctx));
   const timesEl = byIdProbe('curTime').parent;
-  t('الوقت الرقمي يُخفى على الشاشات ≤400px ليوسّع الشريط',
+  t('الوقت الرقمي يُخفى على الشاشات ≤400px ليوسّع شريط التنقل',
     val(timesEl, 'display', ctxOf({ width: 390, height: 844, pointer: 'coarse' })) === 'none',
     val(timesEl, 'display', ctxOf({ width: 390, height: 844, pointer: 'coarse' })));
   t('الوقت الرقمي يبقى ظاهراً على 420px',
@@ -501,78 +440,50 @@ for (const v of VIEWPORTS) {
 
   /* ميزانية الارتفاع: هل يبقى للرسائل مكان معقول في شاشة هاتف حقيقية؟
      (أرقام معلنة في CSS: شريط الغرفة + أزرار الأدوات + الفيديو 16:9 + شريط التحكم + حشوة) */
-  const ctrlBarH = 64;          /* أزرار 44-50px + حشوة الشريط */
+  const ctrlBarH = 0;           /* لا شريط تحت الفيديو — التحكم داخله */
   const mainPad = 28;           /* 10px أعلى + 18px أسفل */
   console.log('\n  📱 ميزانية ارتفاع الغرفة على الهاتف (كم يبقى للرسائل فعلياً):');
   for (const dev of [{ n: 'iPhone SE', w: 320, h: 568 }, { n: 'هاتف صغير', w: 360, h: 640 }, { n: 'iPhone 390', w: 390, h: 844 }]) {
     const c = ctxOf({ width: dev.w, height: dev.h, pointer: 'coarse' });
-    const barH = evalLength(val(byIdProbe('drawerOpenBtn').parent.parent, 'min-height', c), c) || 52;
-    const actH = evalLength(val(byIdProbe('addVideoBtn'), 'min-height', c), c) || 46;
+    const barH = evalLength(val(byIdProbe('addVideoBtn').parent.parent, 'min-height', c), c) || 52;
+    const actH = 0;             /* الأزرار الثلاثة داخل الشريط نفسه (صف واحد) */
     const stageW = evalLength(val(stageEl, 'width', c), c) || dev.w;
     const videoH = Math.round(stageW * 9 / 16);
     const chatSpace = Math.round(dev.h - (barH + actH + videoH + ctrlBarH + mainPad));
-    console.log(`  • ${dev.n} (${dev.w}×${dev.h}) — شريط ${barH} + أزرار ${actH} + فيديو ${videoH} + تحكم ${ctrlBarH} ⇒ الرسائل ≈ ${chatSpace}px`);
+    console.log(`  • ${dev.n} (${dev.w}×${dev.h}) — شريط ${barH} + فيديو ${videoH} + بلا شريط تحكم ⇒ الرسائل ≈ ${chatSpace}px`);
     t(`[${dev.n}] تبقى مساحة معقولة للرسائل (≥ 180px)`, chatSpace >= 180, `${chatSpace}px`);
     t(`[${dev.n}] الفيديو لا يأكل أكثر من 45% من ارتفاع الشاشة`, videoH <= dev.h * 0.45, `${videoH} من ${dev.h}`);
   }
-  t('عنوان الغرفة يُقصّ بـ ellipsis ولا يكسر الشريط',
-    /vw/.test(val(byIdProbe('roomTitle'), 'max-width', ctx), '') || /vw/.test(val(byIdProbe('roomTitle'), 'max-width', ctx)),
-    val(byIdProbe('roomTitle'), 'max-width', ctx));
-  t('شريط الغرفة لا يلتفّ إلى سطرين على الهاتف', val(byIdProbe('drawerOpenBtn').parent.parent, 'flex-wrap', ctx) !== 'wrap',
-    val(byIdProbe('drawerOpenBtn').parent.parent, 'flex-wrap', ctx));
+  t('شريط الغرفة لا يلتفّ إلى سطرين على الهاتف', val(byIdProbe('addVideoBtn').parent.parent, 'flex-wrap', ctx) !== 'wrap',
+    val(byIdProbe('addVideoBtn').parent.parent, 'flex-wrap', ctx));
 
-  /* ---- 5.ب) تداخل الشريط العلوي (2.6.5): الكتابة لا تلامس الأيقونات، والدراور في مكانه ----
-     العطل السابق: .player-actions كانت تحتفظ بـ width: min(620px, 100%) من القاعدة
-     العامة داخل .room-bar، فتمتد لعرض الشريط كله ⇒ العنوان يفيض فوق الأيقونات
-     وزر القائمة (الدراور) يُدفع خارج الشريط إلى حافة الشاشة. */
+  /* ---- 5.ب) الشريط العلوي (2.7.0): 3 أيقونات فقط — لا عنوان، لا دراور ---- */
   {
-    const barEl = byIdProbe('drawerOpenBtn').parent;          /* div.room-bar */
-    const barCtx = ctxOf(VIEWPORTS[1]);                      /* 360px — هاتف صغير */
-    const playerActions = byIdProbe('addVideoBtn').parent;    /* nav.player-actions */
-    const titleEl = byIdProbe('roomTitle');
-    const rtopbarEl = titleEl.parent.parent;                 /* header.rtopbar */
+    const barEl = byIdProbe('addVideoBtn').parent.parent;      /* div.room-bar */
+    const barCtx = ctxOf(VIEWPORTS[1]);                       /* 360px — هاتف صغير */
+    const barActions = byIdProbe('addVideoBtn').parent;        /* nav.bar-actions */
 
-    t('أدوات الرأس داخل شريط الغرفة بعرض محتواها فقط (width: auto) — لا تملأ الشريط',
-      /^(auto|)$/.test(val(playerActions, 'width', barCtx)) && !/min\(/.test(val(playerActions, 'width', barCtx)),
-      val(playerActions, 'width', barCtx));
-    t('أدوات الرأس لا تنكمش ولا تتمدد (flex: none) — عرضها ثابت بحجم الأيقونات',
-      /none|0 0 auto/.test(val(playerActions, 'flex', barCtx)), val(playerActions, 'flex', barCtx));
-    t('زر القائمة (الدراور) flex: none — لا يُدفع خارج الشريط عند الازدحام',
-      /none|0 0 auto/.test(val(byIdProbe('drawerOpenBtn'), 'flex', barCtx)), val(byIdProbe('drawerOpenBtn'), 'flex', barCtx));
-    t('رأس الغرفة (rtopbar) هو أول من ينكمش عند الازدحام (flex: 1 1 auto + min-width: 0)',
-      /1 1 auto|flex:\s*1/.test(val(rtopbarEl, 'flex', barCtx)) && val(rtopbarEl, 'min-width', barCtx) === '0',
-      `flex=${val(rtopbarEl, 'flex', barCtx)}, min-width=${val(rtopbarEl, 'min-width', barCtx)}`);
-    t('عنوان الغرفة يُقصّ بدل أن يفيض فوق الأيقونات (overflow: hidden + text-overflow: ellipsis)',
-      /hidden/.test(val(titleEl, 'overflow', barCtx)) && val(titleEl, 'text-overflow', barCtx) === 'ellipsis',
-      `overflow=${val(titleEl, 'overflow', barCtx)}, text-overflow=${val(titleEl, 'text-overflow', barCtx)}`);
-    t('عنوان الغرفة قابل للانكماش (min-width: 0) فلا يكسر صف الشريط',
-      val(titleEl, 'min-width', barCtx) === '0', val(titleEl, 'min-width', barCtx));
-    t('سهم ▾ بجانب العنوان مطلق الموضع — لا يزاحم النص ولا الأيقونات',
-      /\.room-bar\s+\.rtopbar__title::after\s*\{[^}]*position:\s*absolute/s.test(css) &&
-      val(titleEl, 'position', barCtx) === 'relative',
-      `title position=${val(titleEl, 'position', barCtx)}`);
-    t('عرض الشريط نفسه لا يزيح المحتوى: العنوان والأيقونات كلها داخل room-bar',
-      /auto/.test(val(barEl, 'width', barCtx)) || val(barEl, 'width', barCtx) === '', val(barEl, 'width', barCtx));
-
-    /* ميزانية العرض على أصغر هاتف (320px): الأجزاء الثابتة يجب أن تترك للعنوان مساحة */
-    for (const view of [VIEWPORTS[0], VIEWPORTS[1], VIEWPORTS[2]]) {
-      const c = ctxOf(view);
-      const drawerPad = (evalLength(val(byIdProbe('drawerOpenBtn'), 'padding-inline', c), c) ||
-        evalLength(val(byIdProbe('drawerOpenBtn'), 'padding', c), c) || 12);
-      const drawerW = Math.round(21 + 4 + 17 + drawerPad * 2);          /* شارة + فجوة + أيقونة + حشو */
-      const acts = 3 * 44 + 2 * 2;                                      /* 3 أزرار لمس + فجوتان */
-      const collapse = 34;
-      const gaps = 4 * 3;
-      const barPad = 2 * (evalLength(val(barEl, 'padding-inline', c), c) || 7);
-      const conn = view.width <= 380 ? 0 : 27;                          /* النقطة تُخفى ≤380px */
-      const fixed = Math.round(barPad + gaps + drawerW + acts + collapse + conn);
-      const titleSpace = view.width - 20 - fixed;                       /* 20 = حشو .room-main */
-      t(`[${view.name}] ميزانية الشريط تترك للعنوان مساحة مقروءة (≥ 24px) بلا تداخل`,
-        titleSpace >= 24, `الثابت=${fixed}px، المتبقي للعنوان=${titleSpace}px من ${view.width}px`);
+    t('الشريط العلوي يحوي 3 أزرار فقط (بحث · طيّ · إعادة اتصال)',
+      ['addVideoBtn', 'collapseBtn', 'reconnectBtn'].every(id => !!byIdProbe(id)) &&
+      barActions.children.filter(c => c.classes.includes('bar-action')).length === 3,
+      barActions.children.map(c => c.id).join(','));
+    t('الشريط لا يحوي عنواناً ولا دراور', !findById(roomTree, 'roomTitle') && !findById(roomTree, 'drawerOpenBtn') && !findById(roomTree, 'roomDrawer'));
+    t('مجموعة الأيقونات بعرض محتواها فقط (flex: none) — لا تتمدد',
+      /none|0 0 auto/.test(val(barActions, 'flex', barCtx)), val(barActions, 'flex', barCtx));
+    for (const id of ['addVideoBtn', 'collapseBtn', 'reconnectBtn']) {
+      t(`[${id}] لا ينكمش (flex: none)`, /none|0 0 auto/.test(val(byIdProbe(id), 'flex', barCtx)), val(byIdProbe(id), 'flex', barCtx));
+      const w = evalLength(val(byIdProbe(id), 'width', barCtx), barCtx) || 0;
+      const h = evalLength(val(byIdProbe(id), 'height', barCtx), barCtx) || 0;
+      t(`[${id}] هدف لمس ≥ 44px`, Math.max(w, h) >= 44, `${w}×${h}`);
     }
-    t('نقطة الحالة تُخفى داخل شريط الغرفة على ≤380px لتحرير مساحة العنوان',
-      val({ tag: 'span', id: '', classes: ['room-connection'], attrs: {}, children: [], parent: rtopbarEl }, 'display', ctxOf(VIEWPORTS[0])) === 'none',
-      val({ tag: 'span', id: '', classes: ['room-connection'], attrs: {}, children: [], parent: rtopbarEl }, 'display', ctxOf(VIEWPORTS[0])));
+    /* ميزانية العرض: 3 أزرار 44px + فجوات + حشو تتّسع على أصغر شاشة بلا تداخل */
+    for (const view of [VIEWPORTS[0], VIEWPORTS[1], VIEWPORTS[2]]) {
+      const fixed = 3 * 44 + 2 * 8 + 16;                    /* الأزرار + الفجوات + الحشو */
+      t(`[${view.name}] الشريط (3 أيقونات) يتّسع دائماً بلا تداخل (هامش ≥ 60px)`,
+        view.width - 20 - fixed >= 60, `الثابت=${fixed}px من ${view.width}px`);
+    }
+    t('مؤشر الحالة (نقطة ملوّنة) على زر إعادة الاتصال نفسه',
+      /\.bar-action \.dot \{/.test(css) && /is-online \.dot/.test(css), '');
   }
 
   /* وضع الأفق القصير: قاعدة موجودة فعلاً */
@@ -611,12 +522,6 @@ for (const v of VIEWPORTS) {
 /* =========================================================
    6) سلوك الدراور فعلياً في بيئة الغرفة (فتح/إغلاق/قفل الخلفية)
    ========================================================= */
-const missingIds = [];
-function byIdProbe(id) {
-  const el = findById(roomTree, id);
-  if (!el) { missingIds.push(id); return { tag: 'div', id, classes: [], attrs: {}, children: [], parent: { tag: 'body', classes: ['room-body'], attrs: {}, children: [], id: '' } }; }
-  return el;
-}
 
 const env = createRoomEnv({
   search: '?id=MOB123&host=1&v=https%3A%2F%2Fcommondatastorage.googleapis.com%2Fsample.mp4',
@@ -630,25 +535,20 @@ env.byId.get('gateForm').dispatch('submit', {});
 await wait(500);
 t('الدخول من الهاتف يفتح الغرفة', !env.byId.get('room').hidden && env.byId.get('gate').hidden);
 
-const drawer = env.byId.get('roomDrawer');
-const body = env.documentStub.body;
-env.byId.get('drawerOpenBtn').dispatch('click', {});
-t('فتح القائمة يضيف is-open ويكشف شريط التعتيم',
-  drawer.classList.contains('is-open') && env.byId.get('drawerScrim').hidden === false);
-t('فتح القائمة يقفل تمرير الصفحة (body.drawer-open)',
-  body.classList.contains('drawer-open'), body._className);
-t('aria للقائمة يتحدّث عند الفتح',
-  drawer.getAttribute('aria-hidden') === 'false' && env.byId.get('drawerOpenBtn').getAttribute('aria-expanded') === 'true');
-env.byId.get('drawerScrim').dispatch('click', {});
-t('النقر على الفراغ خارج القائمة يغلقها',
-  !drawer.classList.contains('is-open') && env.byId.get('drawerScrim').hidden === true && !body.classList.contains('drawer-open'));
+const modal = env.byId.get('playlistModal');
+env.byId.get('addVideoBtn').dispatch('click', {});
+t('زر البحث يفتح نافذة «قائمة الغرفة» على الهاتف', modal.hidden === false);
+t('النافذة تعرض خانة الرابط والأعضاء والأدوات',
+  !!env.byId.get('newUrl') && !!env.byId.get('membersList') && !!env.byId.get('copyLinkBtn') && !!env.byId.get('leaveBtn'));
+env.byId.get('playlistCloseBtn').dispatch('click', {});
+t('زر الإغلاق يغلق النافذة', modal.hidden === true);
 
-env.byId.get('drawerOpenBtn').dispatch('click', {});
+env.byId.get('addVideoBtn').dispatch('click', {});
 await wait(20);
 env.documentStub.dispatch('keydown', { key: 'Escape', target: { tagName: 'BODY', isContentEditable: false } });
-t('Escape يغلق القائمة على الهاتف أيضاً', !drawer.classList.contains('is-open'));
+t('Escape يغلق النافذة على الهاتف أيضاً', modal.hidden === true);
 
-t('المشاركون داخل القائمة يعرضون أنفسهم (وصول من الهاتف)',
+t('المشاركون داخل النافذة يعرضون أنفسهم (وصول من الهاتف)',
   env.byId.get('membersList').innerHTML.includes('أمين بن علي'), '');
 
 /* =========================================================
