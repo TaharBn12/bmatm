@@ -76,6 +76,9 @@
     typingNames: {},
     unread: 0,
     focusMode: false,
+    replyTo: null,        /* الرسالة المُختارة للرد عليها {cid, name, text, row} */
+    editing: null,        /* الرسالة قيد التعديل {cid, orig, row} */
+    msgMenu: null,        /* قائمة خيارات الرسالة (تُنشأ عند أول استعمال) */
     videoParsed: null,
     pendingDrift: 0,
     lastError: null,       /* آخر خطأ اتصال (مترجم) */
@@ -118,6 +121,7 @@
     chat: $('chat'), chatBody: $('chatBody'), chatEmpty: $('chatEmpty'), chatCount: $('chatCount'),
     clearChatBtn: $('clearChatBtn'), reactRow: $('reactRow'), chatForm: $('chatForm'),
     chatInput: $('chatInput'), chatSend: $('chatSend'), typing: $('typing'), backToVideoBtn: $('backToVideoBtn'),
+    composerBar: $('composerBar'), composerBarLabel: $('composerBarLabel'), composerBarText: $('composerBarText'), composerBarCancel: $('composerBarCancel'),
     playlistModal: $('playlistModal'), playlistCloseBtn: $('playlistCloseBtn'), queueList: $('queueList'), queueEmpty: $('queueEmpty'),
     sbMeBtn: $('sbMeBtn'), qrModal: $('qrModal'), qrBox: $('qrBox'), qrUrl: $('qrUrl'), qrClose: $('qrClose'), qrCopy: $('qrCopy'),
     meModal: $('meModal'), meClose: $('meClose'), meAvatar: $('meAvatar'), meName: $('meName'),
@@ -1076,10 +1080,52 @@
     if (changed) renderMembers();
   }
 
-  /* ============================== الرسائل ============================== */
+  /* ============================== الرسائل ==============================
+     • بطاقة مدمجة: سطر واحد للاسم والوقت + النص — لا تأخذ إلا مساحة محتواها.
+     • السحب على رسالة ← الرد عليها · الضغط المطوّل (أو زر الفأرة الأيمن) ← تعديل/حذف.
+     • الحذف يترك مكان الرسالة بنص «محذوفة»، والتعديل يحدثها في مكانها.
+     • الرد/التعديل/الحذف تُزامَن عبر غلاف JSON مدمج في نص الرسالة
+       (يعمل مع أي ناقل: WebSocket أو Supabase أو محلي) دون تغيير الجداول.
+     ==================================================================== */
+
+  /* غلاف البيانات التعريفي: \u0001 + JSON — يحمل المعرف والاقتباس والتعديل */
+  const CHAT_MARK = '\u0001';
+  function encodeChatText(text, meta) {
+    if (!meta) return String(text == null ? '' : text);
+    try {
+      return CHAT_MARK + JSON.stringify(Object.assign({ t: String(text == null ? '' : text) }, meta));
+    } catch (e) { return String(text == null ? '' : text); }
+  }
+  function decodeChatText(raw) {
+    const s = String(raw == null ? '' : raw);
+    if (s.charAt(0) === CHAT_MARK) {
+      try {
+        const o = JSON.parse(s.slice(1)) || {};
+        return {
+          ok: true,
+          text: String(o.t || ''),
+          cid: String(o.c || ''),
+          reply: o.r ? { name: String(o.r.n || ''), text: String(o.r.t || '') } : null,
+          next: o.n != null ? String(o.n) : ''
+        };
+      } catch (e) {
+        /* ليس غلافاً — نسقط العلامة ونتعامل معه كنص عادي */
+        return { ok: false, text: s.slice(1), cid: '', reply: null, next: '' };
+      }
+    }
+    return { ok: false, text: s, cid: '', reply: null, next: '' };
+  }
+
   function addChatMessage(m, opts) {
     opts = opts || {};
     if (!m) return;
+
+    /* أحداث التعديل والحذف تُطبَّق على رسالة موجودة ولا تُدرج كرسائل جديدة */
+    if (m.kind === 'edit' || m.kind === 'del') return applyChatAction(m, m.kind);
+
+    const d = decodeChatText(m.text);
+    const text = d.text;
+    const cid = d.cid || String(m.id || '') || U.uid('m');
     if (el.chatEmpty) el.chatEmpty.style.display = 'none';
 
     const mine = !!opts.mine || m.client === session.clientId;
@@ -1087,10 +1133,10 @@
 
     if (m.kind === 'system' || opts.system) {
       row.className = 'msg msg--system';
-      row.innerHTML = '<div class="msg__bubble">' + U.esc(m.text || '') + '</div>';
+      row.innerHTML = '<div class="msg__bubble">' + U.esc(text || '') + '</div>';
     } else if (m.kind === 'react') {
       row.className = 'msg msg--react';
-      row.innerHTML = '<div class="react-bubble">' + U.esc(m.text || '👍') +
+      row.innerHTML = '<div class="react-bubble">' + U.esc(text || '👍') +
         '<small>' + U.esc(m.name || '') + '</small></div>';
     } else {
       row.className = 'msg' + (mine ? ' msg--me' : '');
@@ -1098,18 +1144,87 @@
       row.innerHTML =
         '<span class="msg__avatar" style="background:' + color + '">' + U.esc(U.initials(m.name)) + '</span>' +
         '<div class="msg__bubble">' +
-        '<p class="msg__name" style="color:' + color + '">' + U.esc(m.name || 'زائر') + (mine ? ' • أنت' : '') + '</p>' +
-        '<p class="msg__text">' + U.linkify(U.esc(m.text || '')) + '</p>' +
-        '<p class="msg__time">' + U.fmtClock(m.ts || Date.now()) + '</p>' +
+        (d.reply ? '<div class="msg__quote">' +
+          '<span class="msg__quote-name">' + U.esc(d.reply.name) + '</span>' +
+          '<span class="msg__quote-text">' + U.esc(d.reply.text) + '</span></div>' : '') +
+        '<p class="msg__meta">' +
+        '<span class="msg__name" style="color:' + color + '">' + U.esc(m.name || 'زائر') + (mine ? ' • أنت' : '') + '</span>' +
+        '<span class="msg__time">' + U.fmtClock(m.ts || Date.now()) + '</span></p>' +
+        '<p class="msg__text">' + U.linkify(U.esc(text || '')) + '</p>' +
         '</div>';
+      /* بيانات المطابقة للرد/التعديل/الحذف (محلياً وعن بُعد) */
+      row.dataset.cid = cid;
+      row.dataset.client = String(m.client || m.sender || '');
+      row.dataset.text = text;
+      row.dataset.name = String(m.name || '');
     }
 
     el.chatBody.appendChild(row);
+    if (window.WTIcons && window.WTIcons.apply) window.WTIcons.apply(row);
     const limit = (CFG.chat && CFG.chat.historyLimit) || 200;
     while (el.chatBody.children.length > limit) el.chatBody.removeChild(el.chatBody.firstChild);
 
     if (!opts.silent) scrollChat();
     updateChatCount();
+    return row;
+  }
+
+  /* العثور على صف رسالة بمعرفها أو بمطابقة (المرسل + النص الأصلي) */
+  function findMsgRow(cid, client, origText) {
+    const kids = el.chatBody.children || [];
+    let fallback = null;
+    for (let i = kids.length - 1; i >= 0; i--) {
+      const row = kids[i];
+      if (!row || !row.dataset || row.dataset.text === undefined) continue;
+      if (row.classList && row.classList.contains('msg--deleted')) continue;
+      if (cid && row.dataset.cid === String(cid)) return row;
+      if (!fallback && row.dataset.client === String(client || '') &&
+        row.dataset.text === String(origText == null ? '' : origText)) fallback = row;
+    }
+    return fallback;
+  }
+
+  function markEdited(row) {
+    if (!row || (row.classList && row.classList.contains('msg--edited'))) return;
+    if (row.classList) row.classList.add('msg--edited');
+    const meta = row.querySelector('.msg__meta');
+    if (meta && !meta.querySelector('.msg__edited')) {
+      const s = document.createElement('span');
+      s.className = 'msg__edited';
+      s.textContent = 'تم التعديل';
+      meta.appendChild(s);
+    }
+  }
+
+  function markDeleted(row) {
+    if (!row || !row.classList) return;
+    row.classList.add('msg--deleted');
+    row.classList.remove('msg--edited');
+    const quote = row.querySelector('.msg__quote');
+    if (quote) quote.remove();
+    const textEl = row.querySelector('.msg__text');
+    if (textEl) {
+      textEl.className = 'msg__text msg__text--gone';
+      textEl.textContent = 'محذوفة';
+    }
+    const ed = row.querySelector('.msg__edited');
+    if (ed) ed.remove();
+    if (row.dataset) row.dataset.text = '';
+  }
+
+  function applyEditToRow(row, next) {
+    const textEl = row.querySelector('.msg__text');
+    if (textEl) textEl.innerHTML = U.linkify(U.esc(next));
+    if (row.dataset) row.dataset.text = next;
+    markEdited(row);
+  }
+
+  function applyChatAction(m, kind) {
+    const d = decodeChatText(m.text);
+    const row = findMsgRow(d.cid, m.client || m.sender, d.text);
+    if (!row) return null;
+    if (kind === 'edit') { if (d.next) applyEditToRow(row, d.next); }
+    else markDeleted(row);
     return row;
   }
 
@@ -1139,27 +1254,277 @@
 
   function sendMessage(text, kind) {
     text = String(text || '').trim();
-    if (!text) return;
-    if (!session.ready) { U.toast('لم يكتمل الاتصال بعد — حاول بعد ثانية', 'warn'); return; }
+    if (!text) return false;
+    if (!session.ready) { U.toast('لم يكتمل الاتصال بعد — حاول بعد ثانية', 'warn'); return false; }
 
     const now = Date.now();
     if (kind !== 'react' && now - session.lastChatSend < ((CFG.chat && CFG.chat.cooldownMs) || 400)) {
-      U.toast('على مهلك', 'warn', 1300); return;
+      U.toast('على مهلك', 'warn', 1300); return false;
     }
     session.lastChatSend = now;
 
+    const maxLen = (CFG.chat && CFG.chat.maxLength) || 600;
+    const body = text.slice(0, maxLen);
+    const cid = U.uid('m');
+    const isChat = !kind || kind === 'chat';
+
+    /* غلاف الرسالة: المعرف + اقتباس الرد — يُفكَّك لدى كل مستقبل */
+    let meta = null, reply = null;
+    if (isChat) {
+      meta = { c: cid };
+      if (session.replyTo) {
+        reply = { name: session.replyTo.name || '', text: String(session.replyTo.text || '').slice(0, 120) };
+        meta.r = { n: reply.name, t: reply.text };
+      }
+    }
+    const wire = encodeChatText(body, meta);
     const msg = {
-      id: U.uid('m'), client: session.clientId, name: session.name,
-      text: text.slice(0, (CFG.chat && CFG.chat.maxLength) || 600),
-      ts: now, kind: kind || 'chat'
+      id: cid, client: session.clientId, name: session.name,
+      text: wire, ts: now, kind: kind || 'chat'
     };
-    session.transport.sendChat({ name: msg.name, text: msg.text, kind: msg.kind, client: session.clientId });
-    session.recentSent[msg.text + '|' + msg.kind] = now;
-    session.recentSent[msg.text] = now;
-    setTimeout(() => { delete session.recentSent[msg.text + '|' + msg.kind]; delete session.recentSent[msg.text]; }, 15000);
+    if (reply) msg.reply = reply;
+    session.transport.sendChat({ name: msg.name, text: wire, kind: msg.kind, client: session.clientId });
+    session.recentSent[wire + '|' + msg.kind] = now;
+    session.recentSent[wire] = now;
+    setTimeout(() => { delete session.recentSent[wire + '|' + msg.kind]; delete session.recentSent[wire]; }, 15000);
     addChatMessage(msg, { mine: true });
+    if (isChat) clearComposer();
     scrollChat(true);
+    return true;
   }
+
+  /* ============================== الرد والتعديل والحذف ============================== */
+  function setComposerBar() {
+    const bar = el.composerBar;
+    if (!bar) return;
+    if (session.editing) {
+      bar.hidden = false;
+      bar.dataset.mode = 'edit';
+      if (el.composerBarLabel) el.composerBarLabel.textContent = 'تعديل الرسالة';
+      if (el.composerBarText) el.composerBarText.textContent = session.editing.orig;
+    } else if (session.replyTo) {
+      bar.hidden = false;
+      bar.dataset.mode = 'reply';
+      if (el.composerBarLabel) el.composerBarLabel.textContent = 'الرد على ' + (session.replyTo.name || '');
+      if (el.composerBarText) el.composerBarText.textContent = session.replyTo.text;
+    } else {
+      bar.hidden = true;
+    }
+  }
+
+  function setReplyTo(row) {
+    if (!row || !row.dataset || row.dataset.text === undefined) return;
+    if (row.classList && row.classList.contains('msg--deleted')) return;
+    session.editing = null;
+    session.replyTo = {
+      cid: row.dataset.cid || '', name: row.dataset.name || '',
+      text: row.dataset.text || '', row: row
+    };
+    setComposerBar();
+    if (el.chatInput) el.chatInput.focus();
+  }
+
+  function startEdit(row) {
+    if (!row || !row.dataset || row.dataset.text === undefined) return;
+    if (row.classList && row.classList.contains('msg--deleted')) return;
+    session.replyTo = null;
+    session.editing = { cid: row.dataset.cid || '', orig: row.dataset.text || '', row: row };
+    setComposerBar();
+    if (el.chatInput) {
+      el.chatInput.value = session.editing.orig;
+      el.chatInput.focus();
+    }
+  }
+
+  function clearComposer() {
+    session.replyTo = null;
+    session.editing = null;
+    setComposerBar();
+  }
+
+  function deleteMessage(row) {
+    if (!row || !row.dataset || row.dataset.text === undefined) return;
+    if (row.classList && row.classList.contains('msg--deleted')) return;
+    const orig = row.dataset.text || '';
+    const cid = row.dataset.cid || '';
+    markDeleted(row);
+    if (session.replyTo && session.replyTo.row === row) clearComposer();
+    if (session.ready && session.transport) {
+      session.transport.sendChat({
+        name: session.name, kind: 'del', client: session.clientId,
+        text: encodeChatText(orig, { c: cid })
+      });
+    }
+  }
+
+  function commitEdit(ed, next) {
+    if (!ed || !ed.row) return;
+    applyEditToRow(ed.row, next);
+    if (session.ready && session.transport) {
+      session.transport.sendChat({
+        name: session.name, kind: 'edit', client: session.clientId,
+        text: encodeChatText(ed.orig, { c: ed.cid, n: next })
+      });
+    }
+    session.editing = null;
+    setComposerBar();
+  }
+
+  function submitChat() {
+    const input = el.chatInput;
+    if (!input) return;
+    const text = String(input.value || '').trim();
+    if (session.editing) {
+      if (text) commitEdit(session.editing, text);
+      input.value = '';
+      autosize();
+      return;
+    }
+    const sent = sendMessage(text, 'chat');
+    /* لم يُرسَل (تهدئة/اتصال) → نُبقي النص وشريط الرد كي يعيد المحاولة */
+    if (sent) { input.value = ''; autosize(); }
+  }
+
+  /* قائمة خيارات الرسالة (رد · تعديل · حذف) */
+  function ensureMsgMenu() {
+    if (session.msgMenu) return session.msgMenu;
+    const menu = document.createElement('div');
+    menu.className = 'msg-menu';
+    menu.hidden = true;
+    menu.innerHTML =
+      '<button type="button" class="msg-menu__btn" data-act="reply">رد</button>' +
+      '<button type="button" class="msg-menu__btn" data-act="edit">تعديل</button>' +
+      '<button type="button" class="msg-menu__btn msg-menu__btn--danger" data-act="delete">حذف</button>';
+    document.body.appendChild(menu);
+    if (window.WTIcons && window.WTIcons.apply) window.WTIcons.apply(menu);
+    /* ربط مباشر على كل زر — يعمل مع الفقاعات الداخليات ودونها */
+    (menu.querySelectorAll('.msg-menu__btn') || []).forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const row = menu._row;
+        const act = btn.dataset ? btn.dataset.act : (btn.getAttribute ? btn.getAttribute('data-act') : '');
+        hideMsgMenu();
+        if (!row) return;
+        if (act === 'reply') setReplyTo(row);
+        else if (act === 'edit') startEdit(row);
+        else if (act === 'delete') deleteMessage(row);
+      });
+    });
+    session.msgMenu = menu;
+    return menu;
+  }
+
+  function openMsgMenu(row, x, y) {
+    if (!row || !row.classList) return;
+    const menu = ensureMsgMenu();
+    menu._row = row;
+    menu.hidden = false;
+    const isMine = row.classList.contains('msg--me');
+    /* تعديل/حذف لرسائلي فقط — والرد متاح للجميع */
+    (menu.querySelectorAll('.msg-menu__btn') || []).forEach(b => {
+      const act = b.dataset ? b.dataset.act : '';
+      b.hidden = (act === 'edit' || act === 'delete') ? !isMine : false;
+    });
+    const pad = 10;
+    const w = menu.offsetWidth || 150, h = menu.offsetHeight || 110;
+    const vw = window.innerWidth || 390, vh = window.innerHeight || 844;
+    menu.style.left = Math.max(pad, Math.min((x || 0) - w / 2, vw - w - pad)) + 'px';
+    menu.style.top = Math.max(pad, Math.min((y || 0) - h - 10, vh - h - pad)) + 'px';
+  }
+
+  function hideMsgMenu() {
+    const menu = session.msgMenu;
+    if (menu) { menu.hidden = true; menu._row = null; }
+    const kids = el.chatBody ? (el.chatBody.children || []) : [];
+    for (let i = 0; i < kids.length; i++) if (kids[i].classList) kids[i].classList.remove('is-menu');
+  }
+
+  /* إغلاق القائمة عند الضغط في أي مكان آخر */
+  document.addEventListener('click', (e) => {
+    const menu = session.msgMenu;
+    if (!menu || menu.hidden) return;
+    const t = e && e.target;
+    if (t && t.closest && t.closest('.msg-menu')) return;
+    hideMsgMenu();
+  });
+
+  /* ---- إيماءات الرسالة: السحب = رد · الضغط المطوّل = تعديل/حذف ---- */
+  (function bindMsgGestures() {
+    if (!el.chatBody) return;
+    let drag = null;
+
+    const rowOf = (e) => {
+      const t = e && e.target;
+      return t && t.closest ? t.closest('.msg') : null;
+    };
+    const actionable = (row) => row && row.classList &&
+      !row.classList.contains('msg--system') && !row.classList.contains('msg--react') &&
+      !row.classList.contains('msg--deleted');
+    const resetRow = (row) => {
+      if (!row) return;
+      const bubble = row.querySelector('.msg__bubble');
+      if (bubble && bubble.style) bubble.style.transform = '';
+      if (row.classList) { row.classList.remove('is-dragging'); row.classList.remove('is-swiped'); }
+    };
+
+    el.chatBody.addEventListener('pointerdown', (e) => {
+      const row = rowOf(e);
+      if (!actionable(row)) return;
+      if (drag) { clearTimeout(drag.lpTimer); resetRow(drag.row); }
+      drag = {
+        row: row, x0: e.clientX || 0, y0: e.clientY || 0, mode: '', dx: 0,
+        lpTimer: setTimeout(function () {
+          if (!drag || drag.mode) return;
+          drag.mode = 'menu';
+          openMsgMenu(drag.row, drag.x0, drag.y0);
+        }, 450)
+      };
+      const t = e && e.target;
+      if (e.pointerId != null && t && t.setPointerCapture) { try { t.setPointerCapture(e.pointerId); } catch (err) { } }
+    });
+
+    el.chatBody.addEventListener('pointermove', (e) => {
+      if (!drag) return;
+      const dx = (e.clientX || 0) - drag.x0;
+      const dy = (e.clientY || 0) - drag.y0;
+      if (!drag.mode) {
+        if (Math.abs(dx) > 12 && Math.abs(dx) > Math.abs(dy) + 4) {
+          drag.mode = 'swipe';
+          clearTimeout(drag.lpTimer);
+          if (drag.row.classList) drag.row.classList.add('is-dragging');
+        } else if (Math.abs(dy) > 12) {
+          clearTimeout(drag.lpTimer);
+          resetRow(drag.row);
+          drag = null;
+          return;
+        }
+      }
+      if (drag.mode === 'swipe') {
+        drag.dx = Math.max(-90, Math.min(90, dx));
+        const bubble = drag.row.querySelector('.msg__bubble');
+        if (bubble && bubble.style) bubble.style.transform = 'translateX(' + drag.dx + 'px)';
+        if (drag.row.classList) drag.row.classList.toggle('is-swiped', Math.abs(drag.dx) > 40);
+      }
+    });
+
+    const endDrag = () => {
+      if (!drag) return;
+      clearTimeout(drag.lpTimer);
+      const d = drag;
+      drag = null;
+      resetRow(d.row);
+      if (d.mode === 'swipe' && Math.abs(d.dx) > 48) setReplyTo(d.row);
+    };
+    el.chatBody.addEventListener('pointerup', endDrag);
+    el.chatBody.addEventListener('pointercancel', endDrag);
+
+    /* زر الفأرة الأيمن على الحاسوب = نفس قائمة الخيارات */
+    el.chatBody.addEventListener('contextmenu', (e) => {
+      const row = rowOf(e);
+      if (!actionable(row)) return;
+      if (e.preventDefault) e.preventDefault();
+      openMsgMenu(row, e.clientX || 0, e.clientY || 0);
+    });
+  })();
 
   function handleTyping(d) {
     if (!d || d.clientId === session.clientId) return;
@@ -1423,8 +1788,9 @@
       el.drawer.setAttribute('aria-hidden', open ? 'false' : 'true');
       el.drawerOpenBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
       document.body.classList.toggle('drawer-open', !!open);
-      if (open) setTimeout(() => el.drawerCloseBtn.focus(), 30);
-      else el.drawerOpenBtn.focus();
+      /* preventScroll: منع تحريك الصفحة عند نقل التركيز (خاصة في RTL على الهاتف) */
+      if (open) setTimeout(() => el.drawerCloseBtn.focus({ preventScroll: true }), 30);
+      else el.drawerOpenBtn.focus({ preventScroll: true });
     };
     el.drawerOpenBtn.addEventListener('click', () => setDrawerOpen(true));
     el.drawerCloseBtn.addEventListener('click', () => setDrawerOpen(false));
@@ -1543,9 +1909,13 @@
     /* ---- الرسائل ---- */
     el.chatForm.addEventListener('submit', (e) => {
       e.preventDefault();
-      sendMessage(el.chatInput.value, 'chat');
-      el.chatInput.value = '';
-      autosize();
+      submitChat();
+    });
+    if (el.composerBarCancel) el.composerBarCancel.addEventListener('click', () => {
+      const wasEdit = !!session.editing;
+      clearComposer();
+      /* إلغاء التعديل يمسح المسودة؛ إلغاء الرد يُبقي ما كتبه المستخدم */
+      if (wasEdit && el.chatInput) { el.chatInput.value = ''; autosize(); }
     });
     el.chatInput.addEventListener('input', () => {
       autosize();
@@ -1561,15 +1931,14 @@
     el.chatInput.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault();
-        sendMessage(el.chatInput.value, 'chat');
-        el.chatInput.value = '';
-        autosize();
+        submitChat();
       }
     });
     el.clearChatBtn.addEventListener('click', () => {
       el.chatBody.innerHTML = '';
       el.chatEmpty.style.display = '';
       el.chatBody.appendChild(el.chatEmpty);
+      clearComposer();
       updateChatCount();
     });
 
@@ -1745,6 +2114,10 @@
     openDiag,
     closeDiag,
     reconnect,
+    chat: {
+      addChatMessage, setReplyTo, startEdit, deleteMessage, commitEdit,
+      submitChat, clearComposer, encodeChatText, decodeChatText, findMsgRow
+    },
     setVideo(url) {
       const parsed = U.parseWatchUrl(url);
       if (!parsed) return false;

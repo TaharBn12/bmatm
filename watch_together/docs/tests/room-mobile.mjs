@@ -521,6 +521,60 @@ for (const v of VIEWPORTS) {
   t('شريط الغرفة لا يلتفّ إلى سطرين على الهاتف', val(byIdProbe('drawerOpenBtn').parent.parent, 'flex-wrap', ctx) !== 'wrap',
     val(byIdProbe('drawerOpenBtn').parent.parent, 'flex-wrap', ctx));
 
+  /* ---- 5.ب) تداخل الشريط العلوي (2.6.5): الكتابة لا تلامس الأيقونات، والدراور في مكانه ----
+     العطل السابق: .player-actions كانت تحتفظ بـ width: min(620px, 100%) من القاعدة
+     العامة داخل .room-bar، فتمتد لعرض الشريط كله ⇒ العنوان يفيض فوق الأيقونات
+     وزر القائمة (الدراور) يُدفع خارج الشريط إلى حافة الشاشة. */
+  {
+    const barEl = byIdProbe('drawerOpenBtn').parent;          /* div.room-bar */
+    const barCtx = ctxOf(VIEWPORTS[1]);                      /* 360px — هاتف صغير */
+    const playerActions = byIdProbe('addVideoBtn').parent;    /* nav.player-actions */
+    const titleEl = byIdProbe('roomTitle');
+    const rtopbarEl = titleEl.parent.parent;                 /* header.rtopbar */
+
+    t('أدوات الرأس داخل شريط الغرفة بعرض محتواها فقط (width: auto) — لا تملأ الشريط',
+      /^(auto|)$/.test(val(playerActions, 'width', barCtx)) && !/min\(/.test(val(playerActions, 'width', barCtx)),
+      val(playerActions, 'width', barCtx));
+    t('أدوات الرأس لا تنكمش ولا تتمدد (flex: none) — عرضها ثابت بحجم الأيقونات',
+      /none|0 0 auto/.test(val(playerActions, 'flex', barCtx)), val(playerActions, 'flex', barCtx));
+    t('زر القائمة (الدراور) flex: none — لا يُدفع خارج الشريط عند الازدحام',
+      /none|0 0 auto/.test(val(byIdProbe('drawerOpenBtn'), 'flex', barCtx)), val(byIdProbe('drawerOpenBtn'), 'flex', barCtx));
+    t('رأس الغرفة (rtopbar) هو أول من ينكمش عند الازدحام (flex: 1 1 auto + min-width: 0)',
+      /1 1 auto|flex:\s*1/.test(val(rtopbarEl, 'flex', barCtx)) && val(rtopbarEl, 'min-width', barCtx) === '0',
+      `flex=${val(rtopbarEl, 'flex', barCtx)}, min-width=${val(rtopbarEl, 'min-width', barCtx)}`);
+    t('عنوان الغرفة يُقصّ بدل أن يفيض فوق الأيقونات (overflow: hidden + text-overflow: ellipsis)',
+      /hidden/.test(val(titleEl, 'overflow', barCtx)) && val(titleEl, 'text-overflow', barCtx) === 'ellipsis',
+      `overflow=${val(titleEl, 'overflow', barCtx)}, text-overflow=${val(titleEl, 'text-overflow', barCtx)}`);
+    t('عنوان الغرفة قابل للانكماش (min-width: 0) فلا يكسر صف الشريط',
+      val(titleEl, 'min-width', barCtx) === '0', val(titleEl, 'min-width', barCtx));
+    t('سهم ▾ بجانب العنوان مطلق الموضع — لا يزاحم النص ولا الأيقونات',
+      /\.room-bar\s+\.rtopbar__title::after\s*\{[^}]*position:\s*absolute/s.test(css) &&
+      val(titleEl, 'position', barCtx) === 'relative',
+      `title position=${val(titleEl, 'position', barCtx)}`);
+    t('عرض الشريط نفسه لا يزيح المحتوى: العنوان والأيقونات كلها داخل room-bar',
+      /auto/.test(val(barEl, 'width', barCtx)) || val(barEl, 'width', barCtx) === '', val(barEl, 'width', barCtx));
+
+    /* ميزانية العرض على أصغر هاتف (320px): الأجزاء الثابتة يجب أن تترك للعنوان مساحة */
+    for (const view of [VIEWPORTS[0], VIEWPORTS[1], VIEWPORTS[2]]) {
+      const c = ctxOf(view);
+      const drawerPad = (evalLength(val(byIdProbe('drawerOpenBtn'), 'padding-inline', c), c) ||
+        evalLength(val(byIdProbe('drawerOpenBtn'), 'padding', c), c) || 12);
+      const drawerW = Math.round(21 + 4 + 17 + drawerPad * 2);          /* شارة + فجوة + أيقونة + حشو */
+      const acts = 3 * 44 + 2 * 2;                                      /* 3 أزرار لمس + فجوتان */
+      const collapse = 34;
+      const gaps = 4 * 3;
+      const barPad = 2 * (evalLength(val(barEl, 'padding-inline', c), c) || 7);
+      const conn = view.width <= 380 ? 0 : 27;                          /* النقطة تُخفى ≤380px */
+      const fixed = Math.round(barPad + gaps + drawerW + acts + collapse + conn);
+      const titleSpace = view.width - 20 - fixed;                       /* 20 = حشو .room-main */
+      t(`[${view.name}] ميزانية الشريط تترك للعنوان مساحة مقروءة (≥ 24px) بلا تداخل`,
+        titleSpace >= 24, `الثابت=${fixed}px، المتبقي للعنوان=${titleSpace}px من ${view.width}px`);
+    }
+    t('نقطة الحالة تُخفى داخل شريط الغرفة على ≤380px لتحرير مساحة العنوان',
+      val({ tag: 'span', id: '', classes: ['room-connection'], attrs: {}, children: [], parent: rtopbarEl }, 'display', ctxOf(VIEWPORTS[0])) === 'none',
+      val({ tag: 'span', id: '', classes: ['room-connection'], attrs: {}, children: [], parent: rtopbarEl }, 'display', ctxOf(VIEWPORTS[0])));
+  }
+
   /* وضع الأفق القصير: قاعدة موجودة فعلاً */
   const landscapeRule = rules.some(r => r.media.some(m => /max-height:\s*54\dpx/i.test(m) && /orientation:\s*landscape/i.test(m)) && /\.stage/.test(r.selector));
   t('وضع الهاتف المقلوب يعالج حجم المشغّل', landscapeRule);

@@ -45,6 +45,7 @@
 
     /* ---- عام ---- */
     check: '<path d="m4.5 12.5 5 5 10-11"/>',
+    pencil: '<path d="M4 20h4.2L20 8.2 15.8 4 4 15.8V20Z"/><path d="m14.2 5.6 4.2 4.2"/>',
     x: '<path d="M18 6 6 18M6 6l12 12"/>',
     info: '<circle cx="12" cy="12" r="9"/><path d="M12 16.2v-4.6M12 8.1h.01" stroke-width="2.4" stroke-linecap="round"/>',
     alert: '<path d="M10.3 3.9 2.5 17.4A2 2 0 0 0 4.2 20.4h15.6a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/><path d="M12 9.2v4.1M12 16.8h.01" stroke-width="2.4" stroke-linecap="round"/>',
