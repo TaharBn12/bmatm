@@ -53,9 +53,30 @@ const run = async () => {
   const missingRefs = [...new Set(refs)].filter(id => !byId.has(id));
   t('كل مراجع DOM في room.js موجودة أو اختيارية', missingRefs.length === 0, missingRefs.join(','));
 
-  const order = ['id="stage"', 'id="ctrlbar"', 'class="player-actions"', 'id="changeBar"', 'id="chat"']
+  const order = ['id="roomBar"', 'id="changeBar"', 'id="mediaShell"', 'id="stage"', 'id="ctrlbar"', 'id="chat"']
     .map(s => html.indexOf(s));
-  t('ترتيب المشغّل وصف التحكم والأزرار والرسائل صحيح', order.every((n, i) => n >= 0 && (!i || n > order[i - 1])), order.join(','));
+  t('الترتيب: رأس الغرفة ← إضافة الرابط ← المشغّل ← شريط التحكم ← الرسائل',
+    order.every((n, i) => n >= 0 && (!i || n > order[i - 1])), order.join(','));
+
+  /* المطلب الصريح: لا شيء بين بطاقة المشغّل والرسائل — الرسائل تحت المشغّل مباشرة */
+  const mainSlice = html.slice(html.indexOf('id="roomMain"'), html.indexOf('<!-- ===== سكربتات'));
+  const chatTag = mainSlice.indexOf('<section class="chat');           /* بداية بطاقة الرسائل نفسها */
+  const between = mainSlice.slice(mainSlice.indexOf('id="mediaShell"'), chatTag);
+  const allowedIds = new Set(['mediaShell', 'stage', 'player', 'playerPlaceholder', 'centerPlayBtn', 'clickLayer',
+    'ctrlbar', 'playPauseBtn', 'iconPlay', 'iconPause', 'curTime', 'durTime', 'progressBar', 'progressBuffer',
+    'progressFill', 'progressKnob', 'progressTip', 'muteBtn', 'iconSound', 'iconMuted']);
+  const strayIds = [...between.matchAll(/id="([^"]+)"/g)].map(m => m[1]).filter(id => !allowedIds.has(id));
+  const strayClasses = [...between.matchAll(/class="([^"]+)"/g)].map(m => m[1])
+    .flatMap(c => c.split(/\s+/)).filter(c => ['room-bar', 'player-actions', 'change-bar', 'chat', 'player-action', 'rtopbar', 'drawer-open'].includes(c));
+  t('لا شيء بين المشغّل والرسائل (الرسائل تحت المشغّل مباشرة)',
+    chatTag > 0 && strayIds.length === 0 && strayClasses.length === 0,
+    `ids=${strayIds.join(',')} classes=${strayClasses.join(',')}`);
+  t('أدوات الغرفة (إضافة فيديو · رسائل · تشغيل) في الرأس أعلى المشغّل',
+    mainSlice.indexOf('id="roomBar"') < mainSlice.indexOf('id="mediaShell"') &&
+    mainSlice.indexOf('id="addVideoBtn"') < mainSlice.indexOf('id="mediaShell"'), '');
+  t('نموذج إضافة الرابط تحت الرأس ويظهر عند الطلب (مخفيّ افتراضياً)',
+    mainSlice.indexOf('id="roomBar"') < mainSlice.indexOf('id="changeBar"') &&
+    /<section class="change-bar glass" id="changeBar"\s+hidden>/.test(html), '');
   t('شريط التحكم أسفل الفيديو (بعد إغلاق المشغّل)',
     html.indexOf('id="player"') < html.indexOf('id="ctrlbar"') &&
     html.indexOf('id="ctrlbar"') < html.indexOf('</section>', html.indexOf('id="stage"')));

@@ -86,6 +86,25 @@ t('محتوى الغرفة (#room) هو الأب المباشر للدراور',
 t('الدراور خارج تدفّق المحتوى (ليس داخل #roomMain)',
   !!drawerEl && !insideOf(drawerEl, 'roomMain'));
 t('الرسائل (#chat) داخل #roomMain', !!chatEl && insideOf(chatEl, 'roomMain'));
+/* الشجرة الحقيقية: هل الرسائل هي العنصر التالي للمشغّل مباشرة في #roomMain؟ */
+const roomMainEl = findById(roomTree, 'roomMain');
+const siblings = roomMainEl.children.filter(c => c.id || c.classes.length);
+const posOf = (idOrClass) => siblings.findIndex(c => c.id === idOrClass || c.classes.includes(idOrClass));
+{
+  const mediaIdx = siblings.findIndex(c => c.classes.includes('media-shell'));
+  const chatIdx = siblings.findIndex(c => c.classes.includes('chat'));
+  const barIdx = siblings.findIndex(c => c.classes.includes('room-bar'));
+  const changeIdx = siblings.findIndex(c => c.classes.includes('change-bar'));
+  t('الرسائل هي العنصر التالي للمشغّل مباشرة داخل #roomMain',
+    mediaIdx >= 0 && chatIdx === mediaIdx + 1,
+    siblings.map(c => (c.tag + (c.id ? '#' + c.id : '.' + c.classes.join('.')))).join(' → '));
+  t('لا يوجد أي عنصر آخر بين المشغّل والرسائل',
+    chatIdx === mediaIdx + 1 && siblings.length === 4);
+  t('رأس الغرفة (الاسم · الأدوات · القائمة) قبل المشغّل',
+    barIdx === 0 && mediaIdx === 2, siblings.map(c => c.id || c.classes.join('.')).join(','));
+  t('نموذج إضافة الرابط بين الرأس والمشغّل (يظهر عند الطلب فقط)',
+    changeIdx === 1 && 'hidden' in (siblings[changeIdx].attrs || {}));
+}
 t('المشاركون انتقلوا إلى الدراور', !!membersEl && insideOf(membersEl, 'roomDrawer'));
 t('المشاركون آخر أقسام الدراور (بعد المنظّمين)', (() => {
   const sections = drawerEl.children.filter(c => c.tag === 'section');
@@ -470,6 +489,15 @@ for (const v of VIEWPORTS) {
     chatMin !== null && chatMin >= 200 && chatMin <= 300, String(chatMin));
   t('الرسائل تتمدد لتملأ المساحة المتبقية على الهاتف',
     /1 1 auto|flex:\s*1/.test(val(chatEl, 'flex', ctx)), val(chatEl, 'flex', ctx));
+
+  /* القرب الفعلي: المسافة بين المشغّل والرسائل على الهاتف */
+  for (const dev of [{ n: 'هاتف صغير', w: 360, h: 640 }, { n: 'هاتف مقلوب', w: 844, h: 390 }]) {
+    const c = ctxOf({ width: dev.w, height: dev.h, pointer: 'coarse' });
+    const gap = evalLength(val(roomMainEl, 'gap', c), c);
+    t(`[${dev.n}] المسافة بين بطاقة المشغّل والرسائل ≤ 10px`, gap !== null && gap <= 10, String(gap));
+  }
+  t('رسائل الصفحة تسبق كل شيء آخر: لا بطاقة بين الفيديو والمحادثة',
+    val({ tag: 'section', id: 'chat', classes: ['chat', 'glass'], attrs: {}, children: [], parent: roomMainEl }, 'margin-top', ctxOf(VIEWPORTS[1])) === '0');
 
   /* ميزانية الارتفاع: هل يبقى للرسائل مكان معقول في شاشة هاتف حقيقية؟
      (أرقام معلنة في CSS: شريط الغرفة + أزرار الأدوات + الفيديو 16:9 + شريط التحكم + حشوة) */

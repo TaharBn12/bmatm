@@ -774,7 +774,7 @@ async function cmdSmoke(args) {
 /* =========================================================
    نقطة الدخول
    ========================================================= */
-const DEFAULT_VERSION = '2.6.3';
+const DEFAULT_VERSION = '2.6.4';
 
 const HELP = `
   ${C.bold('أداة سيرفر Supabase — WatchTogether')}

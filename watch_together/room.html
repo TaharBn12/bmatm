@@ -17,7 +17,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800;900&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="assets/css/app.css?v=2.6.3">
+  <link rel="stylesheet" href="assets/css/app.css?v=2.6.4">
 </head>
 <body class="room-body">
   <div class="bg-fx"></div>
@@ -121,8 +121,63 @@
 
     <main class="room-main" id="roomMain">
 
+      <!-- رأس الغرفة (أعلى الصفحة): اسم الغرفة ▾ · الحالة · طيّ الفيديو · الأدوات · القائمة -->
+      <div class="room-bar" id="roomBar">
+        <header class="rtopbar">
+      <a class="brand rtopbar__brand" href="index.html" title="الرئيسية">
+        <span class="brand__logo brand__logo--sm"><span class="ic" data-icon="logo" data-size="20"></span></span>
+      </a>
+      <div class="rtopbar__main">
+        <h1 class="rtopbar__title" id="roomTitle">غرفة مشاهدة</h1>
+        <p class="rtopbar__sub" id="roomSub">جارٍ الاتصال…</p>
+      </div>
+      <span class="badge room-connection" id="statusBadge" title="حالة اتصال الغرفة">
+        <span class="dot"></span><span id="statusText">جارٍ الاتصال</span>
+      </span>
+    </header>
+        <button class="room-collapse" id="collapseBtn" type="button" aria-expanded="true" aria-label="طيّ الفيديو وإظهاره" title="طيّ الفيديو وإظهاره">
+          <span class="ic" data-icon="chevronUp" data-size="18"></span>
+        </button>
+              <!-- أدوات الغرفة في الرأس: إضافة فيديو · تكبير الرسائل · قائمة التشغيل -->
+      <nav class="player-actions" aria-label="أدوات المشاهدة">
+        <button class="player-action" id="addVideoBtn" type="button" aria-label="إضافة فيديو جديد" title="إضافة فيديو جديد">
+          <span class="ic" data-icon="search" data-size="19"></span><span>إضافة فيديو</span>
+        </button>
+        <button class="player-action" id="messagesBtn" type="button" aria-label="تكبير الرسائل" title="تكبير الرسائل (D)">
+          <span class="ic" data-icon="chat" data-size="19"></span><span>الرسائل</span><span class="player-action__count" id="messagesCount" hidden>0</span>
+        </button>
+        <button class="player-action" id="playlistBtn" type="button" aria-label="عرض قائمة التشغيل" title="قائمة التشغيل">
+          <span class="ic" data-icon="playlist" data-size="19"></span><span>قائمة التشغيل</span><span class="player-action__count" id="playlistCount">0</span>
+        </button>
+      </nav>
+        <button class="drawer-open btn btn--ghost" id="drawerOpenBtn" type="button" aria-label="فتح المشاركين والإعدادات" aria-expanded="false">
+          <span class="ic" data-icon="menu" data-size="19"></span>
+          <span>القائمة</span>
+          <span class="drawer-open__count" id="membersCount">1</span>
+        </button>
+      </div>
+
+      <!-- إضافة رابط إلى قائمة التشغيل المشتركة (تحت الرأس مباشرة، مخفية افتراضياً) -->
+      <section class="change-bar glass" id="changeBar" hidden>
+        <div class="change-bar__row">
+          <div class="field-wrap">
+            <span class="ic field-wrap__ic" data-icon="link" data-size="18"></span>
+            <input class="input input--pad input--ltr" id="newUrl" type="url" spellcheck="false" autocomplete="url"
+                   placeholder="الصق رابط فيديو (يوتيوب / mp4 / m3u8)">
+          </div>
+          <input class="input" id="newTitle" type="text" maxlength="120" placeholder="عنوان الفيديو — اختياري">
+          <button class="btn btn--primary" id="applyUrlBtn" type="button">
+            <span class="ic" data-icon="plus" data-size="17"></span> أضف للقائمة
+          </button>
+          <button class="btn btn--ghost btn--icon" id="cancelUrlBtn" type="button" title="إغلاق" aria-label="إغلاق">
+            <span class="ic" data-icon="x" data-size="18"></span>
+          </button>
+        </div>
+        <p class="change-bar__hint"><span class="ic" data-icon="info" data-size="14"></span> سيظهر الفيديو في قائمة تشغيل مشتركة، ويمكن للمنظّمين بدء عرضه للجميع.</p>
+      </section>
+
       <div class="media-shell" id="mediaShell">
-      <!-- المشغّل (الفيديو) + شريط التحكم أسفله مباشرة -->
+      <!-- المشغّل (الفيديو) + شريط التحكم أسفله مباشرة — ثم الرسائل تحته فوراً -->
       <section class="stage glass" id="stage">
         <div class="player" id="player">
           <div class="player__placeholder" id="playerPlaceholder">
@@ -167,62 +222,7 @@
       </div>
 
 
-      <!-- شريط الغرفة: اسم الغرفة ▾ · طيّ الفيديو · الأدوات · القائمة (بأسلوب Watch2Gether) -->
-      <div class="room-bar" id="roomBar">
-        <header class="rtopbar">
-      <a class="brand rtopbar__brand" href="index.html" title="الرئيسية">
-        <span class="brand__logo brand__logo--sm"><span class="ic" data-icon="logo" data-size="20"></span></span>
-      </a>
-      <div class="rtopbar__main">
-        <h1 class="rtopbar__title" id="roomTitle">غرفة مشاهدة</h1>
-        <p class="rtopbar__sub" id="roomSub">جارٍ الاتصال…</p>
-      </div>
-      <span class="badge room-connection" id="statusBadge" title="حالة اتصال الغرفة">
-        <span class="dot"></span><span id="statusText">جارٍ الاتصال</span>
-      </span>
-    </header>
-        <button class="room-collapse" id="collapseBtn" type="button" aria-expanded="true" aria-label="طيّ الفيديو وإظهاره" title="طيّ الفيديو وإظهاره">
-          <span class="ic" data-icon="chevronUp" data-size="18"></span>
-        </button>
-              <!-- الأزرار الثلاثة المطلوبة أسفل المشغّل -->
-      <nav class="player-actions" aria-label="أدوات المشاهدة">
-        <button class="player-action" id="addVideoBtn" type="button" aria-label="إضافة فيديو جديد" title="إضافة فيديو جديد">
-          <span class="ic" data-icon="search" data-size="19"></span><span>إضافة فيديو</span>
-        </button>
-        <button class="player-action" id="messagesBtn" type="button" aria-label="تكبير الرسائل" title="تكبير الرسائل (D)">
-          <span class="ic" data-icon="chat" data-size="19"></span><span>الرسائل</span><span class="player-action__count" id="messagesCount" hidden>0</span>
-        </button>
-        <button class="player-action" id="playlistBtn" type="button" aria-label="عرض قائمة التشغيل" title="قائمة التشغيل">
-          <span class="ic" data-icon="playlist" data-size="19"></span><span>قائمة التشغيل</span><span class="player-action__count" id="playlistCount">0</span>
-        </button>
-      </nav>
-        <button class="drawer-open btn btn--ghost" id="drawerOpenBtn" type="button" aria-label="فتح المشاركين والإعدادات" aria-expanded="false">
-          <span class="ic" data-icon="menu" data-size="19"></span>
-          <span>القائمة</span>
-          <span class="drawer-open__count" id="membersCount">1</span>
-        </button>
-      </div>
-
-      <!-- إضافة رابط إلى قائمة التشغيل المشتركة -->
-      <section class="change-bar glass" id="changeBar" hidden>
-        <div class="change-bar__row">
-          <div class="field-wrap">
-            <span class="ic field-wrap__ic" data-icon="link" data-size="18"></span>
-            <input class="input input--pad input--ltr" id="newUrl" type="url" spellcheck="false" autocomplete="url"
-                   placeholder="الصق رابط فيديو (يوتيوب / mp4 / m3u8)">
-          </div>
-          <input class="input" id="newTitle" type="text" maxlength="120" placeholder="عنوان الفيديو — اختياري">
-          <button class="btn btn--primary" id="applyUrlBtn" type="button">
-            <span class="ic" data-icon="plus" data-size="17"></span> أضف للقائمة
-          </button>
-          <button class="btn btn--ghost btn--icon" id="cancelUrlBtn" type="button" title="إغلاق" aria-label="إغلاق">
-            <span class="ic" data-icon="x" data-size="18"></span>
-          </button>
-        </div>
-        <p class="change-bar__hint"><span class="ic" data-icon="info" data-size="14"></span> سيظهر الفيديو في قائمة تشغيل مشتركة، ويمكن للمنظّمين بدء عرضه للجميع.</p>
-      </section>
-
-      <!-- الرسائل -->
+      <!-- الرسائل: مباشرة تحت المشغّل — الهدف من الموقع التفرّج مع صديق والحديث -->
       <section class="chat glass" id="chat">
         <div class="chat__head">
           <h2 class="chat__title"><span class="ic" data-icon="chat" data-size="18"></span> الرسائل</h2>
@@ -353,14 +353,14 @@
   </div>
 
   <!-- ===== سكربتات ===== -->
-  <script src="assets/vendor/hls.min.js?v=2.6.3"></script>
-  <script src="assets/vendor/qrcode.min.js?v=2.6.3"></script>
-  <script src="assets/js/config.js?v=2.6.3"></script>
-  <script src="assets/js/util.js?v=2.6.3"></script>
-  <script src="assets/js/icons.js?v=2.6.3"></script>
-  <script src="assets/js/auth.js?v=2.6.3"></script>
-  <script src="assets/js/transport.js?v=2.6.3"></script>
-  <script src="assets/js/player.js?v=2.6.3"></script>
-  <script src="assets/js/room.js?v=2.6.3"></script>
+  <script src="assets/vendor/hls.min.js?v=2.6.4"></script>
+  <script src="assets/vendor/qrcode.min.js?v=2.6.4"></script>
+  <script src="assets/js/config.js?v=2.6.4"></script>
+  <script src="assets/js/util.js?v=2.6.4"></script>
+  <script src="assets/js/icons.js?v=2.6.4"></script>
+  <script src="assets/js/auth.js?v=2.6.4"></script>
+  <script src="assets/js/transport.js?v=2.6.4"></script>
+  <script src="assets/js/player.js?v=2.6.4"></script>
+  <script src="assets/js/room.js?v=2.6.4"></script>
 </body>
 </html>
