@@ -171,11 +171,33 @@ function explain(r) {
   if (r.ok) return null;
   const code = r.body && r.body.code ? String(r.body.code) : '';
   const msg = (r.body && (r.body.message || r.body.error)) || r.error || ('HTTP ' + r.status);
+  /* عمود مفقود (PGRST204): «Could not find the 'body' column of 'messages' in the schema cache» */
+  const missCol = String(msg).match(/could not find the '([^']+)' column of '([^']+)'/i);
+  if (missCol || code === 'PGRST204') {
+    const col = missCol ? missCol[1] : '؟';
+    const tbl = missCol ? missCol[2] : 'messages';
+    return {
+      code: 'schema-mismatch', column: col, table: tbl,
+      title: 'عمود «' + col + '» غير موجود في جدول ' + tbl,
+      detail: 'جدول موجود بنسخة قديمة من المخطط (أو كاش PostgREST قديم).',
+      fix: 'نفّذ docs/sql/04-repair-messages.sql في SQL Editor، ثم: NOTIFY pgrst, \'reload schema\';'
+    };
+  }
+  /* جدول قديم بلا تسلسل للمعرّف: null value in column "id" … violates not-null constraint
+     أو relation "public.messages_id_seq" does not exist */
+  if (code === '23502' || code === '42703' || /null value in column "id"|messages_id_seq/i.test(String(msg))) {
+    return {
+      code: 'legacy-id',
+      title: 'جدول messages قديم: المعرّف id بلا قيمة افتراضية',
+      detail: 'الموقع يرسل نصّ الرسالة فقط ويعتمد على توليد id من تسلسل messages_id_seq وجدولك لا يملكه.',
+      fix: 'نفّذ docs/sql/04-repair-messages.sql في SQL Editor (يُنشئ التسلسل ويربطه بعمود id)، ثم: NOTIFY pgrst, \'reload schema\';'
+    };
+  }
   if (code === '42P01' || code === 'PGRST205' || /does not exist|schema cache/i.test(String(msg))) {
-    return { code: 'missing-table', title: 'الجداول غير موجودة', fix: 'نفّذ docs/bootstrap.sql في SQL Editor' };
+    return { code: 'missing-table', title: 'الجداول غير موجودة', fix: 'نفّذ docs/sql/01-bootstrap.sql في SQL Editor' };
   }
   if (code === '42501') {
-    return { code: 'rls', title: 'صلاحيات RLS ناقصة', fix: 'أعد تنفيذ docs/bootstrap.sql (منح الصلاحيات + السياسات)' };
+    return { code: 'rls', title: 'صلاحيات RLS ناقصة', fix: 'أعد تنفيذ docs/sql/01-bootstrap.sql (منح الصلاحيات + السياسات)' };
   }
   if (r.status === 401 || r.status === 403 || /invalid api key|jwt/i.test(String(msg))) {
     return { code: 'bad-key', title: 'مفتاح anon غير صالح', fix: 'انسخ anon public key الجديد من Project Settings → API' };
@@ -276,6 +298,45 @@ export async function doctorProject({ url, anonKey, realtime = true, write = fal
     }
   }
 
+  /* 2ب) عمود نصّ الرسالة: أشهر سبب لتعطّل الدردشة (PGRST204 — body column missing) */
+  if (report.tables.messages) {
+    const field = await restGet(url, anonKey, '/rest/v1/messages?select=body&limit=1');
+    if (field.ok) {
+      report.messageField = 'body';
+    } else {
+      /* العمود اسمه غير body؟ اكتشف الاسم الفعلي من صفّ حقيقي */
+      const probe = await restGet(url, anonKey, '/rest/v1/messages?select=*&limit=1');
+      const cols = Array.isArray(probe.body) && probe.body[0] ? Object.keys(probe.body[0]) : [];
+      const alt = cols.find(c => ['text', 'message', 'content', 'msg'].includes(String(c).toLowerCase())) || null;
+      report.messageField = alt;
+      report.problems.push(Object.assign({}, explain(field), {
+        code: 'schema-mismatch', column: 'body', table: 'messages',
+        title: alt
+          ? 'جدول messages قديم: العمود «' + alt + '» بدل «body»'
+          : 'عمود body مفقود في جدول messages',
+        detail: alt
+          ? 'الدردشة في الموقع لن تعمل حتى يتطابق الجدول مع المخطط (العميل يتكيّف مؤقتاً لكن الأفضل الإصلاح).'
+          : 'لا يمكن للدردشة الكتابة في الجدول بلا عمود نصّ مطابق.',
+        fix: 'نفّذ docs/sql/04-repair-messages.sql في SQL Editor (يُعيد تسمية/يضيف العمود ثم NOTIFY pgrst, \'reload schema\')'
+      }));
+    }
+  }
+
+  /* 2ج) عمود المعرّف id: جدول قديم قد ينقصه العمود أو يكون بلا default/تسلسل،
+     فيفشل إرسال الرسائل بـ «null value in column "id" … violates not-null constraint» */
+  if (report.tables.messages) {
+    const idField = await restGet(url, anonKey, '/rest/v1/messages?select=id&limit=1');
+    const idErr = String((idField.body && (idField.body.message || idField.body.error)) || '');
+    if (!idField.ok && /could not find the 'id' column/i.test(idErr)) {
+      report.problems.push(Object.assign({}, explain(idField), {
+        code: 'legacy-id', column: 'id', table: 'messages',
+        title: 'جدول messages قديم: عمود المعرّف id غير مطابق للمخطط',
+        detail: 'الموقع لا يرسل id ويرفض PostgREST الكتابة في جدول بهذا الشكل.',
+        fix: 'نفّذ docs/sql/04-repair-messages.sql في SQL Editor (يُنشئ تسلسل messages_id_seq ويربطه بعمود id)، ثم: NOTIFY pgrst, \'reload schema\';'
+      }));
+    }
+  }
+
   /* 3) Realtime */
   if (realtime) {
     const rt = await probeRealtime(url, anonKey);
@@ -284,7 +345,7 @@ export async function doctorProject({ url, anonKey, realtime = true, write = fal
       report.warnings.push({
         code: 'realtime-down', title: 'Realtime لا يستجيب',
         detail: rt.error || '',
-        fix: 'تأكد أن rooms و messages و room_members و room_queue مُضافة إلى منشور supabase_realtime (docs/bootstrap.sql).'
+        fix: 'تأكد أن rooms و messages و room_members و room_queue مُضافة إلى منشور supabase_realtime (docs/sql/01-bootstrap.sql).'
       });
     }
   } else {
@@ -328,7 +389,7 @@ export async function doctorProject({ url, anonKey, realtime = true, write = fal
       report.problems.push({
         code: 'write-failed', title: 'اختبار RPC الكتابة/القراءة فشل',
         detail: report.write.detail,
-        fix: 'نفّذ docs/bootstrap.sql وتأكد من صلاحيات anon على دوال wt_create_room و wt_join_room و wt_apply_room_state و wt_delete_room.'
+        fix: 'نفّذ docs/sql/01-bootstrap.sql وتأكد من صلاحيات anon على دوال wt_create_room و wt_join_room و wt_apply_room_state و wt_delete_room.'
       });
     }
   }
@@ -350,10 +411,17 @@ export function renderReport(r) {
     ? ok(`REST يستجيب (${r.rest.ms}ms)`)
     : bad('REST لا يستجيب' + (r.rest && r.rest.error ? ' — ' + r.rest.error.title : ''))));
   lines.push('  ' + (r.tables.rooms ? ok('جدول rooms موجود') : bad('جدول rooms مفقود')));
-  lines.push('  ' + (r.tables.messages ? ok('جدول messages موجود') : bad('جدول messages مفقود (الدردشة لن تعمل)')));
+  lines.push('  ' + (r.tables.messages
+    ? (r.messageField === 'body'
+      ? ok('جدول messages موجود (العمود body سليم)')
+      : warn('جدول messages موجود لكن العمود «' + (r.messageField || 'body') + '» غير مطابق للمخطط'))
+    : bad('جدول messages مفقود (الدردشة لن تعمل)')));
   lines.push('  ' + (r.tables.room_members ? ok('جدول room_members موجود (الأدوار)') : bad('جدول room_members مفقود (التحكم الآمن لن يعمل)')));
   lines.push('  ' + (r.tables.room_queue ? ok('جدول room_queue موجود (القائمة المشتركة)') : bad('جدول room_queue مفقود')));
   lines.push('  ' + (r.tables.presence ? ok('جدول presence موجود') : warn('جدول presence القديم مفقود (اختياري)')));
+  if (r.tables.messages && r.problems.some(p => p.code === 'legacy-id')) {
+    lines.push('  ' + warn('عمود المعرّف id في messages قديم (بلا تسلسل) — نفّذ docs/sql/04-repair-messages.sql'));
+  }
   if (r.realtime && !r.realtime.skipped) {
     lines.push('  ' + (r.realtime.ok ? ok(`Realtime يعمل (${r.realtime.ms}ms)`) : warn('Realtime لا يعمل — ' + (r.realtime.error || ''))));
   }
@@ -429,9 +497,38 @@ export function pickAnonKey(data) {
   return null;
 }
 
+/** مسار أي ملف SQL مرقّم داخل docs/sql */
+export function sqlPath(name, root = ROOT) {
+  return path.join(root, 'docs', 'sql', name);
+}
+
+/** قراءة ملف SQL مرقّم من docs/sql (مثال: '00-reset-drop-all.sql') */
+export function readSql(name, root = ROOT) {
+  return fs.readFileSync(sqlPath(name, root), 'utf8');
+}
+
 export function bootstrapSql(root = ROOT) {
-  const p = path.join(root, 'docs/bootstrap.sql');
-  return fs.readFileSync(p, 'utf8');
+  return readSql('01-bootstrap.sql', root);
+}
+
+/** (00) حذف كل الجداول — للبدء من الصفر */
+export function resetSql(root = ROOT) {
+  return readSql('00-reset-drop-all.sql', root);
+}
+
+/** (05) فحص سريع بعد التنفيذ */
+export function healthSql(root = ROOT) {
+  return readSql('05-health-check.sql', root);
+}
+
+/** (06) تنظيف دوري اختياري */
+export function cleanupSql(root = ROOT) {
+  return readSql('06-cleanup-cron.sql', root);
+}
+
+/** ملف إصلاح جدول الرسائل (خطأ PGRST204: العمود body غير موجود) */
+export function repairSql(root = ROOT) {
+  return readSql('04-repair-messages.sql', root);
 }
 
 async function cmdCreate(args) {
@@ -467,7 +564,7 @@ async function cmdCreate(args) {
   if (args['dry-run']) {
     log(C.y('  (وضع التجربة — لن يُنشأ شيء)'));
     log(C.d('  POST ' + API + '/projects  { name, organization_id, region, plan, db_pass }'));
-    log(C.d('  ثم:  POST ' + API + '/projects/{ref}/database/query  (bootstrap.sql)'));
+    log(C.d('  ثم:  POST ' + API + '/projects/{ref}/database/query  (01-bootstrap.sql)'));
     log(C.d('  ثم:  GET  ' + API + '/projects/{ref}/api-keys  → anon key'));
     log(C.d('  ثم:  كتابة assets/js/config.js + رفع ?v= في الصفحات'));
     log('');
@@ -507,13 +604,13 @@ async function cmdCreate(args) {
   /* 3) تنفيذ مخطط القاعدة */
   const url = 'https://' + ref + '.supabase.co';
   if (!args['no-sql']) {
-    log('  … تنفيذ docs/bootstrap.sql');
+    log('  … تنفيذ docs/sql/01-bootstrap.sql');
     try {
       await mgmt('POST', `/projects/${ref}/database/query`, token, { query: bootstrapSql() });
       log(ok('تم إنشاء الجداول والسياسات وربط Realtime'));
     } catch (e) {
       log(C.r('  ✗ فشل تنفيذ المخطط: ' + e.message));
-      log(C.d('    نفّذ docs/bootstrap.sql يدوياً من SQL Editor.'));
+      log(C.d('    نفّذ docs/sql/01-bootstrap.sql يدوياً من SQL Editor.'));
     }
   }
 
@@ -534,7 +631,7 @@ async function cmdCreate(args) {
 
   /* 5) ربط المشروع بالموقع */
   writeConfig({ url, anonKey, ready: true });
-  const changed = bumpVersion(args.version || '2.4.0');
+  const changed = bumpVersion(args.version || DEFAULT_VERSION);
   log(ok('تم تحديث assets/js/config.js'));
   log(C.d('    ' + url));
   log(C.d('    anon: ' + anonKey.slice(0, 12) + '…' + anonKey.slice(-6)));
@@ -587,7 +684,7 @@ async function cmdSet(args) {
     return 1;
   }
   const cfg = writeConfig({ url, anonKey: key, ready: true });
-  const changed = bumpVersion(args.version || '2.4.0');
+  const changed = bumpVersion(args.version || DEFAULT_VERSION);
   log('');
   log(ok('تم تحديث assets/js/config.js'));
   log('  ' + C.d('العنوان: ' + cfg.url));
@@ -600,7 +697,11 @@ async function cmdSet(args) {
 }
 
 async function cmdSql(args) {
-  const sql = bootstrapSql();
+  const sql = (args.repair || args['repair-messages']) ? repairSql()
+    : args.reset ? resetSql()
+      : args.health ? healthSql()
+        : args.cleanup ? cleanupSql()
+          : bootstrapSql();
   if (args.out) {
     fs.writeFileSync(args.out, sql, 'utf8');
     log(ok('حُفظ الملف: ' + args.out));
@@ -643,9 +744,25 @@ async function cmdSmoke(args) {
   if (row && row.state) log(ok('قُرئت الحالة من القاعدة: pos=' + row.state.pos + ' playing=' + row.state.playing));
   else log(bad('لم تُقرأ الغرفة أو حالتها'));
 
-  const m = await restPost(url, key, '/rest/v1/messages', {
+  let m = await restPost(url, key, '/rest/v1/messages', {
     room_id: code, name: 'فحص', body: 'رسالة اختبار', kind: 'chat', client_id: clientId
   });
+  if (!m.ok) {
+    /* جدول قديم؟ اكتشف عمود النصّ الفعلي وأعد المحاولة (نفس ما يفعله المتصفح) */
+    const missCol = String((m.body && m.body.message) || '').match(/could not find the '([^']+)' column of 'messages'/i);
+    const probe = await restGet(url, key, '/rest/v1/messages?select=*&limit=1');
+    const cols = Array.isArray(probe.body) && probe.body[0] ? Object.keys(probe.body[0]) : [];
+    const alt = missCol && cols.find(c => ['text', 'message', 'content', 'msg'].includes(String(c).toLowerCase()));
+    if (missCol && missCol[1] === 'body' && alt) {
+      m = await restPost(url, key, '/rest/v1/messages', {
+        room_id: code, name: 'فحص', [alt]: 'رسالة اختبار', client_id: clientId
+      });
+      if (m.ok) {
+        log(warn('الدردشة تعمل بالعمود القديم «' + alt + '» بدل body'));
+        log('  ' + C.g('الحل: نفّذ docs/sql/04-repair-messages.sql في SQL Editor، ثم NOTIFY pgrst, \'reload schema\';'));
+      }
+    }
+  }
   log(m.ok ? ok('الدردشة تعمل (أُضيفت رسالة)') : warn('الدردشة لا تعمل: ' + JSON.stringify(explain(m))));
 
   const del = await restPost(url, key, '/rest/v1/rpc/wt_delete_room', { p_room_id: code, p_owner_token: ownerToken });
@@ -657,6 +774,8 @@ async function cmdSmoke(args) {
 /* =========================================================
    نقطة الدخول
    ========================================================= */
+const DEFAULT_VERSION = '2.6.4';
+
 const HELP = `
   ${C.bold('أداة سيرفر Supabase — WatchTogether')}
 
@@ -666,7 +785,12 @@ const HELP = `
   ${C.b('create')}   إنشاء مشروع جديد + تنفيذ المخطط + الربط التلقائي
                     --name <اسم> --org-id <id> --db-password <كلمة مرور>
                     [--region eu-central-1] [--plan free] [--dry-run]
-  ${C.b('sql')}      طباعة مخطط القاعدة الجاهز  [--out ملف.sql]
+  ${C.b('sql')}      طباعة ملفات قاعدة البيانات (docs/sql مرقّمة)  [--out ملف.sql]
+                    بلا خيار: 01-bootstrap.sql (المخطط الكامل — الأساسي)
+                    --repair  04-repair-messages.sql (إصلاح الرسائل: body + id/التسلسل)
+                    --reset   00-reset-drop-all.sql   (⚠️ يحذف كل الجداول)
+                    --health  05-health-check.sql     (فحص للقراءة فقط)
+                    --cleanup 06-cleanup-cron.sql     (تنظيف دوري اختياري)
   ${C.b('smoke')}    اختبار حي (ينشئ غرفة، يكتب، يقرأ، يحذف)
 `;
 

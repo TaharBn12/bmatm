@@ -1,5 +1,6 @@
 -- =====================================================================
--- WatchTogether — مخطط Supabase (Bootstrap)
+-- WatchTogether — (02) مخطط Supabase — نسخة «schema» بنفس المتن
+-- مطابق تماماً للملف 01 (فرق الترويسة فقط) — نفّذ واحداً منهما فقط.
 --
 -- نفّذ هذا الملف كاملاً مرة واحدة في Supabase Dashboard → SQL Editor.
 -- آمن للتكرار: لا يحذف بيانات الغرف أو الرسائل.
@@ -57,6 +58,117 @@ alter table public.messages add column if not exists user_id uuid;
 alter table public.messages add column if not exists client_id text;
 alter table public.messages add column if not exists kind text not null default 'chat';
 create index if not exists messages_room_created_idx on public.messages (room_id, created_at desc);
+
+-- ---------------------------------------------------------------------
+-- 2ب) إصلاح جدول الرسائل في المشاريع القديمة — يعالج خطأي PostgREST:
+--     «Could not find the 'body' column of 'messages' in the schema cache» (PGRST204)
+--     «null value in column "id" of relation "messages" violates not-null constraint»
+--
+--     السبب: مشروع قديم أنشأ messages بعمود text/message بدل body، أو بلا
+--     أعمدة المخطط الجديد. `create table if not exists` يتجاهل الجدول القائم،
+--     فلا يُضاف العمود أبداً وترفض الدردشة الكتابة.
+--     وإن كان الجدول القديم بلا identity وبلا default لعمود id، يفشل الإدراج
+--     بالخطأ الثاني — لأن العميل لا يرسل id أصلاً.
+--     هذا القسم آمن للتكرار ولا يحذف أي رسالة.
+-- ---------------------------------------------------------------------
+alter table public.messages add column if not exists room_id text;
+alter table public.messages add column if not exists name text;
+alter table public.messages add column if not exists created_at timestamptz not null default now();
+alter table public.messages add column if not exists user_id uuid;
+alter table public.messages add column if not exists client_id text;
+alter table public.messages add column if not exists kind text not null default 'chat';
+alter table public.messages add column if not exists id bigint;
+
+do $$
+declare
+  legacy text;
+begin
+  /* 1) عمود النص: أعِد تسمية العمود القديم (text/message/content/msg) إلى body إن وُجد */
+  if not exists (
+    select 1 from information_schema.columns
+     where table_schema = 'public' and table_name = 'messages' and column_name = 'body'
+  ) then
+    select column_name into legacy
+      from information_schema.columns
+     where table_schema = 'public' and table_name = 'messages'
+       and column_name in ('text', 'message', 'content', 'msg')
+     order by array_position(array['text', 'message', 'content', 'msg'], column_name)
+     limit 1;
+
+    if legacy is not null then
+      execute format('alter table public.messages rename column %I to body', legacy);
+      raise notice 'WatchTogether: أُعيد تسمية العمود % إلى body في جدول messages.', legacy;
+    else
+      execute 'alter table public.messages add column body text';
+      raise notice 'WatchTogether: أُضيف العمود body إلى جدول messages.';
+    end if;
+  end if;
+end
+$$;
+
+/* 2) ثبّت شكل عمود النص كما في المخطط (بلا فقدان أي نصّ قائم) */
+update public.messages set body = '' where body is null;
+alter table public.messages alter column body set default '';
+alter table public.messages alter column body set not null;
+update public.messages set name = 'زائر' where name is null;
+update public.messages set room_id = 'legacy' where room_id is null;
+
+create index if not exists messages_room_created_idx on public.messages (room_id, created_at desc);
+
+/* 2ج) عمود المعرّف: جدول قديم بعمود id عادي (بلا identity وبلا default) يجعل
+       إدراج الرسائل يفشل: «null value in column "id" … violates not-null
+       constraint» لأن العميل لا يرسل id. نُصلح العمود حسب نوعه. */
+do $$
+declare
+  ident  text;
+  idtype text;
+  adef   text;
+begin
+  select a.attidentity::text, format_type(a.atttypid, null), pg_get_expr(d.adbin, d.adrelid)
+    into ident, idtype, adef
+    from pg_attribute a
+    left join pg_attrdef d on d.adrelid = a.attrelid and d.adnum = a.attnum
+   where a.attrelid = 'public.messages'::regclass
+     and a.attname = 'id'
+     and not a.attisdropped;
+
+  if ident is null then
+    return;                                   /* لا عمود id إطلاقاً */
+  end if;
+
+  if ident in ('a', 'd') or adef is not null then
+    /* العمود سليم (identity أو له default) — نكفي بضبط عدّاد التسلسل الرقمي */
+    if idtype in ('bigint', 'integer', 'smallint')
+       and pg_get_serial_sequence('public.messages', 'id') is not null then
+      execute 'select setval(pg_get_serial_sequence(''public.messages'', ''id''), coalesce((select max(id) from public.messages), 0) + 1, false)';
+    end if;
+    return;
+  end if;
+
+  if idtype in ('bigint', 'integer', 'smallint') then
+    execute 'create sequence if not exists public.messages_id_seq';
+    execute 'alter sequence public.messages_id_seq owned by public.messages.id';
+    execute 'alter table public.messages alter column id set default nextval(''public.messages_id_seq''::regclass)';
+    execute 'select setval(''public.messages_id_seq'', coalesce((select max(id) from public.messages), 0) + 1, false)';
+    raise notice 'WatchTogether: أُنشئ تسلسل messages_id_seq ورُبط بعمود id في جدول messages.';
+  elsif idtype = 'uuid' then
+    execute 'alter table public.messages alter column id set default gen_random_uuid()';
+    raise notice 'WatchTogether: عُيّن الافتراضي gen_random_uuid() لعمود id (uuid) في جدول messages.';
+  elsif idtype in ('text', 'character varying', 'character') then
+    execute 'alter table public.messages alter column id set default gen_random_uuid()::text';
+    raise notice 'WatchTogether: عُيّن الافتراضي gen_random_uuid()::text لعمود id في جدول messages.';
+  else
+    raise notice 'WatchTogether: عمود id في messages نوعه % — لم نتمكّن من إصلاحه تلقائياً. للمطابقة الكاملة: drop table public.messages; ثم أعِد تنفيذ bootstrap.sql كاملاً.', idtype;
+  end if;
+end
+$$;
+
+/* 3) اطلب من PostgREST إعادة قراءة المخطط فوراً — يزيل رسالة schema cache */
+notify pgrst, 'reload schema';
+
+-- إن كان الجدول تالفاً تماماً ولا تحتاج رسائله القديمة، استبدل القسم أعلاه بـ:
+-- drop table if exists public.messages;
+-- ثم أعد تنفيذ هذا الملف من أوله (سيُنشأ الجدول بالشكل الصحيح).
 
 -- ---------------------------------------------------------------------
 -- 3) الحضور (للتوافق مع الإصدارات السابقة) وسجل الأدوار الآمن.
@@ -121,7 +233,13 @@ revoke all on public.rooms, public.messages, public.presence, public.room_member
 grant select (room_id, title, video_url, host_name, state, created_at, updated_at)
   on public.rooms to anon, authenticated;
 grant select, insert on public.messages to anon, authenticated;
-grant usage, select on sequence public.messages_id_seq to anon, authenticated;
+do $$   /* تسلسل المعرّف: قد لا يوجد في جدول قديم/جدول معرّفه uuid — لا نُفشل السكربت بسببه */
+begin
+  if to_regclass('public.messages_id_seq') is not null then
+    execute 'grant usage, select on sequence public.messages_id_seq to anon, authenticated';
+  end if;
+end
+$$;
 grant select, insert, update, delete on public.presence to anon, authenticated;
 grant select (room_id, client_id, display_name, role, created_at, updated_at)
   on public.room_members to anon, authenticated;

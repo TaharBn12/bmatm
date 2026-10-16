@@ -7,11 +7,11 @@ window.WT_CONFIG = {
 
   /* ---------- 1) Supabase (للاستضافة العادية: cPanel / Netlify / GitHub Pages) ----------
      Dashboard → Project Settings → API
-     الجدول يجب أن يكون منشأً من docs/schema.sql */
+     الجدول يجب أن يكون منشأً من docs/sql/02-schema.sql */
   supabase: {
     url: 'https://cazwkhcbkzhnsluuafwz.supabase.co',
     anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNhendraGNia3pobnNsdXVhZnd6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njc5NDQ3ODIsImV4cCI6MjA4MzUyMDc4Mn0.u1l9BrzI7ZA9P3CSdXN0tYkHu1TUNTGsqczByNSPUN0',
-    ready: true,      /* هل نفّذت docs/schema.sql ؟ إذا لا اجعلها false */
+    ready: true,      /* هل نفّذت docs/sql/02-schema.sql ؟ إذا لا اجعلها false */
     auth: true        /* تفعيل تسجيل الدخول/إنشاء الحساب عبر Supabase Auth */
   },
 

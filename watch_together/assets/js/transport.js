@@ -18,6 +18,43 @@
 
   const U = global.WTUtil;
 
+  /* ============================== جدول الرسائل: أسماء الأعمدة ============================== */
+  /**
+   * المخطط الحالي يخزّن نصّ الرسالة في العمود `body`.
+   * بعض المشاريع القديمة أنشأت الجدول بعمود `text`/`message`/`content`/`msg`،
+   * فيردّ PostgREST الخطأ PGRST204:
+   *   «Could not find the 'body' column of 'messages' in the schema cache»
+   * لذلك نتعلّم العمود الفعلي من الخادم ونكتب فيه بدل أن تفشل الدردشة صامتة.
+   */
+  const MSG_TEXT_FIELDS = ['body', 'text', 'message', 'content', 'msg'];
+
+  /** أول عمود نصّ متاح من قائمة الأعمدة الفعلية للجدول */
+  function pickMessageField(cols) {
+    if (!Array.isArray(cols) || !cols.length) return null;
+    const lc = cols.map(c => String(c).toLowerCase());
+    for (let i = 0; i < MSG_TEXT_FIELDS.length; i++) {
+      const k = lc.indexOf(MSG_TEXT_FIELDS[i]);
+      if (k >= 0) return cols[k];
+    }
+    return null;
+  }
+
+  /** نصّ الرسالة من أي عمود معروف (body في المخطط الحالي) */
+  function msgText(row) {
+    if (!row) return '';
+    for (let i = 0; i < MSG_TEXT_FIELDS.length; i++) {
+      const v = row[MSG_TEXT_FIELDS[i]];
+      if (typeof v === 'string') return v;
+    }
+    return '';
+  }
+
+  /** استخراج العمود/الجدول من رسالة PostgREST «Could not find the 'x' column of 'y'» */
+  function parseMissingColumn(raw) {
+    const m = String(raw || '').match(/could not find the '([^']+)' column of '([^']+)'/i);
+    return m ? { column: m[1], table: m[2] } : null;
+  }
+
   /* ============================== القاعدة المشتركة ============================== */
   function Emitter() {
     const map = {};
@@ -40,18 +77,40 @@
     const lc = raw.toLowerCase();
     const mk = (c, title, detail, fix) => ({ code: c, title, detail, fix, status, raw });
 
+    /* عمود مفقود (PGRST204): الجدول موجود لكن عمود أضافه المخطط الجديد غير موجود فيه،
+       أو أن كاش PostgREST لم يُحدَّث بعد تعديل القاعدة. */
+    const missing = parseMissingColumn(raw);
+    if (missing || code === 'PGRST204') {
+      const col = missing ? missing.column : '؟';
+      const tbl = missing ? missing.table : 'messages';
+      return mk('schema-mismatch',
+        'عمود «' + col + '» غير موجود في جدول ' + tbl,
+        'الجدول موجود لكن شكله أقدم من الموقع (أو أن كاش PostgREST قديم) — رمز الخطأ: PGRST204.',
+        'افتح SQL Editor ونفّذ docs/sql/04-repair-messages.sql (أو docs/sql/01-bootstrap.sql كاملاً)، ثم: NOTIFY pgrst, \'reload schema\';');
+    }
+
+    /* جدول قديم بلا تسلسل للمعرّف: العميل لا يرسل id ويعتمد على messages_id_seq،
+       فيردّ Postgres: null value in column "id" … violates not-null constraint */
+    if (code === '23502' || code === '42703' ||
+      lc.indexOf('null value in column "id"') >= 0 || lc.indexOf('messages_id_seq') >= 0) {
+      return mk('legacy-id',
+        'جدول messages قديم: المعرّف id بلا قيمة افتراضية',
+        'الموقع يرسل نصّ الرسالة فقط ويعتمد على القاعدة لتوليد id من تسلسل messages_id_seq — وجدولك القديم لا يملكه.',
+        'افتح SQL Editor ونفّذ docs/sql/04-repair-messages.sql (يُنشئ التسلسل ويربطه بعمود id)، ثم: NOTIFY pgrst, \'reload schema\';');
+    }
+
     if (code === '42P01' || code === 'PGRST205' ||
       lc.indexOf('does not exist') >= 0 || lc.indexOf('schema cache') >= 0) {
       return mk('missing-table',
         'جداول قاعدة البيانات غير موجودة',
         'مشروع Supabase يردّ لكنه لا يعرف جداول (rooms / messages / presence) — رمز الخطأ: ' + (code || status),
-        'افتح SQL Editor في مشروع Supabase، الصق محتوى docs/bootstrap.sql (أو docs/schema.sql) ثم Run.');
+        'افتح SQL Editor في مشروع Supabase، الصق محتوى docs/sql/01-bootstrap.sql (أو docs/sql/02-schema.sql) ثم Run.');
     }
     if (code === '42501') {
       return mk('rls',
         'صلاحيات RLS ناقصة',
         'الجداول موجودة، لكن دور anon (زائر بلا حساب) غير مسموح له بالقراءة أو الكتابة.',
-        'نفّذ docs/bootstrap.sql كاملاً (فيه منح الصلاحيات وسياسات RLS).');
+        'نفّذ docs/sql/01-bootstrap.sql كاملاً (فيه منح الصلاحيات وسياسات RLS).');
     }
     if (status === 401 || status === 403 || code === 'PGRST301' || code === 'PGRST302' ||
       lc.indexOf('invalid api key') >= 0 || lc.indexOf('jwt') >= 0) {
@@ -257,6 +316,14 @@
     this._pendingWrite = null;
     this._pendingChats = [];
     this._sendingChat = false;
+    this._msgField = null;       /* عمود نصّ الرسالة الفعلي في الجدول (body عادةً) */
+    this._msgColumns = null;     /* أعمدة جدول messages كما يراها PostgREST */
+    this._msgDropCols = {};      /* أعمدة يرفضها الجدول القديم → نتجاهلها بدل الفشل */
+    this._msgRetries = 0;        /* عدد محاولات التكيّف مع الجدول في الرسالة الحالية */
+    this._msgHealed = false;     /* هل كيّفنا الشكل مع جدول قديم؟ (لتنبيه المستخدم مرة واحدة) */
+    this._msgHealNote = null;
+    this._chatFailures = 0;
+    this._chatErrorAt = 0;
     this.lastError = null;       /* آخر خطأ (مفهرس ومترجم) */
     this.warnings = [];          /* تحذيرات غير قاتلة (مثلاً جدول الرسائل مفقود) */
     this.degraded = false;       /* يعمل لكن Realtime أو الشبكة متقطعة */
@@ -350,9 +417,10 @@
           .then(rows => {
             const list = (rows || []).slice().reverse();
             list.forEach(r => { const n = +r.id; if (Number.isFinite(n) && n > (self._lastMsgId || 0)) self._lastMsgId = n; });
+            self._learnMessageField(rows && rows[0]);
             self._msgsReady = true;
             return list.map(r => ({
-              id: String(r.id), name: r.name, text: r.body,
+              id: String(r.id), name: r.name, text: msgText(r),
               ts: Date.parse(r.created_at) || Date.now(), kind: r.kind || 'chat', client: r.client_id || null
             }));
           })
@@ -526,6 +594,28 @@
         ));
       })
       .then(() => {
+        if (!report.rest.ok || !report.tables.messages) return null;
+        /* هل عمود نصّ الرسالة مطابق للمخطط؟ (سبب خطأ PGRST204: Could not find the 'body' column) */
+        const field = this._msgField || 'body';
+        report.messageField = field;
+        return this._fetch(`/rest/v1/messages?select=${encodeURIComponent(field)}&limit=1`, { timeoutMs: opts.timeoutMs || 8000 })
+          .then(() => null)
+          .catch(err => {
+            const d = (err && err.diag) ? err.diag : classifyError(err);
+            report.messageField = null;
+            report.problems.push(Object.assign({}, d, {
+              title: d.title || 'عمود نصّ الرسالة («' + field + '») غير موجود في جدول messages',
+              detail: 'جدول الرسائل في مشروعك بُني بنسخة قديمة من المخطط، فلا يقبل الموقع الكتابة فيه.',
+              fix: 'نفّذ docs/sql/04-repair-messages.sql في SQL Editor (يضيف/يُعيد تسمية العمود ثم يعيد تحميل كاش PostgREST).'
+            }));
+            return this._detectMessageColumns().then(cols => {
+              const f = pickMessageField(cols);
+              if (f) { report.messageField = f; this._msgField = f; }
+              return null;
+            });
+          });
+      })
+      .then(() => {
         if (!report.rest.ok) return null;
         return this._probeRealtime(opts.realtimeMs || 4000).then((r) => { report.realtime = r; });
       })
@@ -536,7 +626,15 @@
             code: 'missing-table',
             title: 'جدول الرسائل غير موجود',
             detail: 'الدردشة لن تعمل، لكن مزامنة الفيديو تعمل.',
-            fix: 'نفّذ docs/bootstrap.sql في مشروع Supabase.'
+            fix: 'نفّذ docs/sql/01-bootstrap.sql في مشروع Supabase.'
+          });
+        }
+        if (report.rest.ok && report.tables.messages && report.messageField && report.messageField !== 'body') {
+          report.warnings.push({
+            code: 'schema-mismatch',
+            title: 'جدول messages قديم (العمود «' + report.messageField + '» بدل «body»)',
+            detail: 'العميل تكيّف معه والدردشة تعمل، لكن الأنسب توحيد المخطط.',
+            fix: 'نفّذ docs/sql/04-repair-messages.sql في SQL Editor.'
           });
         }
         if (report.rest.ok && !report.tables.presence) {
@@ -544,16 +642,16 @@
             code: 'missing-table',
             title: 'جدول الحضور غير موجود',
             detail: 'قائمة الحضور القديمة غير متاحة؛ أدوار الغرفة تستخدم room_members.',
-            fix: 'نفّذ docs/bootstrap.sql في مشروع Supabase.'
+            fix: 'نفّذ docs/sql/01-bootstrap.sql في مشروع Supabase.'
           });
         }
         if (report.rest.ok && !report.tables.room_members) {
           report.problems.push({ code: 'missing-table', title: 'جدول الأدوار غير موجود',
-            detail: 'لن يمكن التحقق من المنشئ والمنظّمين على الخادم.', fix: 'نفّذ docs/bootstrap.sql في مشروع Supabase.' });
+            detail: 'لن يمكن التحقق من المنشئ والمنظّمين على الخادم.', fix: 'نفّذ docs/sql/01-bootstrap.sql في مشروع Supabase.' });
         }
         if (report.rest.ok && !report.tables.room_queue) {
           report.problems.push({ code: 'missing-table', title: 'جدول قائمة التشغيل غير موجود',
-            detail: 'القائمة المشتركة غير متاحة.', fix: 'نفّذ docs/bootstrap.sql في مشروع Supabase.' });
+            detail: 'القائمة المشتركة غير متاحة.', fix: 'نفّذ docs/sql/01-bootstrap.sql في مشروع Supabase.' });
         }
         if (report.rest.ok && !report.realtime.ok) {
           report.warnings.push({
@@ -561,7 +659,7 @@
             title: 'Realtime لا يعمل',
             detail: 'الاستطلاع كل ' + ((global.WT_CONFIG && global.WT_CONFIG.sync && global.WT_CONFIG.sync.pollMs) || 2500) +
               ' مللي ثانية يغطّي النقص، لكن البث الفوري متأخر.',
-            fix: 'تأكد أن rooms و messages و room_members و room_queue مُضافة إلى منشور supabase_realtime (docs/bootstrap.sql).'
+            fix: 'تأكد أن rooms و messages و room_members و room_queue مُضافة إلى منشور supabase_realtime (docs/sql/01-bootstrap.sql).'
           });
         }
         report.ok = report.rest.ok && report.tables.rooms && report.problems.length === 0;
@@ -663,9 +761,10 @@
       (messages || []).forEach(r => {
         const n = +r.id;
         if (Number.isFinite(n) && n > (self._lastMsgId || 0)) self._lastMsgId = n;
+        self._learnMessageField(r);
         if (r.client_id && r.client_id === self.meta.clientId) return;
         self.emit('chat', {
-          id: String(r.id), name: r.name, text: r.body,
+          id: String(r.id), name: r.name, text: msgText(r),
           ts: Date.parse(r.created_at) || Date.now(), kind: r.kind || 'chat', client: r.client_id || null
         });
       });
@@ -759,7 +858,7 @@
         const rec = c.record || {};
         if (c.table === 'messages') {
           if (c.type === 'DELETE') return;
-          self.emit('chat', { id: String(rec.id), name: rec.name, text: rec.body,
+          self.emit('chat', { id: String(rec.id), name: rec.name, text: msgText(rec),
             ts: Date.parse(rec.created_at) || Date.now(), kind: rec.kind || 'chat', client: rec.client_id || null });
         } else if (c.table === 'rooms' && rec.state) {
           self._found = true;
@@ -850,27 +949,143 @@
     this._pendingChats.push({
       room_id: this.roomId,
       name: String(message.name || 'زائر').slice(0, 30),
-      body: String(message.text || '').slice(0, 1000),
+      text: String(message.text || '').slice(0, 1000),
       kind: message.kind || 'chat', client_id: this.meta.clientId || null,
       user_id: this.meta.userId || null
     });
+    if (this._pendingChats.length > 200) this._pendingChats.splice(0, this._pendingChats.length - 200);
     this._flushPendingChats();
     return local;
+  };
+
+  /** يتعلّم عمود نصّ الرسالة من صفّ حقيقي (جدول قديم يستخدم text/message بدل body) */
+  SupabaseTransport.prototype._learnMessageField = function (row) {
+    if (!row || this._msgField) return;
+    const field = pickMessageField(Object.keys(row));
+    if (field) {
+      this._msgField = field;
+      if (field !== 'body') this._markMessageHealed(field);
+    }
+  };
+
+  /** تنبيه واحد واضح بأن الجدول قديم وأن العميل تكيّف معه */
+  SupabaseTransport.prototype._markMessageHealed = function (field) {
+    if (this._msgHealed) return;
+    this._msgHealed = true;
+    this._msgHealNote = {
+      code: 'schema-mismatch', column: field,
+      title: 'جدول messages قديم (العمود «' + field + '» بدل «body»)',
+      detail: 'الرسائل تُقرأ وتُكتب في العمود «' + field + '»، والدردشة تعمل الآن.',
+      fix: 'نفّذ docs/sql/04-repair-messages.sql في SQL Editor ليعود الجدول مطابقاً للمخطط (ثم NOTIFY pgrst, \'reload schema\';).'
+    };
+    const self = this;
+    setTimeout(() => {
+      if (self._closedByUser) return;
+      self.emit('chat-error', self._msgHealNote, { healed: true });
+      self.emit('system', { text: self._msgHealNote.title + ' — الدردشة تعمل، والأفضل: ' + self._msgHealNote.fix });
+    }, 40);
+  };
+
+  /** قائمة أعمدة جدول messages كما يراها PostgREST (OpenAPI ثم صفّ حقيقي) */
+  SupabaseTransport.prototype._detectMessageColumns = function () {
+    const self = this;
+    if (this._msgColumns) return Promise.resolve(this._msgColumns);
+    const fromRows = () => this._fetch('/rest/v1/messages?select=*&limit=1')
+      .then(rows => (rows && rows[0]) ? Object.keys(rows[0]) : [])
+      .catch(() => []);
+    const finish = (cols) => { if (cols && cols.length) self._msgColumns = cols; return cols || []; };
+    return this._fetch('/rest/v1/', { headers: { 'Accept': 'application/openapi+json' } })
+      .then(spec => {
+        const props = spec && spec.definitions && spec.definitions.messages && spec.definitions.messages.properties;
+        const cols = props ? Object.keys(props) : [];
+        return cols.length ? finish(cols) : fromRows().then(finish);
+      })
+      .catch(() => fromRows().then(finish));
+  };
+
+  /**
+   * يتكيّف مع جدول رسائل قديم بدل الفشل:
+   *  - عمود النص مختلف (text/message…) → اكتشفه واكتب فيه.
+   *  - عمود أضافه المخطط الجديد (kind/client_id/user_id) غير موجود → تجاهله.
+   */
+  SupabaseTransport.prototype._adaptToChatColumn = function (col) {
+    const self = this;
+    this._msgDropCols[col] = true;
+    if (MSG_TEXT_FIELDS.indexOf(col) < 0) return Promise.resolve(null);
+    return this._detectMessageColumns().then(cols => {
+      const field = pickMessageField(cols) || MSG_TEXT_FIELDS.filter(f => f !== col && !self._msgDropCols[f])[0] || col;
+      self._msgField = field;
+      if (field !== 'body') self._markMessageHealed(field);
+      return field;
+    });
+  };
+
+  /** جسم رسالة الدردشة بحسب شكل الجدول الفعلي */
+  SupabaseTransport.prototype._chatRow = function (item) {
+    const field = this._msgField || pickMessageField(this._msgColumns) || 'body';
+    const drop = this._msgDropCols;
+    const row = {};
+    if (!drop.room_id) row.room_id = this.roomId;
+    if (!drop.name) row.name = item.name;
+    row[field] = item.text;
+    if (!drop.kind) row.kind = item.kind;
+    if (!drop.client_id) row.client_id = item.client_id || null;
+    if (!drop.user_id && item.user_id) row.user_id = item.user_id;
+    return row;
   };
 
   SupabaseTransport.prototype._flushPendingChats = function () {
     const self = this;
     if (this._sendingChat || this._closedByUser || !this._pendingChats.length) return;
     this._sendingChat = true;
-    const row = this._pendingChats[0];
-    this._fetch('/rest/v1/messages', { method: 'POST', headers: { 'Prefer': 'return=minimal' }, body: row })
-      .then(() => { self._pendingChats.shift(); self._sendingChat = false; if (self._pendingChats.length) self._flushPendingChats(); })
-      .catch(err => {
-        self._sendingChat = false;
-        self.degraded = true;
-        self._scheduleRecovery();
-        /* لا نزعج المشاهدة برسائل متكررة؛ ستُعاد المحاولة تلقائياً. */
-      });
+    const item = this._pendingChats[0];
+    this._msgRetries = 0;
+
+    const post = () => this._fetch('/rest/v1/messages', {
+      method: 'POST', headers: { 'Prefer': 'return=minimal' }, body: this._chatRow(item)
+    });
+    /* إعادة المحاولة بعد التكيّف (عمود مختلف) — بحد أقصى 4 تعديلات لكل رسالة */
+    const step = () => post().catch(err => {
+      const d = (err && err.diag) ? err.diag : classifyError(err);
+      const miss = parseMissingColumn(d.raw);
+      const col = miss && miss.column;
+      const isMessages = !miss || !miss.table || /messages/i.test(String(miss.table));
+      if (col && isMessages && !self._msgDropCols[col] && self._msgRetries < 4) {
+        self._msgRetries++;
+        return self._adaptToChatColumn(col).then(() => step());
+      }
+      throw err;
+    });
+
+    step().then(() => {
+      self._pendingChats.shift();
+      self._sendingChat = false;
+      self._msgRetries = 0;
+      self._chatFailures = 0;
+      if (self._pendingChats.length) self._flushPendingChats();
+    }).catch(err => {
+      const d = (err && err.diag) ? err.diag : classifyError(err);
+      self._sendingChat = false;
+      self._msgRetries = 0;
+      self._chatFailures++;
+      self.degraded = true;
+      self.lastError = d;
+      self._chatError = d;
+      /* سبب واضح + حل مرة واحدة (بدل إعادة محاولة صامتة لا تنتهي أبداً) */
+      const now = Date.now();
+      if (['schema-mismatch', 'legacy-id', 'missing-table', 'rls', 'bad-key'].indexOf(d.code) >= 0 &&
+        now - (self._chatErrorAt || 0) > 20000) {
+        self._chatErrorAt = now;
+        self.emit('chat-error', d);
+      }
+      if (self._chatFailures === 6) {
+        self.emit('system', {
+          text: 'تعذّر إرسال الرسائل: ' + d.title + (d.fix ? ' — الحل: ' + d.fix : '') +
+            ' (المزامنة تعمل، والرسائل المعلّقة ستُرسل بعد الإصلاح)'
+        });
+      }
+      self._scheduleRecovery();
+    });
   };
 
   SupabaseTransport.prototype._readQueue = function () {
@@ -1168,6 +1383,7 @@
 
   global.WTTransport = {
     WsTransport, SupabaseTransport, LocalTransport, connectRoom, forceLocal,
-    classifyError, keyFingerprint
+    classifyError, keyFingerprint, parseMissingColumn, msgText, pickMessageField,
+    MSG_TEXT_FIELDS
   };
 })(window);

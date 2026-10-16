@@ -19,7 +19,7 @@
    ```
    > إن أردت وضعه في مجلد فرعي: `public_html/watch/` ثم الرابط `https://نطاقك.com/watch/`.
      كل الروابط في المشروع **نسبية** فتعمل بدون تعديل.
-3. نفّذ [`docs/schema.sql`](schema.sql) في Supabase (راجع [`supabase-setup.md`](supabase-setup.md)).
+3. نفّذ [`docs/sql/02-schema.sql`](02-schema.sql) في Supabase (راجع [`supabase-setup.md`](supabase-setup.md)).
 4. افتح الموقع → الشارة يجب أن تقول «Supabase متصل ✓».
 
 ### GitHub Pages / Netlify / Vercel / Cloudflare Pages
@@ -132,7 +132,7 @@ cd watch_together && python3 -m http.server 8080
 ## ✅ قائمة تحقق قبل النشر
 
 - [ ] `assets/js/config.js` يحتوي `url` و `anonKey` الصحيحين لمشروعك (أو `javaServer.enabled = true`).
-- [ ] تم تنفيذ `docs/schema.sql` في Supabase (إذا اخترت الخيار أ).
+- [ ] تم تنفيذ `docs/sql/02-schema.sql` في Supabase (إذا اخترت الخيار أ).
 - [ ] الموقع يعمل بـ **HTTPS** (مطلوب للنسخ والـ WebSocket).
 - [ ] فتحت `index.html` → الشارة تقول «Supabase متصل ✓» أو «سيرفر Java متاح ✓».
 - [ ] أنشأت غرفة → نسخت الرابط → فتحته في **نافذة تصفح خاصة** → ظهرت نافذة إدخال الاسم.

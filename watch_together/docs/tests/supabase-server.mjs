@@ -6,15 +6,16 @@
      1) ترجمة أخطاء Supabase إلى أسباب وحلول مفهومة
      2) تحمّل التطبيق لمشروع ناقص (جدول الرسائل مفقود) — المزامنة تستمر
      3) أداة sbctl: قراءة/كتابة الإعدادات + رفع رقم الكاش + جلب المفتاح
-     4) فحص doctor على خادم PostgREST وهمي (محلي)
-     5) نافذة «تشخيص الاتصال» في الغرفة + إعادة الاتصال
+     4) جدول رسائل قديم (العمود text بدل body — خطأ PGRST204) والتكيّف معه
+     5) فحص doctor على خادم PostgREST وهمي (محلي)
+     6) نافذة «تشخيص الاتصال» في الغرفة + إعادة الاتصال
    ========================================================= */
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import http from 'http';
 import { createRoomEnv, wait, base } from './harness.mjs';
-import { readConfig, writeConfig, bumpVersion, pickAnonKey, doctorProject } from '../../tools/sbctl.mjs';
+import { ROOT, readConfig, writeConfig, bumpVersion, pickAnonKey, doctorProject, bootstrapSql, repairSql } from '../../tools/sbctl.mjs';
 
 let pass = 0, fail = 0;
 const errors = [];
@@ -58,6 +59,20 @@ function testClassify() {
   t('خطأ: عنوان → bad-url', mk(404, '', 'Not Found').code === 'bad-url');
   t('خطأ: مشروع متوقف → project-down', mk(522, '', 'Cloudflare').code === 'project-down');
   t('خطأ: شبكة → network', C(new Error('Failed to fetch')).code === 'network');
+  /* PGRST204: العمود body غير موجود في جدول messages — أشهر سبب لتعذّر إرسال الرسالة */
+  const colErr = mk(400, 'PGRST204', "Could not find the 'body' column of 'messages' in the schema cache");
+  t('خطأ: عمود مفقود → schema-mismatch (لا missing-table)', colErr.code === 'schema-mismatch', colErr.code);
+  t('خطأ: يذكر اسم العمود والجدول', /body/.test(colErr.title) && /messages/.test(colErr.title), colErr.title);
+  t('خطأ: يعطي حلاً بملف الإصلاح', /repair-messages\.sql|bootstrap\.sql/.test(colErr.fix), colErr.fix);
+  /* 23502: عمود المعرّف id بلا تسلسل/افتراضي في جدول قديم — يمنع إرسال الرسائل */
+  const idErr = mk(400, '23502', 'null value in column "id" of relation "messages" violates not-null constraint');
+  t('خطأ: معرّف قديم → legacy-id (لا missing-table)', idErr.code === 'legacy-id', idErr.code);
+  t('خطأ: يشرح سبب المعرّف ويقدّم ملف الإصلاح',
+    /id/.test(idErr.title) && /repair-messages\.sql/.test(idErr.fix), idErr.title);
+  const seqErr = C(new Error('relation "public.messages_id_seq" does not exist'));
+  t('خطأ: غياب تسلسل messages_id_seq → legacy-id', seqErr.code === 'legacy-id', seqErr.code);
+  const parsedCol = env.sandbox.WTTransport.parseMissingColumn(colErr.raw);
+  t('خطأ: يستخرج العمود والجدول', parsedCol && parsedCol.column === 'body' && parsedCol.table === 'messages');
   t('كل خطأ له عنوان وحل بالعربية',
     ['missing-table', 'rls', 'bad-key', 'bad-url', 'project-down', 'network']
       .every(c => {
@@ -181,6 +196,167 @@ async function testPartialProject() {
 }
 
 /* =========================================================
+   2ب) جدول رسائل قديم: العمود اسمه text بدل body (PGRST204)
+   ---------------------------------------------------------
+   نفس ما يحدث في مشروع حقيقي بُني بنسخة قديمة من المخطط:
+   الإدراج بـ body يردّ 400 PGRST204، فيجب أن يتكيّف العميل
+   (يكتشف العمود الصحيح) ويكمل الإرسال بدل الفشل الصامت.
+   ========================================================= */
+function makeLegacyMessagesStub() {
+  const db = { rooms: new Map(), members: new Map(), messages: [], nextId: 1 };
+  const calls = { msgBody: 0, msgText: 0, openapi: 0, probe: 0 };
+  const matchEq = (url, key) => {
+    const m = url.match(new RegExp('[?&]' + key + '=eq\\.([^&]*)'));
+    return m ? decodeURIComponent(m[1]) : null;
+  };
+  const json = (data, status = 200) => Promise.resolve({
+    ok: status >= 200 && status < 300, status,
+    text: async () => JSON.stringify(data),
+    json: async () => data
+  });
+  const membersFor = room => Array.from(db.members.values()).filter(m => m.room_id === room);
+
+  const fetchStub = (url, options = {}) => {
+    const p = String(url);
+    const method = (options.method || 'GET').toUpperCase();
+    const body = options.body ? JSON.parse(options.body) : null;
+    const rpc = p.match(/\/rest\/v1\/rpc\/([^?]+)/);
+    if (rpc) {
+      const name = decodeURIComponent(rpc[1]);
+      if (name === 'wt_create_room') {
+        const id = body.p_room_id;
+        if (!db.rooms.has(id)) db.rooms.set(id, { room_id: id, title: body.p_title, video_url: body.p_video_url, host_name: body.p_owner_name, state: null, owner_token: body.p_owner_token });
+        return json({ ok: true });
+      }
+      if (name === 'wt_join_room') {
+        const row = db.rooms.get(body.p_room_id);
+        if (!row) return json({ found: false, role: 'viewer', members: [], serverTime: Date.now() });
+        const key = body.p_room_id + '|' + body.p_client_id;
+        if (!db.members.has(key)) db.members.set(key, { room_id: body.p_room_id, client_id: body.p_client_id, display_name: body.p_display_name, role: 'owner' });
+        return json({ found: true, role: 'owner', serverTime: Date.now(), members: membersFor(body.p_room_id) });
+      }
+      if (name === 'wt_apply_room_state') {
+        const row = db.rooms.get(body.p_room_id);
+        if (!row) return json({ code: '42501', message: 'permission denied' }, 403);
+        row.state = Object.assign({}, body.p_state, { rev: Number(row.state && row.state.rev || 0) + 1, t: Date.now() });
+        return json(row.state);
+      }
+      return json({ message: 'unknown RPC ' + name }, 404);
+    }
+
+    /* OpenAPI: العميل يستعملها لاكتشاف أعمدة الجدول */
+    if (/\/rest\/v1\/(\?|$)/.test(p) && method === 'GET') {
+      calls.openapi++;
+      return json({
+        definitions: {
+          messages: { properties: { id: {}, room_id: {}, name: {}, text: {}, created_at: {} } }
+        }
+      });
+    }
+
+    if (p.includes('/rest/v1/rooms')) {
+      if (method === 'GET') {
+        const id = matchEq(p, 'room_id');
+        const row = id && db.rooms.has(id) ? db.rooms.get(id) : null;
+        return json(row ? [{ room_id: row.room_id, state: row.state, video_url: row.video_url, host_name: row.host_name }] : []);
+      }
+    }
+
+    /* جدول messages القديم: لا عمود body — فقط text */
+    if (p.includes('/rest/v1/messages')) {
+      if (method === 'POST') {
+        if (Object.prototype.hasOwnProperty.call(body || {}, 'body')) {
+          calls.msgBody++;
+          return json({ code: 'PGRST204', message: "Could not find the 'body' column of 'messages' in the schema cache" }, 400);
+        }
+        if (Object.prototype.hasOwnProperty.call(body || {}, 'text')) {
+          calls.msgText++;
+          const row = Object.assign({ id: db.nextId++, created_at: new Date().toISOString() }, body);
+          db.messages.push(row);
+          return json(row, 201);
+        }
+        return json({ code: 'PGRST204', message: "Could not find the 'x' column of 'messages' in the schema cache" }, 400);
+      }
+      if (method === 'GET') {
+        calls.probe++;
+        return json(db.messages.map(r => Object.assign({}, r)));   /* الأعمدة: id, room_id, name, text, created_at */
+      }
+    }
+    if (p.includes('/rest/v1/room_members')) return json(membersFor(matchEq(p, 'room_id')));
+    if (p.includes('/rest/v1/room_queue')) return json([]);
+    if (p.includes('/rest/v1/presence')) return json([]);
+    return json({ message: 'unknown route' }, 404);
+  };
+  return { db, calls, fetchStub };
+}
+async function testLegacyMessagesTable() {
+  const sb = makeLegacyMessagesStub();
+  const env = createRoomEnv({
+    search: '?id=OLD01&host=1&v=' + encodeURIComponent('https://example.com/a.mp4'),
+    store: { 'wt:owner:OLD01': JSON.stringify('d'.repeat(64)) },
+    fetch: sb.fetchStub
+  });
+  env.sandbox.WT_CONFIG.sync.pollMs = 120;
+
+  env.byId.get('gateName').value = 'أمين';
+  env.byId.get('gateForm').dispatch('submit', {});
+  await wait(400);
+
+  t('جدول قديم: الغرفة متصلة رغم شكل الجدول (لا سقوط للوضع المحلي)',
+    env.sandbox.WTRoom.session.transport.kind === 'supabase',
+    env.sandbox.WTRoom.session.transport.kind);
+
+  /* إرسال رسالة من واجهة الغرفة */
+  env.byId.get('chatInput').value = 'مرحباً من جدول قديم';
+  env.byId.get('chatForm').dispatch('submit', {});
+  await wait(600);
+
+  t('جدول قديم: حاول أولاً الإدراج بـ body وردّ الخادم بـ PGRST204', sb.calls.msgBody >= 1, sb.calls.msgBody);
+  t('جدول قديم: تكيّف العميل وكتب في العمود text', sb.calls.msgText >= 1, sb.calls.msgText);
+  t('جدول قديم: الرسالة وصلت فعلاً للقاعدة',
+    sb.db.messages.length === 1 && sb.db.messages[0].text === 'مرحباً من جدول قديم',
+    JSON.stringify(sb.db.messages));
+  t('جدول قديم: لم يبق في الطابور شيء (لم تُرسل مرتين)',
+    sb.calls.msgText <= 2, sb.calls.msgText);
+
+  /* الرسالة التالية تُكتب مباشرة في العمود المكتشف بلا محاولة فاشلة */
+  const before = sb.calls.msgBody;
+  env.byId.get('chatInput').value = 'رسالة ثانية';
+  env.byId.get('chatForm').dispatch('submit', {});
+  await wait(400);
+  t('جدول قديم: الرسائل التالية تُرسل مباشرة بلا خطأ',
+    sb.db.messages.length === 2 && sb.calls.msgBody === before,
+    sb.calls.msgBody + ' / ' + sb.db.messages.length);
+
+  /* التنبيه الودي يظهر مرة واحدة داخل الدردشة */
+  const chat = env.byId.get('chatBody').children.map(c => String(c.innerHTML || '')).join(' ');
+  t('جدول قديم: تنبيه بأن الجدول قديم والعميل تكيّف معه',
+    chat.includes('جدول messages قديم') || chat.includes('04-repair-messages.sql'), chat.slice(0, 200));
+
+  /* التشخيص يكتشف الحالة ويشرح الحل */
+  const probe = new env.sandbox.WTTransport.SupabaseTransport({ url: 'http://127.0.0.1:9', anonKey: 'k' });
+  probe._fetch = (path) => {
+    if (path.includes('/rest/v1/rooms')) return Promise.resolve([{ room_id: 'OLD01', state: null }]);
+    if (/\/rest\/v1\/messages\?select=body/.test(path)) {
+      return Promise.reject(Object.assign(new Error("supabase: Could not find the 'body' column of 'messages' in the schema cache"), {
+        status: 400, code: 'PGRST204',
+        diag: { code: 'schema-mismatch', raw: "Could not find the 'body' column of 'messages' in the schema cache" }
+      }));
+    }
+    if (path === '/rest/v1/') return Promise.resolve({ definitions: { messages: { properties: { text: {} } } } });
+    return Promise.resolve([]);
+  };
+  probe._probeRealtime = () => Promise.resolve({ ok: false, error: 'لا يعمل في الاختبار' });
+  probe.roomId = 'OLD01';
+  const diag = await probe.diagnose({ realtimeMs: 10 });
+  t('تشخيص: يكشف أن عمود النص ليس body', diag.messageField === 'text', JSON.stringify(diag.messageField));
+  const diagProblems = (diag.problems || []);
+  t('تشخيص: يُدرج مشكلة العمود المفقود مع الحل',
+    diagProblems.some(p => /body/.test(String(p.title || '')) && /repair-messages|bootstrap/.test(String(p.fix || ''))),
+    JSON.stringify(diagProblems.map(p => p.code)));
+}
+
+/* =========================================================
    3) أداة sbctl
    ========================================================= */
 function testSbctl() {
@@ -208,10 +384,87 @@ function testSbctl() {
   fs.mkdirSync(tmpRoot, { recursive: true });
   fs.writeFileSync(path.join(tmpRoot, 'index.html'), '<script src="assets/js/config.js?v=2.2.0"></script>', 'utf8');
   fs.writeFileSync(path.join(tmpRoot, 'room.html'), '<script src="assets/js/room.js?v=2.2.0"></script>', 'utf8');
-  const changed = bumpVersion('2.4.0', tmpRoot);
+  const changed = bumpVersion('2.6.1', tmpRoot);
   t('sbctl: يرفع رقم الكاش في الصفحات', changed.length === 2, changed.join(','));
   t('sbctl: الرقم الجديد صحيح',
-    fs.readFileSync(path.join(tmpRoot, 'index.html'), 'utf8').includes('?v=2.4.0'));
+    fs.readFileSync(path.join(tmpRoot, 'index.html'), 'utf8').includes('?v=2.6.1'));
+
+  /* مخطط القاعدة يحتوي قسم إصلاح جدول الرسائل (وإلا عاد خطأ عمود body أو خطأ التسلسل) */
+  const boot = bootstrapSql();
+  t('sbctl: 01-bootstrap.sql يصلح العمود body', /rename column %I to body/.test(boot), '');
+  t('sbctl: 01-bootstrap.sql يعيد تحميل كاش PostgREST', /notify pgrst, 'reload schema'/.test(boot), '');
+  const repair = repairSql();
+  t('sbctl: 04-repair-messages.sql موجود ويصلح العمود',
+    /alter table public\.messages/.test(repair) && /notify pgrst/.test(repair), '');
+
+  /* خطأ relation "public.messages_id_seq" does not exist:
+     لا يجوز منح التسلسل منحاً غير محمي — الجداول القديمة قد لا تملك تسلسلاً أصلاً */
+  const sqlDir = path.join(ROOT, 'docs', 'sql');   /* ROOT = مجلد watch_together */
+  const sqlFiles = ['01-bootstrap.sql', '02-schema.sql', '03-migration.sql', '04-repair-messages.sql'];
+  const rawGrant = 'grant usage, select on sequence public.messages_id_seq to anon, authenticated;';
+  for (const f of sqlFiles) {
+    const sql = fs.readFileSync(path.join(sqlDir, f), 'utf8');
+    t(`sql: ${f} لا يمنح messages_id_seq منحاً غير محمي`, !sql.includes(rawGrant), '');
+    t(`sql: ${f} يفحص وجود التسلسل قبل منحه`, sql.includes("to_regclass('public.messages_id_seq')"), '');
+    t(`sql: ${f} يُصلح عمود المعرّف id (لا خطأ not-null على id)`,
+      /pg_get_serial_sequence\('public\.messages', 'id'\)/.test(sql) &&
+      /create sequence if not exists public\.messages_id_seq/.test(sql), '');
+    t(`sql: ${f} يعالج معرّفاً نصّياً/uuid بلا default`,
+      /gen_random_uuid\(\)/.test(sql), '');
+  }
+  /* الملفات الثلاثة للمخطط يجب أن تبقى متطابقة في المتن (تختلف في الترويسة فقط) */
+  const bodyOf = (f) => {
+    const sql = fs.readFileSync(path.join(sqlDir, f), 'utf8');
+    return sql.slice(sql.indexOf('-- 1)'));
+  };
+  t('sql: bootstrap/schema/migration متطابقة في المتن',
+    bodyOf('01-bootstrap.sql') === bodyOf('02-schema.sql') && bodyOf('01-bootstrap.sql') === bodyOf('03-migration.sql'), '');
+
+  /* الترتيب بالأرقام في مجلد واحد: 00…06 + دليل */
+  const numbered = ['00-reset-drop-all.sql', '01-bootstrap.sql', '02-schema.sql', '03-migration.sql',
+    '04-repair-messages.sql', '05-health-check.sql', '06-cleanup-cron.sql'];
+  t('sql: كل الملفات مرقّمة في docs/sql',
+    numbered.every(f => fs.existsSync(path.join(sqlDir, f))), numbered.join(','));
+  t('sql: دليل docs/sql/README.md موجود ويشرح الترتيب',
+    fs.existsSync(path.join(sqlDir, 'README.md')) &&
+    /00-reset-drop-all\.sql/.test(fs.readFileSync(path.join(sqlDir, 'README.md'), 'utf8')), '');
+
+  /* 00: يحذف كل الجداول فعلاً، وأوامره محمية بـ if exists، ويطلب إعادة تحميل المخطط */
+  const reset = fs.readFileSync(path.join(sqlDir, '00-reset-drop-all.sql'), 'utf8');
+  for (const tbl of ['rooms', 'messages', 'presence', 'room_members', 'room_queue']) {
+    t(`sql: 00-reset يحذف جدول ${tbl}`,
+      new RegExp('drop table if exists public\\.' + tbl + '\\s+cascade').test(reset), '');
+  }
+  t('sql: 00-reset يحذف مخطط الأسرار والتسلسلات والعرض',
+    /drop schema if exists wt_private cascade/.test(reset) &&
+    /drop sequence if exists public\.messages_id_seq/.test(reset) &&
+    /drop view if exists public\.wt_health/.test(reset), '');
+  t('sql: 00-reset ينبّه أنه يحذف كل شيء ويوجّه إلى 01',
+    /يحذف كل شيء/.test(reset) && /01-bootstrap\.sql/.test(reset), '');
+  t('sql: 00-reset يعيد تحميل كاش PostgREST', /notify pgrst, 'reload schema'/.test(reset), '');
+
+  /* 05: فحص للقراءة فقط يتحقق من body وid والتسلسل */
+  const health = fs.readFileSync(path.join(sqlDir, '05-health-check.sql'), 'utf8');
+  t('sql: 05-health يفحص الأعمدة والتسلسل والصلاحيات وRealtime',
+    /information_schema\.columns/.test(health) && /pg_get_serial_sequence/.test(health) &&
+    /role_table_grants/.test(health) && /pg_publication_tables/.test(health), '');
+  t('sql: 05-health يرسل رسالة فحص ويحذفها فوراً (بلا أثر)',
+    /insert into public\.messages/.test(health) && /delete from public\.messages where id = v_id/.test(health), '');
+
+  /* 06: تنظيف دوري اختياري */
+  const cron = fs.readFileSync(path.join(sqlDir, '06-cleanup-cron.sql'), 'utf8');
+  t('sql: 06-cleanup يستعمل pg_cron ويُنشئ المهام بأسماء ثابتة',
+    /create extension if not exists pg_cron/.test(cron) && /cron\.schedule\('wt-cleanup-/.test(cron), '');
+  t('sql: 06-cleanup آمن للتكرار (unschedule قبل schedule)',
+    cron.indexOf('cron.unschedule') < cron.indexOf('cron.schedule'), '');
+
+  /* لا إشارات قديمة إلى مسارات الملفات قبل ترقيمها */
+  const staleRe = /docs\/(bootstrap|schema|migration|repair-messages)\.sql/;
+  const scanFiles = ['README.md', 'docs/troubleshooting.md', 'docs/supabase-setup.md',
+    'docs/deployment.md', 'docs/new-supabase-server.md', 'tools/sbctl.mjs',
+    'assets/js/transport.js', 'assets/js/config.js', 'assets/js/home.js'];
+  const stale = scanFiles.filter(f => staleRe.test(fs.readFileSync(path.join(ROOT, f), 'utf8')));
+  t('sql: لا إشارات إلى مسارات SQL القديمة (كلها docs/sql/NN-*.sql)', stale.length === 0, stale.join(','));
 
   /* استخراج مفتاح anon من صيغ api-keys المختلفة */
   t('sbctl: يستخرج anon من صيغة القائمة',
@@ -287,6 +540,23 @@ function startFakePostgrest(opts) {
     }
     if (url.startsWith('/rest/v1/messages')) {
       if (opts.missingMessages) return send(404, { code: '42P01', message: 'relation "public.messages" does not exist' });
+      /* جدول قديم بلا تسلسل للمعرّف: id موجود لكن الإدراج يفشل بـ 23502 */
+      if (opts.legacyMessagesId) {
+        if (/select=id/.test(url)) {
+          return send(400, { code: 'PGRST204', message: "Could not find the 'id' column of 'messages' in the schema cache" });
+        }
+        if (req.method === 'POST') {
+          return send(400, { code: '23502', message: 'null value in column "id" of relation "messages" violates not-null constraint' });
+        }
+        return send(200, [{ id: 3, room_id: 'X', name: 'زائر', body: 'مرحبا', created_at: new Date().toISOString() }]);
+      }
+      /* جدول قديم: لا عمود body — نصّ الرسالة في text */
+      if (opts.legacyMessagesText) {
+        if (/select=body/.test(url)) {
+          return send(400, { code: 'PGRST204', message: "Could not find the 'body' column of 'messages' in the schema cache" });
+        }
+        return send(200, [{ id: 1, room_id: 'X', name: 'زائر', text: 'مرحبا', created_at: new Date().toISOString() }]);
+      }
       return send(200, []);
     }
     if (url.startsWith('/rest/v1/presence')) {
@@ -344,6 +614,25 @@ async function testDoctor() {
     JSON.stringify(r3.problems.map(p => p.code)));
   t('doctor: المشروع ليس «سليماً تماماً»', r3.ok === false);
   await part.close();
+
+  /* حالة: جدول رسائل قديم (العمود text بدل body) → doctor يكشفه */
+  const legacy = await startFakePostgrest({ legacyMessagesText: true });
+  const r5 = await doctorProject({ url: legacy.url, anonKey: 'k', realtime: false, write: false });
+  t('doctor: يكشف العمود المفقود body', r5.messageField === 'text', String(r5.messageField));
+  t('doctor: يُدرجه كمشكلة مع حل',
+    r5.problems.some(p => p.code === 'schema-mismatch' && /repair-messages|bootstrap/.test(String(p.fix || ''))),
+    JSON.stringify(r5.problems.map(p => p.code)));
+  t('doctor: يشرح أن الجدول قديم', r5.problems.some(p => /بدل «body»|body/.test(String(p.title))));
+  await legacy.close();
+
+  /* حالة: جدول قديم بلا تسلسل للمعرّف (id) → doctor يكشفه ويقترح الإصلاح */
+  const legacyId = await startFakePostgrest({ legacyMessagesId: true });
+  const r6 = await doctorProject({ url: legacyId.url, anonKey: 'k', realtime: false, write: false });
+  t('doctor: يكشف عمود المعرّف القديم (legacy-id)',
+    r6.problems.some(p => p.code === 'legacy-id'), JSON.stringify(r6.problems.map(p => p.code)));
+  t('doctor: حلّ المعرّف القديم يذكر 04-repair-messages.sql',
+    r6.problems.some(p => p.code === 'legacy-id' && /repair-messages\.sql/.test(String(p.fix || ''))));
+  await legacyId.close();
 
   /* حالة: لا يوجد مشروع مهيّأ */
   const r4 = await doctorProject({ url: '', anonKey: '' });
@@ -405,6 +694,7 @@ async function testRoomDiagnostics() {
   console.log('\n=== اختبارات سيرفر Supabase ===\n');
   testClassify();
   await testPartialProject();
+  await testLegacyMessagesTable();
   testSbctl();
   await testDoctor();
   await testRoomDiagnostics();

@@ -34,8 +34,8 @@ const run = async () => {
     'copyLinkBtn', 'shareBtn', 'qrBtn', 'diagBtn', 'leaveBtn', 'drawerOpenBtn', 'drawerCloseBtn',
     'drawerScrim', 'roomDrawer', 'organizerList', 'organizerCount', 'membersList', 'membersCount',
     'sideMembersCount', 'stage', 'player', 'playerPlaceholder', 'ctrlbar', 'playPauseBtn',
-    'centerPlayBtn', 'skipBackBtn', 'skipFwdBtn',
-    'iconPlay', 'iconPause', 'muteBtn', 'iconSound', 'iconMuted', 'fullBtn', 'volRange',
+    'centerPlayBtn',
+    'iconPlay', 'iconPause', 'muteBtn', 'iconSound', 'iconMuted',
     'progressBar', 'progressFill', 'progressBuffer', 'progressKnob', 'progressTip', 'curTime', 'durTime',
     'addVideoBtn', 'messagesBtn', 'messagesCount', 'playlistBtn', 'playlistCount',
     'changeBar', 'newUrl', 'newTitle', 'applyUrlBtn', 'cancelUrlBtn', 'chat', 'chatBody',
@@ -53,9 +53,38 @@ const run = async () => {
   const missingRefs = [...new Set(refs)].filter(id => !byId.has(id));
   t('كل مراجع DOM في room.js موجودة أو اختيارية', missingRefs.length === 0, missingRefs.join(','));
 
-  const order = ['id="stage"', 'id="ctrlbar"', 'class="player-actions"', 'id="changeBar"', 'id="chat"']
+  const order = ['id="roomBar"', 'id="changeBar"', 'id="mediaShell"', 'id="stage"', 'id="ctrlbar"', 'id="chat"']
     .map(s => html.indexOf(s));
-  t('ترتيب المشغّل وصف التحكم والأزرار والرسائل صحيح', order.every((n, i) => n >= 0 && (!i || n > order[i - 1])), order.join(','));
+  t('الترتيب: رأس الغرفة ← إضافة الرابط ← المشغّل ← شريط التحكم ← الرسائل',
+    order.every((n, i) => n >= 0 && (!i || n > order[i - 1])), order.join(','));
+
+  /* المطلب الصريح: لا شيء بين بطاقة المشغّل والرسائل — الرسائل تحت المشغّل مباشرة */
+  const mainSlice = html.slice(html.indexOf('id="roomMain"'), html.indexOf('<!-- ===== سكربتات'));
+  const chatTag = mainSlice.indexOf('<section class="chat');           /* بداية بطاقة الرسائل نفسها */
+  const between = mainSlice.slice(mainSlice.indexOf('id="mediaShell"'), chatTag);
+  const allowedIds = new Set(['mediaShell', 'stage', 'player', 'playerPlaceholder', 'centerPlayBtn', 'clickLayer',
+    'ctrlbar', 'playPauseBtn', 'iconPlay', 'iconPause', 'curTime', 'durTime', 'progressBar', 'progressBuffer',
+    'progressFill', 'progressKnob', 'progressTip', 'muteBtn', 'iconSound', 'iconMuted']);
+  const strayIds = [...between.matchAll(/id="([^"]+)"/g)].map(m => m[1]).filter(id => !allowedIds.has(id));
+  const strayClasses = [...between.matchAll(/class="([^"]+)"/g)].map(m => m[1])
+    .flatMap(c => c.split(/\s+/)).filter(c => ['room-bar', 'player-actions', 'change-bar', 'chat', 'player-action', 'rtopbar', 'drawer-open'].includes(c));
+  t('لا شيء بين المشغّل والرسائل (الرسائل تحت المشغّل مباشرة)',
+    chatTag > 0 && strayIds.length === 0 && strayClasses.length === 0,
+    `ids=${strayIds.join(',')} classes=${strayClasses.join(',')}`);
+  t('أدوات الغرفة (إضافة فيديو · رسائل · تشغيل) في الرأس أعلى المشغّل',
+    mainSlice.indexOf('id="roomBar"') < mainSlice.indexOf('id="mediaShell"') &&
+    mainSlice.indexOf('id="addVideoBtn"') < mainSlice.indexOf('id="mediaShell"'), '');
+  t('نموذج إضافة الرابط تحت الرأس ويظهر عند الطلب (مخفيّ افتراضياً)',
+    mainSlice.indexOf('id="roomBar"') < mainSlice.indexOf('id="changeBar"') &&
+    /<section class="change-bar glass" id="changeBar"\s+hidden>/.test(html), '');
+  t('شريط التحكم أسفل الفيديو (بعد إغلاق المشغّل)',
+    html.indexOf('id="player"') < html.indexOf('id="ctrlbar"') &&
+    html.indexOf('id="ctrlbar"') < html.indexOf('</section>', html.indexOf('id="stage"')));
+  t('المشاركون في القائمة الجانبية والرسائل خارجها',
+    html.indexOf('id="membersPanel"') < html.indexOf('id="roomMain"') &&
+    html.indexOf('id="membersPanel"') < html.indexOf('id="chat"'));
+  t('الشاشة بلا شريط صوت أو ملء شاشة أو تقديم/ترجيع',
+    !/id="(volRange|fullBtn|skipBackBtn|skipFwdBtn)"/.test(html));
   t('أزرار الأدوات الثلاثة تحت المشغّل',
     html.indexOf('id="addVideoBtn"') < html.indexOf('id="messagesBtn"') && html.indexOf('id="messagesBtn"') < html.indexOf('id="playlistBtn"'));
   t('شبكة معلومات المشاركين القديمة محذوفة', !/id="info(Grid|Transport|Provider|Controller|Role|Sync|Code)"/.test(html));
@@ -102,6 +131,8 @@ const run = async () => {
   t('الرسالة أُضيفت وحقل الإدخال فُرّغ', chatBody.children.length > before && byId.get('chatInput').value === '');
   t('عداد الرسائل يتحدث', /رسالة|رسائل/.test(byId.get('chatCount').textContent));
   t('رسائل الانضمام محصورة في نافذة الرسائل', chatBody.children.some(c => String(c._className).includes('msg--system')));
+  t('الرسائل ظاهرة دائماً (لا عدّاد «غير مقروء» يغطّيها)',
+    sandbox.WTRoom.session.unread === 0 && byId.get('messagesCount').hidden === true);
   const beforeReact = chatBody.children.length;
   const reactBtn = reactRow.children.find(c => c.dataset.react);
   t('تفاعلات الدردشة موجودة', !!reactBtn);
@@ -113,7 +144,7 @@ const run = async () => {
 
   byId.get('messagesBtn').dispatch('click', {});
   await wait(40);
-  t('زر الرسائل يفتح وضع المحادثة', documentStub.body.classList.contains('chat-focus') && !byId.get('backToVideoBtn').hidden);
+  t('زر الرسائل يكبّر المحادثة', documentStub.body.classList.contains('chat-focus') && !byId.get('backToVideoBtn').hidden);
   byId.get('backToVideoBtn').dispatch('click', {});
   t('العودة للفيديو تغلق وضع المحادثة', !documentStub.body.classList.contains('chat-focus') && byId.get('backToVideoBtn').hidden);
 
@@ -132,7 +163,7 @@ const run = async () => {
   byId.get('playlistCloseBtn').dispatch('click', {});
   t('زر إغلاق قائمة التشغيل يعمل', byId.get('playlistModal').hidden);
 
-  const clickIds = ['playPauseBtn', 'centerPlayBtn', 'skipBackBtn', 'skipFwdBtn', 'muteBtn', 'fullBtn', 'progressBar', 'addVideoBtn', 'messagesBtn', 'playlistBtn',
+  const clickIds = ['playPauseBtn', 'centerPlayBtn', 'muteBtn', 'progressBar', 'addVideoBtn', 'messagesBtn', 'playlistBtn',
     'drawerOpenBtn', 'drawerCloseBtn', 'copyCodeBtn', 'copyLinkBtn', 'qrBtn', 'leaveBtn', 'clearChatBtn',
     'sbMeBtn', 'meClose', 'meSave', 'meSignout', 'cancelUrlBtn', 'applyUrlBtn', 'playlistCloseBtn'];
   clickIds.forEach(id => {

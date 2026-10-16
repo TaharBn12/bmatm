@@ -2,7 +2,7 @@
 <html lang="ar" dir="rtl">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
   <meta name="theme-color" content="#06070f">
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
   <meta http-equiv="Pragma" content="no-cache">
@@ -17,7 +17,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800;900&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="assets/css/app.css?v=2.5.0">
+  <link rel="stylesheet" href="assets/css/app.css?v=2.6.4">
 </head>
 <body class="room-body">
   <div class="bg-fx"></div>
@@ -108,69 +108,20 @@
         <p class="drawer__empty" id="organizerEmpty">لا يوجد منظّمون إضافيون بعد.</p>
       </section>
 
+      <!-- المشاركون (بطاقات بأسلوب الشبكة) -->
+      <section class="drawer__section room-members" id="membersPanel" aria-labelledby="membersTitle">
+        <div class="drawer__section-head">
+          <h3 id="membersTitle"><span class="ic" data-icon="users" data-size="16"></span> المشاركون</h3>
+          <span class="drawer__count" id="sideMembersCount">1</span>
+        </div>
+        <div class="drawer__people" id="membersList"></div>
+      </section>
+
     </aside>
 
     <main class="room-main" id="roomMain">
 
-      <div class="media-shell" id="mediaShell">
-      <!-- المشغّل -->
-      <section class="stage glass" id="stage">
-        <div class="player" id="player">
-          <div class="player__placeholder" id="playerPlaceholder">
-            <span class="ic player__placeholder-icon" data-icon="film" data-size="46"></span>
-            <p class="player__placeholder-text">لا يوجد فيديو في هذه الغرفة بعد.<br>أضف فيديو إلى قائمة التشغيل المشتركة.</p>
-          </div>
-
-          <!-- زر التشغيل الكبير في منتصف الفيديو -->
-          <button class="vcenter" id="centerPlayBtn" type="button" hidden aria-label="تشغيل الفيديو" title="تشغيل">
-            <span class="ic" data-icon="play" data-size="30"></span>
-          </button>
-
-          <!-- طبقة شفافة لالتقاط النقر (مهمة لفيديوهات iframe/يوتيوب حيث لا تصل
-               النقرات إلى المشغّل) — النقر يبدّل التشغيل/الإيقاف -->
-          <div class="vclicklayer" id="clickLayer" aria-hidden="true"></div>
-
-          <!-- التحكم من داخل الفيديو: شريط التقدم + الأزرار فوق الفيديو مباشرة،
-               ويختفي تلقائياً أثناء التشغيل -->
-          <div class="ctrlbar vcontrols" id="ctrlbar" aria-label="التحكم بالمشاهدة" hidden>
-            <div class="vc__progress">
-              <div class="progress__bar" id="progressBar" role="slider" tabindex="0" aria-label="شريط التقدم" aria-valuemin="0">
-                <span class="progress__buffer" id="progressBuffer"></span>
-                <span class="progress__fill" id="progressFill"></span>
-                <span class="progress__knob" id="progressKnob"></span>
-                <span class="progress__tip" id="progressTip" hidden>00:00</span>
-              </div>
-            </div>
-            <div class="vc__row">
-              <button class="ctrl-btn vc__play" id="playPauseBtn" type="button" title="تشغيل أو إيقاف (مسافة)" aria-label="تشغيل أو إيقاف">
-                <span id="iconPlay"><span class="ic" data-icon="play" data-size="20"></span></span>
-                <span id="iconPause" hidden><span class="ic" data-icon="pause" data-size="20"></span></span>
-              </button>
-              <button class="ctrl-btn ctrl-btn--compact" id="skipBackBtn" type="button" title="ترجيع 10 ثوانٍ" aria-label="ترجيع 10 ثوانٍ">
-                <span class="ic" data-icon="back10" data-size="20"></span>
-              </button>
-              <button class="ctrl-btn ctrl-btn--compact" id="skipFwdBtn" type="button" title="تقديم 10 ثوانٍ" aria-label="تقديم 10 ثوانٍ">
-                <span class="ic" data-icon="fwd10" data-size="20"></span>
-              </button>
-              <button class="ctrl-btn ctrl-btn--compact" id="muteBtn" type="button" title="كتم الصوت (M)" aria-label="كتم الصوت">
-                <span id="iconSound"><span class="ic" data-icon="volume" data-size="19"></span></span>
-                <span id="iconMuted" hidden><span class="ic" data-icon="mute" data-size="19"></span></span>
-              </button>
-              <div class="vol"><input type="range" id="volRange" min="0" max="100" value="85" aria-label="مستوى الصوت"></div>
-              <span class="vc__times"><span class="time" id="curTime">00:00</span><span class="vc__sep">/</span><span class="time" id="durTime">00:00</span></span>
-              <span class="vc__spacer"></span>
-              <button class="ctrl-btn ctrl-btn--compact" id="fullBtn" type="button" title="ملء الشاشة (F)" aria-label="ملء الشاشة">
-                <span class="ic" data-icon="expand" data-size="19"></span>
-              </button>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      </div>
-
-
-      <!-- شريط الغرفة: اسم الغرفة ▾ · طيّ الفيديو · الأدوات · القائمة (بأسلوب Watch2Gether) -->
+      <!-- رأس الغرفة (أعلى الصفحة): اسم الغرفة ▾ · الحالة · طيّ الفيديو · الأدوات · القائمة -->
       <div class="room-bar" id="roomBar">
         <header class="rtopbar">
       <a class="brand rtopbar__brand" href="index.html" title="الرئيسية">
@@ -187,12 +138,12 @@
         <button class="room-collapse" id="collapseBtn" type="button" aria-expanded="true" aria-label="طيّ الفيديو وإظهاره" title="طيّ الفيديو وإظهاره">
           <span class="ic" data-icon="chevronUp" data-size="18"></span>
         </button>
-              <!-- الأزرار الثلاثة المطلوبة أسفل المشغّل -->
+              <!-- أدوات الغرفة في الرأس: إضافة فيديو · تكبير الرسائل · قائمة التشغيل -->
       <nav class="player-actions" aria-label="أدوات المشاهدة">
         <button class="player-action" id="addVideoBtn" type="button" aria-label="إضافة فيديو جديد" title="إضافة فيديو جديد">
           <span class="ic" data-icon="search" data-size="19"></span><span>إضافة فيديو</span>
         </button>
-        <button class="player-action" id="messagesBtn" type="button" aria-label="عرض الرسائل" title="عرض الرسائل">
+        <button class="player-action" id="messagesBtn" type="button" aria-label="تكبير الرسائل" title="تكبير الرسائل (D)">
           <span class="ic" data-icon="chat" data-size="19"></span><span>الرسائل</span><span class="player-action__count" id="messagesCount" hidden>0</span>
         </button>
         <button class="player-action" id="playlistBtn" type="button" aria-label="عرض قائمة التشغيل" title="قائمة التشغيل">
@@ -206,7 +157,7 @@
         </button>
       </div>
 
-      <!-- إضافة رابط إلى قائمة التشغيل المشتركة -->
+      <!-- إضافة رابط إلى قائمة التشغيل المشتركة (تحت الرأس مباشرة، مخفية افتراضياً) -->
       <section class="change-bar glass" id="changeBar" hidden>
         <div class="change-bar__row">
           <div class="field-wrap">
@@ -225,16 +176,53 @@
         <p class="change-bar__hint"><span class="ic" data-icon="info" data-size="14"></span> سيظهر الفيديو في قائمة تشغيل مشتركة، ويمكن للمنظّمين بدء عرضه للجميع.</p>
       </section>
 
-      <!-- المشاركون (بطاقات بأسلوب الشبكة) -->
-      <section class="drawer__section room-members" id="membersPanel" aria-labelledby="membersTitle">
-        <div class="drawer__section-head">
-          <h3 id="membersTitle"><span class="ic" data-icon="users" data-size="16"></span> المشاركون</h3>
-          <span class="drawer__count" id="sideMembersCount">1</span>
+      <div class="media-shell" id="mediaShell">
+      <!-- المشغّل (الفيديو) + شريط التحكم أسفله مباشرة — ثم الرسائل تحته فوراً -->
+      <section class="stage glass" id="stage">
+        <div class="player" id="player">
+          <div class="player__placeholder" id="playerPlaceholder">
+            <span class="ic player__placeholder-icon" data-icon="film" data-size="46"></span>
+            <p class="player__placeholder-text">لا يوجد فيديو في هذه الغرفة بعد.<br>أضف فيديو إلى قائمة التشغيل المشتركة.</p>
+          </div>
+
+          <!-- زر التشغيل الكبير في منتصف الفيديو -->
+          <button class="vcenter" id="centerPlayBtn" type="button" hidden aria-label="تشغيل الفيديو" title="تشغيل">
+            <span class="ic" data-icon="play" data-size="30"></span>
+          </button>
+
+          <!-- طبقة شفافة لالتقاط النقر (مهمة لفيديوهات iframe/يوتيوب حيث لا تصل
+               النقرات إلى المشغّل) — النقر يبدّل التشغيل/الإيقاف -->
+          <div class="vclicklayer" id="clickLayer" aria-hidden="true"></div>
         </div>
-        <div class="drawer__people" id="membersList"></div>
+
+        <!-- شريط التحكم أسفل الفيديو: تشغيل/إيقاف · الوقت · شريط التقدم · كتم الصوت
+             (بلا شريط صوت، بلا ملء شاشة، بلا تقديم/ترجيع — بحسب الطلب)
+             يبقى ظاهراً دائماً إلا لفيديوهات التضمين (YouTube) فتُخفيه room.js) -->
+        <div class="ctrlbar vcontrols" id="ctrlbar" aria-label="التحكم بالمشاهدة">
+          <button class="ctrl-btn vc__play" id="playPauseBtn" type="button" title="تشغيل أو إيقاف (مسافة)" aria-label="تشغيل أو إيقاف">
+            <span id="iconPlay"><span class="ic" data-icon="play" data-size="20"></span></span>
+            <span id="iconPause" hidden><span class="ic" data-icon="pause" data-size="20"></span></span>
+          </button>
+          <span class="vc__times"><span class="time" id="curTime">00:00</span><span class="vc__sep">/</span><span class="time" id="durTime">00:00</span></span>
+          <div class="vc__progress">
+            <div class="progress__bar" id="progressBar" role="slider" tabindex="0" aria-label="شريط التقدم" aria-valuemin="0">
+              <span class="progress__buffer" id="progressBuffer"></span>
+              <span class="progress__fill" id="progressFill"></span>
+              <span class="progress__knob" id="progressKnob"></span>
+              <span class="progress__tip" id="progressTip" hidden>00:00</span>
+            </div>
+          </div>
+          <button class="ctrl-btn ctrl-btn--compact" id="muteBtn" type="button" title="كتم الصوت (M)" aria-label="كتم الصوت">
+            <span id="iconSound"><span class="ic" data-icon="volume" data-size="19"></span></span>
+            <span id="iconMuted" hidden><span class="ic" data-icon="mute" data-size="19"></span></span>
+          </button>
+        </div>
       </section>
 
-      <!-- الرسائل -->
+      </div>
+
+
+      <!-- الرسائل: مباشرة تحت المشغّل — الهدف من الموقع التفرّج مع صديق والحديث -->
       <section class="chat glass" id="chat">
         <div class="chat__head">
           <h2 class="chat__title"><span class="ic" data-icon="chat" data-size="18"></span> الرسائل</h2>
@@ -365,14 +353,14 @@
   </div>
 
   <!-- ===== سكربتات ===== -->
-  <script src="assets/vendor/hls.min.js?v=2.5.0"></script>
-  <script src="assets/vendor/qrcode.min.js?v=2.5.0"></script>
-  <script src="assets/js/config.js?v=2.5.0"></script>
-  <script src="assets/js/util.js?v=2.5.0"></script>
-  <script src="assets/js/icons.js?v=2.5.0"></script>
-  <script src="assets/js/auth.js?v=2.5.0"></script>
-  <script src="assets/js/transport.js?v=2.5.0"></script>
-  <script src="assets/js/player.js?v=2.5.0"></script>
-  <script src="assets/js/room.js?v=2.5.0"></script>
+  <script src="assets/vendor/hls.min.js?v=2.6.4"></script>
+  <script src="assets/vendor/qrcode.min.js?v=2.6.4"></script>
+  <script src="assets/js/config.js?v=2.6.4"></script>
+  <script src="assets/js/util.js?v=2.6.4"></script>
+  <script src="assets/js/icons.js?v=2.6.4"></script>
+  <script src="assets/js/auth.js?v=2.6.4"></script>
+  <script src="assets/js/transport.js?v=2.6.4"></script>
+  <script src="assets/js/player.js?v=2.6.4"></script>
+  <script src="assets/js/room.js?v=2.6.4"></script>
 </body>
 </html>

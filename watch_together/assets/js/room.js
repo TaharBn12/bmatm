@@ -107,8 +107,8 @@
     mediaShell: $('mediaShell'),
     stage: $('stage'), player: $('player'), placeholder: $('playerPlaceholder'), ctrlbar: $('ctrlbar'),
     playPause: $('playPauseBtn'), iconPlay: $('iconPlay'), iconPause: $('iconPause'),
-    centerPlay: $('centerPlayBtn'), skipBack: $('skipBackBtn'), skipFwd: $('skipFwdBtn'),
-    muteBtn: $('muteBtn'), iconSound: $('iconSound'), iconMuted: $('iconMuted'), fullBtn: $('fullBtn'), volRange: $('volRange'),
+    centerPlay: $('centerPlayBtn'),
+    muteBtn: $('muteBtn'), iconSound: $('iconSound'), iconMuted: $('iconMuted'),
     progressBar: $('progressBar'), progressFill: $('progressFill'), progressBuffer: $('progressBuffer'),
     progressKnob: $('progressKnob'), progressTip: $('progressTip'), curTime: $('curTime'), durTime: $('durTime'),
     addVideoBtn: $('addVideoBtn'), messagesBtn: $('messagesBtn'), messagesCount: $('messagesCount'),
@@ -301,6 +301,9 @@
         sb.tables && sb.tables.rooms ? 'is-good' : 'is-bad') +
       diagRow('chat', 'جدول الرسائل (messages)', sb.tables && sb.tables.messages ? 'موجود ✓' : 'مفقود ✕',
         sb.tables && sb.tables.messages ? 'is-good' : 'is-warn') +
+      (sb.messageField ? diagRow('check', 'عمود نصّ الرسالة',
+        '<code>' + U.esc(sb.messageField) + '</code>' + (sb.messageField === 'body' ? ' ✓' : ' — جدول قديم (تكيّف العميل)'),
+        sb.messageField === 'body' ? 'is-good' : 'is-warn') : '') +
       diagRow('users', 'جدول الأدوار (room_members)', sb.tables && sb.tables.room_members ? 'موجود ✓' : 'مفقود ✕',
         sb.tables && sb.tables.room_members ? 'is-good' : 'is-bad') +
       diagRow('playlist', 'قائمة التشغيل (room_queue)', sb.tables && sb.tables.room_queue ? 'موجود ✓' : 'مفقود ✕',
@@ -528,6 +531,13 @@
       if (!isChatVisible()) { session.unread++; updateMessagesBadge(); }
     });
     t.on('system', (m) => { if (m && m.text) sysMessage(m.text); });
+    t.on('chat-error', (d, info) => {
+      if (!d) return;
+      session.lastChatError = d;
+      /* جدول قديم تكيّف معه العميل: تنبيه ودي بلا إزعاج */
+      U.toast(d.title + (d.fix && !(info && info.healed) ? ' — ' + d.fix : ''), (info && info.healed) ? 'warn' : 'error', 8000);
+      if (!(info && info.healed)) sysMessage('تعذّر إرسال الرسائل: ' + d.title + (d.fix ? ' — الحل: ' + d.fix : ''));
+    });
     t.on('status', (s) => setStatus(s.state, s.detail));
     t.on('serverTime', (time) => { if (typeof time === 'number') session.clockOffset = time - Date.now(); });
     t.on('members', (list) => { if (Array.isArray(list)) mergeMembers(list); });
@@ -581,8 +591,6 @@
     const locked = !canControl();
     if (el.playPause) el.playPause.disabled = locked;
     if (el.centerPlay) el.centerPlay.disabled = locked;
-    if (el.skipBack) el.skipBack.disabled = locked;
-    if (el.skipFwd) el.skipFwd.disabled = locked;
     if (el.progressBar) {
       el.progressBar.setAttribute('aria-disabled', locked ? 'true' : 'false');
       el.progressBar.classList.toggle('is-locked', locked);
@@ -1120,7 +1128,8 @@
     el.chatCount.textContent = n + (n === 1 ? ' رسالة' : ' رسائل');
   }
 
-  function isChatVisible() { return session.focusMode; }
+  /* الدردشة ظاهرة دائماً في الغرفة (تأخذ المساحة الكبيرة) → لا عدّاد «غير مقروء» */
+  function isChatVisible() { return true; }
 
   function updateMessagesBadge() {
     if (!el.messagesCount) return;
@@ -1288,7 +1297,7 @@
 
   /* ============================== ربط الواجهة ============================== */
   function wireUI() {
-    /* ---- تشغيل/إيقاف (من زر التحكم، أو الزر الكبير، أو النقر على الفيديو نفسه) ---- */
+    /* ---- تشغيل/إيقاف (من زر التحكم أسفل الفيديو، أو الزر الكبير، أو النقر على الفيديو) ---- */
     const togglePlay = () => {
       if (!requireControl()) return;
       if (!player.isReady()) {
@@ -1304,31 +1313,20 @@
     el.playPause.addEventListener('click', togglePlay);
     if (el.centerPlay) el.centerPlay.addEventListener('click', togglePlay);
 
-    /* النقر على سطح الفيديو نفسه يبدّل التشغيل، والنقر المزدوج لملء الشاشة.
+    /* النقر على سطح الفيديو نفسه يبدّل التشغيل (النقرة المزدوجة تُحسب نقرة واحدة).
        نقرات شريط التحكم والزر الكبير وطبقات التحميل لا تصل إلى هنا. */
+    let lastPlayerClick = 0;
     el.player.addEventListener('click', (e) => {
       const t = e.target;
       if (t && t.closest && (t.closest('.vcontrols') || t.closest('.vcenter') ||
         t.closest('.player__overlay') || t.closest('.player__placeholder'))) return;
+      const now = Date.now();
+      if (now - lastPlayerClick < 320) return;   /* تفادي النقر المزدوج */
+      lastPlayerClick = now;
       togglePlay();
     });
-    el.player.addEventListener('dblclick', (e) => {
-      const t = e.target;
-      if (t && t.closest && (t.closest('.vcontrols') || t.closest('.vcenter'))) return;
-      if (el.fullBtn) el.fullBtn.click();
-    });
 
-    /* إظهار التحكم عند أي نشاط فوق الفيديو، وإخفاؤه بعد الخمول أثناء التشغيل */
-    el.player.addEventListener('pointermove', pokeVideoUI);
-    el.player.addEventListener('pointerdown', pokeVideoUI);
-    el.player.addEventListener('pointerleave', () => {
-      if (player.isReady() && player.isPlaying()) {
-        clearTimeout(uiHideTimer);
-        uiHideTimer = setTimeout(() => el.player.classList.add('is-ui-hidden'), 700);
-      }
-    });
-
-    /* ---- تقديم/ترجيع عبر مفاتيح الأسهم فقط ---- */
+    /* ---- تقديم/ترجيع بمفاتيح الأسهم فقط (لا أزرار في الواجهة) ---- */
     const skip = (delta) => {
       if (!requireControl()) return;
       if (!player.isReady()) return U.toast('لا يوجد فيديو يعمل', 'warn');
@@ -1339,26 +1337,14 @@
       updateProgressUI();
       pokeVideoUI();
     };
-    if (el.skipBack) el.skipBack.addEventListener('click', () => skip(-10));
-    if (el.skipFwd) el.skipFwd.addEventListener('click', () => skip(10));
 
-    /* ---- الصوت ---- */
+    /* ---- الصوت: زر كتم فقط (لا شريط صوت) ---- */
     el.muteBtn.addEventListener('click', () => {
       const m = !player.isMuted();
       player.setMuted(m);
       el.iconSound.hidden = m;
       el.iconMuted.hidden = !m;
-      if (el.volRange) el.volRange.value = m ? 0 : Math.round((player._video ? player._video.volume : .85) * 100);
     });
-    if (el.volRange) {
-      el.volRange.addEventListener('input', () => {
-        const v = parseInt(el.volRange.value, 10) / 100;
-        player.setVolume(v);
-        player.setMuted(v === 0);
-        el.iconSound.hidden = v === 0;
-        el.iconMuted.hidden = v !== 0;
-      });
-    }
 
     /* ---- طيّ الفيديو وإظهاره (يبقى الصوت والتحكم يعملان) ---- */
     if (el.collapseBtn) {
@@ -1368,16 +1354,6 @@
         el.collapseBtn.classList.toggle('is-on', collapsed);
       });
     }
-
-    /* ---- ملء الشاشة ---- */
-    el.fullBtn.addEventListener('click', () => {
-      const target = el.mediaShell;
-      if (!document.fullscreenElement && !document.webkitFullscreenElement) {
-        (target.requestFullscreen || target.webkitRequestFullscreen || function () { }).call(target);
-      } else {
-        (document.exitFullscreen || document.webkitExitFullscreen || function () { }).call(document);
-      }
-    });
 
     /* ---- شريط التقدم داخل الفيديو (سحب باللمس والفأرة + معاينة الوقت) ---- */
     const ratioFromEvent = (ev) => {
@@ -1520,6 +1496,7 @@
         'REST: ' + (sb && sb.rest && sb.rest.ok ? 'يعمل (' + sb.rest.ms + 'ms)' : 'فشل'),
         'جدول rooms: ' + (sb && sb.tables && sb.tables.rooms ? 'موجود' : 'مفقود'),
         'جدول messages: ' + (sb && sb.tables && sb.tables.messages ? 'موجود' : 'مفقود'),
+        'عمود نصّ الرسالة: ' + (sb && sb.messageField ? sb.messageField : 'غير معروف (body المتوقع)'),
         'جدول room_members (الأدوار): ' + (sb && sb.tables && sb.tables.room_members ? 'موجود' : 'مفقود'),
         'جدول room_queue (قائمة التشغيل): ' + (sb && sb.tables && sb.tables.room_queue ? 'موجود' : 'مفقود'),
         'جدول presence (قديم/اختياري): ' + (sb && sb.tables && sb.tables.presence ? 'موجود' : 'مفقود'),
@@ -1617,7 +1594,6 @@
       else if (e.key === 'ArrowLeft') { e.preventDefault(); skip(+10); }
       else if (e.key === 'ArrowRight') { e.preventDefault(); skip(-10); }
       else if (e.key.toLowerCase() === 'm') el.muteBtn.click();
-      else if (e.key.toLowerCase() === 'f') el.fullBtn.click();
       else if (e.key.toLowerCase() === 'c') copy(roomUrl(), 'تم نسخ رابط الغرفة');
       else if (e.key.toLowerCase() === 'd') setFocusMode(!session.focusMode);
       else if (e.key === 'Escape') {
@@ -1707,15 +1683,10 @@
   }
 
   /* ============================== واجهة صغيرة ============================== */
-  /* طبقة التحكم داخل الفيديو: تظهر مع أي نشاط وتختفي أثناء التشغيل بعد مهلة */
-  let uiHideTimer = null;
+  /* طبقة التحكم صارت أسفل الفيديو وظاهرة دائماً — لا إخفاء تلقائي */
   function pokeVideoUI() {
     if (!el.player) return;
     el.player.classList.remove('is-ui-hidden');
-    clearTimeout(uiHideTimer);
-    uiHideTimer = setTimeout(() => {
-      if (player.isReady() && player.isPlaying()) el.player.classList.add('is-ui-hidden');
-    }, 2800);
   }
 
   function updatePlayIcon() {
