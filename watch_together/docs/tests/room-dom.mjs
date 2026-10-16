@@ -34,8 +34,8 @@ const run = async () => {
     'copyLinkBtn', 'shareBtn', 'qrBtn', 'diagBtn', 'leaveBtn', 'drawerOpenBtn', 'drawerCloseBtn',
     'drawerScrim', 'roomDrawer', 'organizerList', 'organizerCount', 'membersList', 'membersCount',
     'sideMembersCount', 'stage', 'player', 'playerPlaceholder', 'ctrlbar', 'playPauseBtn',
-    'centerPlayBtn', 'skipBackBtn', 'skipFwdBtn',
-    'iconPlay', 'iconPause', 'muteBtn', 'iconSound', 'iconMuted', 'fullBtn', 'volRange',
+    'centerPlayBtn',
+    'iconPlay', 'iconPause', 'muteBtn', 'iconSound', 'iconMuted',
     'progressBar', 'progressFill', 'progressBuffer', 'progressKnob', 'progressTip', 'curTime', 'durTime',
     'addVideoBtn', 'messagesBtn', 'messagesCount', 'playlistBtn', 'playlistCount',
     'changeBar', 'newUrl', 'newTitle', 'applyUrlBtn', 'cancelUrlBtn', 'chat', 'chatBody',
@@ -56,6 +56,14 @@ const run = async () => {
   const order = ['id="stage"', 'id="ctrlbar"', 'class="player-actions"', 'id="changeBar"', 'id="chat"']
     .map(s => html.indexOf(s));
   t('ترتيب المشغّل وصف التحكم والأزرار والرسائل صحيح', order.every((n, i) => n >= 0 && (!i || n > order[i - 1])), order.join(','));
+  t('شريط التحكم أسفل الفيديو (بعد إغلاق المشغّل)',
+    html.indexOf('id="player"') < html.indexOf('id="ctrlbar"') &&
+    html.indexOf('id="ctrlbar"') < html.indexOf('</section>', html.indexOf('id="stage"')));
+  t('المشاركون في القائمة الجانبية والرسائل خارجها',
+    html.indexOf('id="membersPanel"') < html.indexOf('id="roomMain"') &&
+    html.indexOf('id="membersPanel"') < html.indexOf('id="chat"'));
+  t('الشاشة بلا شريط صوت أو ملء شاشة أو تقديم/ترجيع',
+    !/id="(volRange|fullBtn|skipBackBtn|skipFwdBtn)"/.test(html));
   t('أزرار الأدوات الثلاثة تحت المشغّل',
     html.indexOf('id="addVideoBtn"') < html.indexOf('id="messagesBtn"') && html.indexOf('id="messagesBtn"') < html.indexOf('id="playlistBtn"'));
   t('شبكة معلومات المشاركين القديمة محذوفة', !/id="info(Grid|Transport|Provider|Controller|Role|Sync|Code)"/.test(html));
@@ -102,6 +110,8 @@ const run = async () => {
   t('الرسالة أُضيفت وحقل الإدخال فُرّغ', chatBody.children.length > before && byId.get('chatInput').value === '');
   t('عداد الرسائل يتحدث', /رسالة|رسائل/.test(byId.get('chatCount').textContent));
   t('رسائل الانضمام محصورة في نافذة الرسائل', chatBody.children.some(c => String(c._className).includes('msg--system')));
+  t('الرسائل ظاهرة دائماً (لا عدّاد «غير مقروء» يغطّيها)',
+    sandbox.WTRoom.session.unread === 0 && byId.get('messagesCount').hidden === true);
   const beforeReact = chatBody.children.length;
   const reactBtn = reactRow.children.find(c => c.dataset.react);
   t('تفاعلات الدردشة موجودة', !!reactBtn);
@@ -113,7 +123,7 @@ const run = async () => {
 
   byId.get('messagesBtn').dispatch('click', {});
   await wait(40);
-  t('زر الرسائل يفتح وضع المحادثة', documentStub.body.classList.contains('chat-focus') && !byId.get('backToVideoBtn').hidden);
+  t('زر الرسائل يكبّر المحادثة', documentStub.body.classList.contains('chat-focus') && !byId.get('backToVideoBtn').hidden);
   byId.get('backToVideoBtn').dispatch('click', {});
   t('العودة للفيديو تغلق وضع المحادثة', !documentStub.body.classList.contains('chat-focus') && byId.get('backToVideoBtn').hidden);
 
@@ -132,7 +142,7 @@ const run = async () => {
   byId.get('playlistCloseBtn').dispatch('click', {});
   t('زر إغلاق قائمة التشغيل يعمل', byId.get('playlistModal').hidden);
 
-  const clickIds = ['playPauseBtn', 'centerPlayBtn', 'skipBackBtn', 'skipFwdBtn', 'muteBtn', 'fullBtn', 'progressBar', 'addVideoBtn', 'messagesBtn', 'playlistBtn',
+  const clickIds = ['playPauseBtn', 'centerPlayBtn', 'muteBtn', 'progressBar', 'addVideoBtn', 'messagesBtn', 'playlistBtn',
     'drawerOpenBtn', 'drawerCloseBtn', 'copyCodeBtn', 'copyLinkBtn', 'qrBtn', 'leaveBtn', 'clearChatBtn',
     'sbMeBtn', 'meClose', 'meSave', 'meSignout', 'cancelUrlBtn', 'applyUrlBtn', 'playlistCloseBtn'];
   clickIds.forEach(id => {
