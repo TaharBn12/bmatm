@@ -84,6 +84,20 @@ class El {
   appendChild(c) { c.parentNode = this; this.children.push(c); return c; }
   removeChild(c) { this.children = this.children.filter(x => x !== c); return c; }
   remove() { if (this.parentNode) this.parentNode.removeChild(this); }
+  replaceChild(n, old) {
+    const i = this.children.indexOf(old);
+    if (i >= 0) this.children[i] = n;
+    n.parentNode = this;
+    if (old) old.parentNode = null;
+    return old;
+  }
+  insertBefore(n, ref) {
+    const i = this.children.indexOf(ref);
+    if (i >= 0) this.children.splice(i, 0, n);
+    else this.children.push(n);
+    n.parentNode = this;
+    return n;
+  }
   setAttribute(k, v) { this.attrs[k] = v; if (k === 'id') this.id = v; }
   getAttribute(k) { return this.attrs[k] !== undefined ? this.attrs[k] : null; }
   addEventListener(ev, fn) { (this._handlers[ev] = this._handlers[ev] || []).push(fn); }

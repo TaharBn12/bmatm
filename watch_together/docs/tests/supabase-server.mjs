@@ -313,9 +313,15 @@ async function testLegacyMessagesTable() {
 
   t('جدول قديم: حاول أولاً الإدراج بـ body وردّ الخادم بـ PGRST204', sb.calls.msgBody >= 1, sb.calls.msgBody);
   t('جدول قديم: تكيّف العميل وكتب في العمود text', sb.calls.msgText >= 1, sb.calls.msgText);
-  t('جدول قديم: الرسالة وصلت فعلاً للقاعدة',
-    sb.db.messages.length === 1 && sb.db.messages[0].text === 'مرحباً من جدول قديم',
-    JSON.stringify(sb.db.messages));
+  /* نص الرسالة يمر الآن بغلاف JSON (نفس العمود) — نفكّه ونتحقق من نصه الظاهر */
+  {
+    const raw = sb.db.messages.length === 1 ? String(sb.db.messages[0].text || '') : '';
+    const decoded = (env.sandbox.WTRoom && env.sandbox.WTRoom.chat)
+      ? env.sandbox.WTRoom.chat.decodeChatText(raw) : { text: raw };
+    t('جدول قديم: الرسالة وصلت فعلاً للقاعدة',
+      sb.db.messages.length === 1 && decoded.text === 'مرحباً من جدول قديم',
+      raw.slice(0, 90));
+  }
   t('جدول قديم: لم يبق في الطابور شيء (لم تُرسل مرتين)',
     sb.calls.msgText <= 2, sb.calls.msgText);
 
