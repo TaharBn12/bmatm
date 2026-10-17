@@ -1773,6 +1773,28 @@
     t.style.height = Math.min(130, t.scrollHeight) + 'px';
   }
 
+  /* يضمن ظهور كل محتوى الصفحة على كل هاتف: عند فتح لوحة المفاتيح
+     تبقى خانة الكتابة والرسائل ظاهرة، وعند تدوير الهاتف يُعاد حساب التخطيط */
+  function bindMobileViewport() {
+    const vv = window.visualViewport;
+    if (vv) {
+      const onVp = () => { if (document.activeElement === el.chatInput) requestAnimationFrame(() => scrollChat(true)); };
+      vv.addEventListener('resize', onVp);
+      vv.addEventListener('scroll', onVp);
+    }
+    if (el.chatInput) {
+      el.chatInput.addEventListener('focus', () => {
+        setTimeout(() => {
+          scrollChat(true);
+          el.chatBody.scrollTop = el.chatBody.scrollHeight;
+          if (window.innerWidth <= 640) el.chat.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }, 260);
+      });
+    }
+    window.addEventListener('orientationchange', () => setTimeout(() => { updateProgressUI(); scrollChat(true); }, 320));
+    window.addEventListener('resize', () => { if (window.innerWidth > 640) return; requestAnimationFrame(() => scrollChat(false)); });
+  }
+
   /* ============================== وضع الرسائل ============================== */
   function setFocusMode(on) {
     session.focusMode = !!on;
@@ -2170,6 +2192,7 @@
     });
 
     updateMessagesBadge();
+    bindMobileViewport();
 
     /* ---- اختصارات ---- */
     document.addEventListener('keydown', (e) => {
