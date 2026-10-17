@@ -2399,3 +2399,44 @@ img, video, iframe { max-width: 100%; }
   .change-bar__row { max-width: 100%; }
   .change-bar__row .field-wrap, .change-bar__row .input { min-width: 0; max-width: 100%; }
 }
+
+/* Room viewport sizing: keep the chat attached to the phone's bottom edge. */
+html, body.room-body { min-height: 100%; }
+body.room-body { min-height: 100dvh; }
+.room {
+  height: 100vh;
+  height: 100dvh;
+  min-height: 0;
+  overflow: hidden;
+}
+.room-main {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 0;
+  padding-bottom: 0;
+  overflow: hidden;
+}
+.room-main > #chat {
+  display: flex;
+  flex: 1 1 0%;
+  min-height: 0;
+  height: auto;
+  margin-bottom: 0;
+}
+.room-main > #chat .chat__body {
+  flex: 1 1 0%;
+  height: auto;
+  min-height: 0;
+}
+.room-main > #chat .chat__foot {
+  padding-bottom: calc(9px + env(safe-area-inset-bottom, 0px));
+}
+body.chat-focus .room-main > #chat {
+  flex: 1 1 0%;
+  height: auto;
+  min-height: 0;
+}
+@media (max-height: 540px) and (orientation: landscape) {
+  .room-main { padding-top: 6px; gap: 6px; }
+  .room-body .stage { width: min(100%, max(240px, 42vh)); }
+}
