@@ -1238,7 +1238,6 @@
     const limit = (CFG.chat && CFG.chat.historyLimit) || 200;
     while (el.chatBody.children.length > limit) el.chatBody.removeChild(el.chatBody.firstChild);
 
-    sizeChatWindow();
     if (!opts.silent && followLatest) scrollChat(true);
     updateChatCount();
     return row;
@@ -1301,7 +1300,6 @@
         group.appendChild(button);
       });
     }
-    sizeChatWindow();
     if (followLatest) scrollChat(true);
   }
 
@@ -1380,7 +1378,6 @@
     const ed = row.querySelector('.msg__edited');
     if (ed) ed.remove();
     if (row.dataset) row.dataset.text = '';
-    sizeChatWindow();
   }
 
   function applyEditToRow(row, next) {
@@ -1403,24 +1400,8 @@
     addChatMessage({ text, kind: 'system', ts: Date.now(), name: 'النظام' }, { system: true });
   }
 
-  // Show 8 recent rows with the video, or 12 when it is hidden; keep older rows scrollable.
-  function sizeChatWindow() {
-    const body = el.chatBody;
-    const rows = Array.from(body.children).filter(row => row.classList.contains('msg'));
-    const visibleRows = session.focusMode ? 12 : 8;
-    const recent = rows.slice(-visibleRows);
-    if (!recent.length || !window.getComputedStyle) return;
-    const style = window.getComputedStyle(body);
-    const gap = parseFloat(style.rowGap) || 0;
-    const height = recent.reduce((sum, row) => sum + row.getBoundingClientRect().height, 0)
-      + gap * Math.max(0, recent.length - 1)
-      + (parseFloat(style.paddingTop) || 0) + (parseFloat(style.paddingBottom) || 0);
-    body.style.height = Math.ceil(height) + 'px';
-  }
-  window.addEventListener('resize', () => { sizeChatWindow(); });
-
+  // The four-row window is sized in CSS, not by message length; older rows stay scrollable.
   function scrollChat(force) {
-    sizeChatWindow();
     const b = el.chatBody;
     const near = b.scrollHeight - b.scrollTop - b.clientHeight < 180;
     if (near || force) b.scrollTop = b.scrollHeight;
@@ -1807,7 +1788,7 @@
       el.messagesBtn.setAttribute('title', label + ' (D)');
       el.messagesIcon.innerHTML = IC.html(session.focusMode ? 'chatUp' : 'chatDown', 19);
     }
-    /* Recalculate the 8/12-row window immediately when the video is shown/hidden. */
+    /* Keep the latest message in view when switching between video and chat focus. */
     scrollChat(true);
     if (session.focusMode) {
       session.unread = 0;
@@ -2187,7 +2168,6 @@
       el.chatBody.innerHTML = '';
       el.chatEmpty.style.display = '';
       el.chatBody.appendChild(el.chatEmpty);
-      el.chatBody.style.height = '';
       clearComposer();
       updateChatCount();
     });
