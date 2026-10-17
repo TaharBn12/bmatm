@@ -159,20 +159,53 @@ async function addQueue(page, url, title) {
   await page.click('#applyUrlBtn');
   await waitFor(page, title => WTRoom.session.queue.some(item => item.title === title), title);
 }
-async function assertChatWindow(page, visibleRows, total, overflow) {
-  const metrics = await page.evaluate(limit => {
+async function chatMetrics(page) {
+  return page.evaluate(() => {
     const body = document.getElementById('chatBody');
-    const rows = Array.from(body.querySelectorAll('.msg'));
-    const recent = rows.slice(-limit);
+    const chat = document.getElementById('chat').getBoundingClientRect();
+    const stage = document.getElementById('stage').getBoundingClientRect();
+    const bounds = body.getBoundingClientRect();
     const style = getComputedStyle(body);
-    const expected = Math.ceil(recent.reduce((sum, row) => sum + row.getBoundingClientRect().height, 0)
-      + (parseFloat(style.rowGap) || 0) * Math.max(0, recent.length - 1)
-      + (parseFloat(style.paddingTop) || 0) + (parseFloat(style.paddingBottom) || 0));
-    return { total: rows.length, height: body.clientHeight, expected, overflow: body.scrollHeight > body.clientHeight + 1 };
-  }, visibleRows);
+    const rows = Array.from(body.querySelectorAll('.msg'));
+    return {
+      total: rows.length, height: body.clientHeight, chatTop: chat.top, chatHeight: chat.height,
+      stageBottom: stage.bottom, documentHeight: document.documentElement.scrollHeight,
+      viewportHeight: window.innerHeight, gap: parseFloat(style.rowGap) || 0, rowHeight: rows.length ? parseFloat(getComputedStyle(rows.at(-1)).minHeight) : 58,
+      padding: [style.paddingTop, style.paddingRight, style.paddingBottom, style.paddingLeft],
+      overflow: body.scrollHeight > body.clientHeight + 1,
+      visible: rows.filter(row => {
+        const rect = row.getBoundingClientRect();
+        return rect.bottom > bounds.top + 1 && rect.top < bounds.bottom - 1;
+      }).length
+    };
+  });
+}
+async function assertChatWindow(page, videoVisible, total, overflow, exactlyFour = false) {
+  if (overflow) {
+    await page.evaluate(() => {
+      const body = document.getElementById('chatBody');
+      body.scrollTo({ top: body.scrollHeight, behavior: 'instant' });
+    });
+    await waitFor(page, () => {
+      const body = document.getElementById('chatBody');
+      return body.scrollHeight - body.scrollTop - body.clientHeight <= 1;
+    });
+  }
+  const metrics = await chatMetrics(page);
   assert.equal(metrics.total, total, 'older messages remain in the DOM');
-  assert.ok(Math.abs(metrics.height - metrics.expected) <= 1, `${visibleRows}-row chat window: ${JSON.stringify(metrics)}`);
-  assert.equal(metrics.overflow, overflow, `scrollbar threshold for ${visibleRows} visible rows`);
+  assert.deepEqual(metrics.padding, ['0px', '0px', '0px', '0px'], 'no padding around room messages');
+  assert.equal(metrics.overflow, overflow, `chat scroll threshold: ${JSON.stringify(metrics)}`);
+  if (videoVisible) {
+    assert.equal(metrics.height, 4 * metrics.rowHeight + 3 * metrics.gap, 'four short-message slots');
+    assert.ok(metrics.chatTop >= metrics.stageBottom - 1, 'chat stays under the player');
+    assert.ok(metrics.visible <= 4, 'never show a fifth message with the player');
+    if (exactlyFour) assert.equal(metrics.visible, 4, 'four short messages are visible');
+  } else {
+    assert.ok(metrics.height > 4 * metrics.rowHeight + 3 * metrics.gap, 'chat focus has more room');
+    assert.ok(metrics.chatTop + metrics.chatHeight <= metrics.viewportHeight + 1,
+      'focused chat fits the viewport');
+  }
+  return metrics;
 }
 
 try {
@@ -318,23 +351,29 @@ try {
     await page.click('#clearChatBtn');
     assert.equal(await page.locator('#chatBody .msg').count(), 0);
 
-    /* Twelve rows fit without internal scrolling only when the video is hidden. */
+    /* Four short rows fit with the video; new/long messages never move the chat or player. */
+    const emptyChat = await chatMetrics(page);
     await page.evaluate(() => {
       for (let i = 1; i <= 12; i++) WTRoom.chat.addChatMessage({
         id: 'window-' + i, client: 'window-test', name: 'فاحص', text: 'رسالة تجريبية ' + i, ts: Date.now(), kind: 'chat'
       }, { silent: true });
     });
-    await assertChatWindow(page, 8, 12, true);
+    await page.waitForTimeout(320); // let the last message animation finish before measuring rows
+    const fullChat = await assertChatWindow(page, true, 12, true, true);
+    assert.ok(Math.abs(fullChat.chatTop - emptyChat.chatTop) <= 1, 'chat remains anchored beneath the player');
+    assert.ok(Math.abs(fullChat.chatHeight - emptyChat.chatHeight) <= 1, 'new rows do not grow the chat panel');
+    assert.equal(fullChat.documentHeight, emptyChat.documentHeight, 'new rows do not lengthen the page');
     await page.click('#messagesBtn');
     assert.equal(await page.locator('#stage').isVisible(), false);
-    await assertChatWindow(page, 12, 12, false);
+    const focused = await assertChatWindow(page, false, 12, true);
     await page.locator('#chatBody .msg').last().locator('.msg__react-add').click();
     await page.locator('.msg-menu__reaction[data-emoji="🔥"]').click();
-    await assertChatWindow(page, 12, 12, false);
+    const reacted = await assertChatWindow(page, false, 12, true);
+    assert.ok(Math.abs(reacted.chatHeight - focused.chatHeight) <= 1, 'reactions do not resize chat focus');
     await page.evaluate(() => WTRoom.chat.addChatMessage({
       id: 'window-13', client: 'window-test', name: 'فاحص', text: 'الرسالة الثالثة عشرة', ts: Date.now(), kind: 'chat'
     }));
-    await assertChatWindow(page, 12, 13, true);
+    await assertChatWindow(page, false, 13, true);
     await page.evaluate(() => document.getElementById('chatBody').scrollTo({ top: 0, behavior: 'instant' }));
     await waitFor(page, () => document.getElementById('chatBody').scrollTop === 0);
     assert.ok(await page.evaluate(() => {
@@ -343,7 +382,29 @@ try {
       return first.top >= body.top && first.bottom <= body.bottom;
     }), 'scrolling reaches older messages');
     await page.click('#messagesBtn');
-    await assertChatWindow(page, 8, 13, true);
+    await assertChatWindow(page, true, 13, true);
+    await page.click('#clearChatBtn');
+    assert.equal(await page.locator('#chatBody .msg').count(), 0);
+
+    const beforeLong = await chatMetrics(page);
+    await page.evaluate(() => {
+      for (let i = 1; i <= 4; i++) WTRoom.chat.addChatMessage({
+        id: 'short-' + i, client: 'window-test', name: 'فاحص', text: 'قصيرة ' + i, ts: Date.now(), kind: 'chat'
+      }, { silent: true });
+      WTRoom.chat.addChatMessage({
+        id: 'long-message', client: 'window-test', name: 'فاحص', text: 'رسالة طويلة '.repeat(45), ts: Date.now(), kind: 'chat'
+      });
+    });
+    await page.waitForTimeout(320);
+    const afterLong = await assertChatWindow(page, true, 5, true);
+    assert.ok(Math.abs(afterLong.chatTop - beforeLong.chatTop) <= 1 &&
+      Math.abs(afterLong.chatHeight - beforeLong.chatHeight) <= 1 &&
+      afterLong.documentHeight === beforeLong.documentHeight,
+    'long text scrolls inside a stationary panel without covering the video');
+    await page.locator('#chatBody .msg').last().locator('.msg__react-add').click();
+    await page.locator('.msg-menu__reaction[data-emoji="🔥"]').click();
+    const afterLongReaction = await chatMetrics(page);
+    assert.ok(Math.abs(afterLongReaction.chatHeight - beforeLong.chatHeight) <= 1, 'long message reactions stay inside the panel');
     await page.click('#clearChatBtn');
     assert.equal(await page.locator('#chatBody .msg').count(), 0);
 

@@ -218,25 +218,23 @@ const run = async () => {
   const last = chatBody.children[chatBody.children.length - 1];
   t('الرد بالسحب يرسل اقتباساً كاملاً', !!last.querySelector('.msg__quote') && last.dataset.text === 'رد سريع');
 
-  /* ---------- 11) نافذة 8 رسائل مع الفيديو، و12 عند إخفائه ---------- */
+  /* ---------- 11) ارتفاع النافذة ثابت في CSS؛ الرسائل الأقدم تُمرَّر داخلياً ---------- */
   byId.get('clearChatBtn').dispatch('click', {});
-  sandbox.getComputedStyle = () => ({ rowGap: '8px', paddingTop: '10px', paddingBottom: '12px' });
   for (let i = 1; i <= 13; i++) {
     CH.addChatMessage({ id: 'window-' + i, client: 'window-test', name: 'فاحص', text: 'رسالة ' + i, ts: Date.now(), kind: 'chat' });
   }
-  const heightFor = count => (count * 22 + (count - 1) * 8 + 22) + 'px';
-  t('مع ظهور الفيديو تُحسب نافذة آخر 8 رسائل', chatBody.style.height === heightFor(8), chatBody.style.height);
+  t('ظهور الفيديو لا يغيّر ارتفاع النافذة حسب عدد الرسائل', chatBody.style.height === '', chatBody.style.height);
+  CH.addChatMessage({ id: 'window-long', client: 'window-test', name: 'فاحص', text: 'رسالة طويلة '.repeat(45), ts: Date.now(), kind: 'chat' });
+  t('الرسالة الطويلة لا ترفع ارتفاع صندوق الرسائل', chatBody.style.height === '');
   byId.get('messagesBtn').dispatch('click', {});
-  t('إخفاء الفيديو يوسّع النافذة فوراً إلى 12 رسالة', sandbox.WTRoom.session.focusMode && chatBody.style.height === heightFor(12), chatBody.style.height);
-  CH.addChatMessage({ id: 'window-14', client: 'window-test', name: 'فاحص', text: 'رسالة إضافية', ts: Date.now(), kind: 'chat' });
-  t('الرسالة الجديدة لا توسّع النافذة بعد 12', chatBody.style.height === heightFor(12));
+  t('إخفاء الفيديو يترك ارتفاع النافذة للتصميم المتجاوب', sandbox.WTRoom.session.focusMode && chatBody.style.height === '');
   t('الرسائل الأقدم تبقى موجودة للتمرير', chatBody.children.filter(row => row.classList.contains('msg')).length === 14);
   byId.get('messagesBtn').dispatch('click', {});
-  t('إظهار الفيديو يعيد نافذة 8 رسائل فوراً', !sandbox.WTRoom.session.focusMode && chatBody.style.height === heightFor(8));
+  t('إظهار الفيديو يعيد وضع أربع رسائل دون قياس طول النص', !sandbox.WTRoom.session.focusMode && chatBody.style.height === '');
   documentStub.dispatch('keydown', { key: 'd', target: { tagName: 'BODY', isContentEditable: false } });
-  t('اختصار إخفاء الفيديو يستخدم نافذة 12 أيضاً', sandbox.WTRoom.session.focusMode && chatBody.style.height === heightFor(12));
+  t('اختصار إخفاء الفيديو لا يضيف ارتفاعاً مباشراً', sandbox.WTRoom.session.focusMode && chatBody.style.height === '');
   byId.get('clearChatBtn').dispatch('click', {});
-  t('مسح المحادثة يعيد ارتفاعها التلقائي', chatBody.style.height === '');
+  t('مسح المحادثة لا يحتاج إعادة ضبط ارتفاع النافذة', chatBody.style.height === '');
 
   /* ---------- 12) الإيموجي المرسل: فقاعة عادية، حتى في التاريخ القديم ---------- */
   byId.get('messagesBtn').dispatch('click', {});

@@ -1,4 +1,4 @@
-/* Current UI contract: click-to-play, fullscreen, a progress-only bar, 8/12-message window. */
+/* Current UI contract: click-to-play, fullscreen, a progress-only bar, fixed four-message window. */
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 const read = file => readFile(new URL('../../' + file, import.meta.url), 'utf8');
@@ -43,7 +43,10 @@ assert.match(css, /\[hidden\] \{ display: none !important; \}/, 'hidden overlays
 assert.match(css, /\.room-body \.ctrlbar\.vcontrols \{[^}]*position: static/);
 assert.match(css, /\.room-body \.stage \{[^}]*flex-direction: column/);
 assert.match(css, /width: min\(100%, max\(320px, 54vh\)\)/);
-assert.match(js, /const visibleRows = session\.focusMode \? 12 : 8/, 'show twelve messages when the video is hidden, eight otherwise');
-assert.match(js, /rows\.slice\(-visibleRows\)/, 'size the window from recent rows without removing history');
-assert.match(css, /\.room-main > #chat \.chat__body \{[^}]*overflow-y: auto/);
+assert.match(css, /\.room-main > #chat \.chat__body \{[^}]*height: 256px;[^}]*padding: 0;[^}]*overflow-y: auto/s,
+  'four short messages fit in a fixed-height, padding-free scroll area');
+assert.match(css, /\.room-main > #chat \.chat__body > \.msg \{[^}]*min-height: 58px/);
+assert.match(css, /body\.chat-focus \.room-main > #chat \.chat__body \{[^}]*flex: 1 1 auto/,
+  'chat focus can use the available screen height');
+assert.doesNotMatch(js, /sizeChatWindow|chatBody\.style\.height/, 'message content must not resize the chat box');
 console.log('Player control regression checks passed');

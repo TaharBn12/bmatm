@@ -2211,7 +2211,6 @@ body.drawer-open { overscroll-behavior: none; }
 
 /* الرسائل هي «المكان الثاني» في الصفحة: ارتفاع أدنى مريح للقراءة والكتابة */
 .room-main > #chat { min-height: 300px; }
-.room-main > #chat .chat__body { padding-bottom: 12px; }
 
 /* الهاتف: يشتدّ القرب بين الفيديو والمحادثة (بلا فراغات ضائعة) */
 @media (max-width: 640px) {
@@ -2317,7 +2316,7 @@ body.drawer-open { overscroll-behavior: none; }
   .msg-menu__btn { min-height: 42px; }
 }
 
-/* Minimal video controls and an 8-row scroll window (12 when the video is hidden). */
+/* Minimal video controls and a fixed, internally scrollable message window. */
 .video-fullscreen {
   position: absolute; bottom: 12px; inset-inline-end: 12px; z-index: 15;
   display: grid; place-items: center; width: 42px; height: 42px;
@@ -2332,9 +2331,24 @@ body.drawer-open { overscroll-behavior: none; }
 #stage:fullscreen .player { flex: 1; width: 100%; height: auto; aspect-ratio: auto; }
 #ctrlbar { gap: 0; }
 .room-main > #chat { flex: 0 0 auto; height: auto; min-height: 0; }
-.room-main > #chat .chat__body { flex: 0 0 auto; min-height: 90px; overflow-y: auto; overflow-anchor: auto; }
-.chat__body > .msg { flex-shrink: 0; }
-body.chat-focus .room-main > #chat { flex: 0 0 auto; }
+/* Four compact rows (4 × 58px + 3 × 8px); long messages scroll instead of moving the box/player. */
+.room-main > #chat .chat__body {
+  flex: 0 0 auto;
+  height: 256px;
+  min-height: 0;
+  padding: 0;
+  gap: 8px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  overflow-anchor: auto;
+}
+.room-main > #chat .chat__body > .msg { flex-shrink: 0; min-height: 58px; }
+/* Without the video, fill the available screen; still never size the box from message text. */
+body.chat-focus .room-main > #chat {
+  flex: 0 0 auto;
+  height: clamp(260px, calc(100dvh - 90px - env(safe-area-inset-bottom, 0px)), 1000px);
+}
+body.chat-focus .room-main > #chat .chat__body { flex: 1 1 auto; height: auto; min-height: 0; }
 
 /* Own account portrait: only the validated Supabase avatar path is used. */
 #meAvatar { position:relative; overflow:hidden; }

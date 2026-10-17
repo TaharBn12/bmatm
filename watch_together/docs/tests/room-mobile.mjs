@@ -482,11 +482,20 @@ for (const v of VIEWPORTS) {
     t(`[${view.name}] بطاقة المشغّل لا تتجاوز 100%`, /100%/.test(stageW), stageW);
   }
   const chatBodyEl = byIdProbe('chatBody');
-  t('نافذة الرسائل تحتفظ بارتفاع قراءة أدنى',
-    evalLength(val(chatBodyEl, 'min-height', ctx), ctx) >= 90, val(chatBodyEl, 'min-height', ctx));
-  t('الرسائل القديمة تبقى قابلة للتمرير داخل نافذة المحادثة',
+  t('نافذة الرسائل ثابتة لأربع رسائل قصيرة حتى قبل وصول الرسائل',
+    val(chatBodyEl, 'height', ctx) === '256px' && val(chatBodyEl, 'min-height', ctx) === '0',
+    `${val(chatBodyEl, 'height', ctx)} / ${val(chatBodyEl, 'min-height', ctx)}`);
+  t('حشو قائمة الرسائل في الغرفة يساوي صفراً',
+    val(chatBodyEl, 'padding', ctx) === '0', val(chatBodyEl, 'padding', ctx));
+  const messageRow = { tag: 'div', id: '', classes: ['msg'], attrs: {}, children: [], parent: chatBodyEl };
+  const rowHeight = evalLength(val(messageRow, 'min-height', ctx), ctx);
+  const rowGap = evalLength(val(chatBodyEl, 'gap', ctx), ctx);
+  t('أربع رسائل قصيرة بالضبط تملأ النافذة (لا خامسة)',
+    rowHeight > 0 && rowGap >= 0 && 4 * rowHeight + 3 * rowGap === evalLength(val(chatBodyEl, 'height', ctx), ctx),
+    `${rowHeight}px × 4 + ${rowGap}px × 3`);
+  t('الرسائل القديمة والطويلة تبقى قابلة للتمرير داخل نافذة المحادثة',
     val(chatBodyEl, 'overflow-y', ctx) === 'auto', val(chatBodyEl, 'overflow-y', ctx));
-  t('بطاقة الرسائل تتبع ارتفاع نافذة 8 رسائل (12 عند إخفاء الفيديو)',
+  t('بطاقة الرسائل لا تتمدد مع عدد الرسائل',
     val(chatEl, 'flex', ctx) === '0 0 auto', val(chatEl, 'flex', ctx));
 
   /* القرب الفعلي: المسافة بين المشغّل والرسائل على الهاتف */
