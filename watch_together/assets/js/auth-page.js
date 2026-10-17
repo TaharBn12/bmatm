@@ -24,15 +24,21 @@
 
   /* إذا وصلنا من غرفة معيّنة → نعود إليها بعد الدخول */
   function destination() {
-    if (roomParam) return 'room.html?id=' + encodeURIComponent(roomParam);
-    if (nextUrl && /^(index|room|auth)\.html/.test(nextUrl)) return nextUrl;
+    if (roomParam && /^[a-z0-9]{4,12}$/i.test(roomParam)) return 'room.html?id=' + encodeURIComponent(roomParam);
+    try {
+      const root = new URL('.', location.href), next = new URL(nextUrl, root);
+      const file = next.pathname.slice(root.pathname.length);
+      if (next.origin === root.origin && next.pathname === root.pathname + file &&
+        ['index.html', 'room.html', 'profile.html', 'friends.html', 'messages.html'].includes(file)) return file + next.search + next.hash;
+    } catch (_) { /* never follow an external or malformed return URL */ }
     return 'index.html';
   }
 
   /* ---------- إن كان مسجلاً مسبقاً → حوّله مباشرة ---------- */
-  (function autoForward() {
-    const u = Auth.currentUser();
-    if (u && u.id && !u.guest) {
+  (async function autoForward() {
+    await Auth.validSession();
+    const u = Auth.currentUser(), session = Auth.getSession();
+    if (!params.has('reauth') && u && u.id && !u.guest && session.access_token && (!session.expires_at || session.expires_at > Date.now())) {
       if (el.guestName) el.guestName.value = u.name || '';
       U.toast('أنت مسجّل الدخول بالفعل — جارٍ التحويل…', 'success', 1500);
       setTimeout(() => location.replace(destination()), 700);

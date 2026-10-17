@@ -1,0 +1,19 @@
+{
+  "name": "watch-together-tests",
+  "version": "3.0.0",
+  "private": true,
+  "description": "Optional development tests for the static WatchTogether site",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "test": "node docs/tests/run.mjs",
+    "test:browser": "node docs/tests/room-browser.mjs",
+    "test:social:db": "node docs/tests/social/database.mjs",
+    "test:social:browser": "node docs/tests/social/browser.mjs"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "0.5.10",
+    "playwright": "1.64.1"
+  }
+}

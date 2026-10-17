@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
+  <meta name="theme-color" content="#101212">
+  <meta name="robots" content="noindex,nofollow">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <title>الرسائل الخاصة — WatchTogether</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='30' fill='%23b9f2cf'/%3E%3Cpath d='M40 30l30 20-30 20z' fill='%23172a1d'/%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="assets/css/app.css?v=3.0.0">
+  <link rel="stylesheet" href="assets/css/social.css?v=3.0.0">
+</head>
+<body class="social-page" data-page="messages" data-accent="mint">
+  <a class="s-skip" href="#socialMain">تخطّ إلى المحتوى</a>
+  <div class="s-shell">
+    <aside class="s-sidebar" id="socialNav" aria-label="مساحتك"></aside>
+    <div class="s-workspace">
+      <header class="s-header" id="socialHeader"></header>
+      <main id="socialMain" tabindex="-1">
+        <div id="socialState" aria-live="polite"><div class="s-state"><span class="s-loader" aria-hidden="true"></span><p>نجهّز مساحتك…</p></div></div>
+        <div id="socialContent" hidden>
+          <div class="s-page-heading messages-heading"><div><span class="s-eyebrow">A CONVERSATION, A CONNECTION</span><h1>بينك وبين رفيقك.</h1></div><button class="s-btn s-btn--soft" id="newChat" type="button"><span class="ic" data-icon="pencil" data-size="16"></span> محادثة جديدة</button></div>
+          <div class="s-error" id="messagesError" hidden></div>
+          <div class="messages-frame">
+            <aside class="thread-sidebar" aria-label="محادثاتك"><div class="thread-sidebar-head"><label class="thread-search"><span class="ic" data-icon="search" data-size="16"></span><input type="search" id="threadQuery" aria-label="فلترة المحادثات المحمّلة" placeholder="ابحث في محادثاتك…"></label></div><div class="thread-list" id="threadList"></div><button class="s-btn s-btn--sm thread-more" id="threadsMore" type="button" hidden>محادثات أقدم</button></aside>
+            <section class="chat-pane" aria-label="المحادثة الخاصة">
+              <div class="chat-idle" id="chatIdle"><div class="s-empty"><span class="s-empty-icon"><span class="ic" data-icon="chat" data-size="34"></span></span><h2>حكاية صغيرة، تبدأ برسالة.</h2><p>اختر محادثة، أو ابدأ حديثًا مع صديق. أرسل دعوة لغرفة، وخطّطا لسهرتكما القادمة.</p><button class="s-btn s-btn--soft" type="button" id="idleNewChat">اختر صديقًا</button><span class="s-hint">محادثات للأصدقاء فقط، منفصلة عن دردشة الغرف.</span></div></div>
+              <div class="chat-active" id="chatActive" hidden>
+                <header class="chat-head"><button class="s-icon-btn chat-back" type="button" id="chatBack" aria-label="العودة إلى المحادثات"><span class="ic" data-icon="arrowRight" data-size="20"></span></button><div id="chatPeer" class="chat-peer"></div><button class="s-icon-btn" id="chatProfile" type="button" title="ملف العضو" aria-label="فتح ملف العضو"><span class="ic" data-icon="user" data-size="19"></span></button><button class="s-icon-btn" id="chatBlock" type="button" title="حظر العضو" aria-label="حظر العضو"><span class="ic" data-icon="block" data-size="18"></span></button></header>
+                <div class="chat-status" id="chatConnection" role="status" hidden></div>
+                <div class="chat-scroll" id="chatScroll" tabindex="0" aria-label="سجل المحادثة"><p class="chat-history-note"><span class="ic" data-icon="shield" data-size="12"></span> لا يقرأ هذه المحادثة عبر التطبيق إلا طرفاها. الرسائل مخزّنة على الخادم، وليست مشفّرة من طرف إلى طرف.</p><div class="chat-load-more"><button class="s-text-link" id="messagesMore" type="button" hidden>رسائل أقدم</button></div><div id="chatMessages" role="list" aria-label="الرسائل"></div></div>
+                <div class="chat-typing" id="chatTyping" role="status" hidden>يكتب الآن</div>
+                <button class="s-btn s-btn--soft s-btn--sm chat-new" id="chatNewMessages" type="button" hidden><span class="ic" data-icon="chevronDown" data-size="16"></span> رسائل جديدة</button>
+                <div class="chat-restriction" id="chatRestriction" hidden>المحادثة للقراءة فقط؛ تحتاج صداقة مقبولة دون حظر لإرسال رسائل جديدة.</div>
+                <div class="s-error chat-error" id="chatError" hidden></div>
+                <div class="chat-compose-area" id="chatComposeArea"><div class="chat-reply-bar" id="chatReplyBar" hidden><div><strong id="chatReplyTitle">رد على رسالة</strong><p id="chatReplyText"></p></div><button class="s-icon-btn" type="button" id="cancelReply" aria-label="إلغاء الرد أو التعديل"><span class="ic" data-icon="x" data-size="15"></span></button></div><div class="s-emoji-picker" id="chatEmojis" aria-label="رموز تعبيرية" hidden></div><form class="chat-compose" id="chatForm"><button class="s-icon-btn" type="button" id="chatEmojiToggle" aria-label="رموز تعبيرية" aria-expanded="false" aria-controls="chatEmojis"><span class="ic" data-icon="smile" data-size="20"></span></button><button class="s-icon-btn" type="button" id="chatInvite" aria-label="دعوة إلى غرفة" title="دعوة إلى غرفة"><span class="ic" data-icon="film" data-size="20"></span></button><textarea id="chatInput" maxlength="2000" rows="1" aria-label="نص رسالتك الخاصة" placeholder="شيء تودّ مشاركته؟"></textarea><button class="s-icon-btn chat-send" id="chatSend" type="submit" aria-label="إرسال الرسالة"><span class="ic" data-icon="send" data-size="19"></span></button></form><div class="chat-compose-footer"><span id="chatKeyboardHint">Enter للإرسال · Shift + Enter لسطر جديد</span><span id="chatCounter">0 / 2000</span></div></div>
+              </div>
+            </section>
+          </div>
+          <div class="sr-only" id="chatAnnouncement" aria-live="polite"></div>
+</div>
+        <noscript><div class="s-empty"><h1>الرسائل الخاصة</h1><p>فعّل JavaScript لاستخدام هذه الصفحة. لا تُحمّل بيانات شخصية دون تسجيل الدخول.</p><a class="s-btn" href="index.html">الغرف</a></div></noscript>
+      </main>
+    </div>
+  </div>
+  <dialog class="s-dialog" id="socialConfirm" aria-labelledby="confirmTitle" aria-describedby="confirmBody"><h2 id="confirmTitle"></h2><p id="confirmBody"></p><div class="s-dialog-actions"><button class="s-btn" id="confirmNo" type="button">تراجع</button><button class="s-btn s-btn--primary" id="confirmYes" type="button">تأكيد</button></div></dialog>
+  <dialog class="s-dialog" id="newChatDialog" aria-labelledby="newChatTitle"><div class="s-dialog-head"><h2 id="newChatTitle">مع مَن تبدأ الحكاية؟</h2><button class="s-icon-btn" id="closeNewChat" aria-label="إغلاق" type="button"><span class="ic" data-icon="x" data-size="20"></span></button></div><p>أصدقاؤك الذين قبلت صداقتهم فقط.</p><div id="newChatFriends" class="s-newchat-friends"></div><button class="s-btn s-btn--full" id="newChatMore" type="button" hidden style="margin-top:12px">المزيد من الأصدقاء</button><div class="s-error" id="newChatError" hidden></div><a class="s-text-link" href="friends.html" style="margin-top:18px">ابحث عن رفاق جدد <span class="ic" data-icon="arrowLeft" data-size="16"></span></a></dialog><dialog class="s-dialog" id="inviteDialog" aria-labelledby="inviteTitle"><div class="s-dialog-head"><h2 id="inviteTitle">من حديثٍ إلى سهرة.</h2><button class="s-icon-btn" id="closeInvite" type="button" aria-label="إغلاق"><span class="ic" data-icon="x" data-size="20"></span></button></div><p>اختر غرفة موجودة على Supabase. الدعوة لا تتضمن أي مفتاح إدارة، وقد تطلب الغرفة كلمة مرور عند الدخول.</p><div class="s-room-options" id="inviteRooms"></div><div class="s-error" id="inviteError" hidden></div><a class="s-text-link" href="index.html" style="margin-top:15px">إضافة غرفة من الصفحة الرئيسية</a></dialog>
+  <script src="assets/js/config.js?v=3.0.0"></script>
+  <script src="assets/js/util.js?v=3.0.0"></script>
+  <script src="assets/js/icons.js?v=3.0.0"></script>
+  <script src="assets/js/auth.js?v=3.0.0"></script>
+  <script src="assets/js/social.js?v=3.0.0"></script>
+  <script src="assets/js/social-ui.js?v=3.0.0"></script>
+  <script src="assets/js/messages.js?v=3.0.0"></script>
+</body>
+</html>

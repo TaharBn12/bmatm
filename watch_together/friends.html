@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
+  <meta name="theme-color" content="#101212">
+  <meta name="robots" content="noindex,nofollow">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <title>البحث عن الأصدقاء — WatchTogether</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='30' fill='%23b9f2cf'/%3E%3Cpath d='M40 30l30 20-30 20z' fill='%23172a1d'/%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="assets/css/app.css?v=3.0.0">
+  <link rel="stylesheet" href="assets/css/social.css?v=3.0.0">
+</head>
+<body class="social-page" data-page="friends" data-accent="mint">
+  <a class="s-skip" href="#socialMain">تخطّ إلى المحتوى</a>
+  <div class="s-shell">
+    <aside class="s-sidebar" id="socialNav" aria-label="مساحتك"></aside>
+    <div class="s-workspace">
+      <header class="s-header" id="socialHeader"></header>
+      <main id="socialMain" tabindex="-1">
+        <div id="socialState" aria-live="polite"><div class="s-state"><span class="s-loader" aria-hidden="true"></span><p>نجهّز مساحتك…</p></div></div>
+        <div id="socialContent" hidden>
+          <div class="s-page-heading"><div><span class="s-eyebrow">FIND YOUR WATCHMATES</span><h1>ذائقة تجمعكم.</h1><p>ابحث عن اسم، أو اتبع اهتمامًا مشتركًا. الصداقات تبدأ هنا.</p></div><a class="s-icon-btn" href="profile.html?edit=privacy" title="خصوصية البحث" aria-label="إعدادات خصوصية البحث"><span class="ic" data-icon="sliders" data-size="22"></span></a></div>
+          <form class="friends-search" id="friendSearchForm" role="search"><span class="ic" data-icon="search" data-size="21"></span><input id="friendQuery" type="search" maxlength="60" autocomplete="off" placeholder="اسم أو @معرّف…" aria-label="ابحث عن صديق بالاسم أو المعرّف"><button class="s-btn s-btn--primary" type="submit" id="friendSearchButton">بحث</button></form>
+          <div class="friends-filters" id="friendGenreFilters" role="group" aria-label="فلترة حسب ذائقة المشاهدة"></div>
+          <div class="s-tabs friends-tabs" id="friendTabs" role="tablist" aria-label="أقسام الأصدقاء"><button class="s-tab is-active" id="friend-tab-discover" role="tab" type="button" aria-selected="true" aria-controls="friendResults" data-friend-tab="discover">اكتشف</button><button class="s-tab" id="friend-tab-friends" role="tab" type="button" aria-selected="false" tabindex="-1" aria-controls="friendResults" data-friend-tab="friends">أصدقائي <span data-count="friends"></span></button><button class="s-tab" id="friend-tab-incoming" role="tab" type="button" aria-selected="false" tabindex="-1" aria-controls="friendResults" data-friend-tab="incoming">الواردة <span data-count="incoming"></span></button><button class="s-tab" id="friend-tab-outgoing" role="tab" type="button" aria-selected="false" tabindex="-1" aria-controls="friendResults" data-friend-tab="outgoing">المرسلة <span data-count="outgoing"></span></button><button class="s-tab" id="friend-tab-blocked" role="tab" type="button" aria-selected="false" tabindex="-1" aria-controls="friendResults" data-friend-tab="blocked"><span class="ic" data-icon="block" data-size="15"></span> المحظورون</button></div>
+          <div class="friends-results-heading"><h2 id="friendResultsTitle">رفاق محتملون</h2><p id="friendResultsHint">الاهتمامات المشتركة أولاً، بلا نسب توافق وهمية.</p></div>
+          <div class="s-error" id="friendsError" hidden></div>
+          <div id="friendResults" role="tabpanel" aria-labelledby="friend-tab-discover" aria-busy="true"><div class="friend-grid" id="friendGrid"></div><div id="friendsEmpty" hidden></div><div class="friends-load"><button class="s-btn" id="friendsMore" type="button" hidden>عرض المزيد</button></div></div>
+          <div class="s-privacy-note"><span class="ic" data-icon="shield" data-size="17"></span><p>يظهر هنا من اختار تفعيل البحث فقط. المراسلة بعد قبول الصداقة، والحظر يمنع الطلبات والرسائل. <a href="profile.html?edit=privacy">تحكّم في ظهور ملفك</a>.</p></div>
+</div>
+        <noscript><div class="s-empty"><h1>البحث عن الأصدقاء</h1><p>فعّل JavaScript لاستخدام هذه الصفحة. لا تُحمّل بيانات شخصية دون تسجيل الدخول.</p><a class="s-btn" href="index.html">الغرف</a></div></noscript>
+      </main>
+    </div>
+  </div>
+  <dialog class="s-dialog" id="socialConfirm" aria-labelledby="confirmTitle" aria-describedby="confirmBody"><h2 id="confirmTitle"></h2><p id="confirmBody"></p><div class="s-dialog-actions"><button class="s-btn" id="confirmNo" type="button">تراجع</button><button class="s-btn s-btn--primary" id="confirmYes" type="button">تأكيد</button></div></dialog>
+
+  <script src="assets/js/config.js?v=3.0.0"></script>
+  <script src="assets/js/util.js?v=3.0.0"></script>
+  <script src="assets/js/icons.js?v=3.0.0"></script>
+  <script src="assets/js/auth.js?v=3.0.0"></script>
+  <script src="assets/js/social.js?v=3.0.0"></script>
+  <script src="assets/js/social-ui.js?v=3.0.0"></script>
+  <script src="assets/js/friends.js?v=3.0.0"></script>
+</body>
+</html>

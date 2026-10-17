@@ -136,11 +136,12 @@ const run = async () => {
     sandbox.WTRoom.session.unread === 0 && byId.get('messagesCount').hidden === true);
   const beforeReact = chatBody.children.length;
   const reactBtn = reactRow.children.find(c => c.dataset.react);
-  t('تفاعلات الدردشة موجودة', !!reactBtn);
+  t('أزرار إرسال الإيموجي موجودة', !!reactBtn);
   if (reactBtn) {
+    await wait(400);
     reactBtn.dispatch('click', {});
     await wait(40);
-    t('تفاعل الإيموجي أُرسل كرسالة', chatBody.children.length > beforeReact && chatBody.children.some(c => String(c._className).includes('msg--react')));
+    t('الإيموجي أُرسل كرسالة عادية بمحاذاة المرسل', chatBody.children.length > beforeReact && chatBody.children.at(-1).classList.contains('msg--me') && !!chatBody.children.at(-1).querySelector('.msg__bubble') && !chatBody.children.at(-1).classList.contains('msg--react'));
   }
 
   byId.get('messagesBtn').dispatch('click', {});

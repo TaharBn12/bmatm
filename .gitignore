@@ -9,3 +9,8 @@ Thumbs.db
 .idea/
 .vscode/
 *.swp
+
+# اعتماديات الاختبارات ومخرجات المتصفح
+node_modules/
+playwright-report/
+test-results/

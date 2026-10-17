@@ -28,6 +28,8 @@
 }
 
 * { box-sizing: border-box; }
+/* قواعد display الخاصة بالأزرار والطبقات لا تتجاوز hidden. */
+[hidden] { display: none !important; }
 
 html, body { height: 100%; }
 
@@ -1175,20 +1177,32 @@ footer a:hover { color: var(--brand-2); }
   font-size: 11px; color: var(--muted-2); font-weight: 800;
 }
 
-/* رسالة تفاعل */
-.msg--react { justify-content: center; }
-.msg--react .react-bubble {
-  font-size: 22px; line-height: 1.15;
-  padding: 3px 12px 2px; border-radius: 999px;
-  background: rgba(255, 255, 255, .06);
-  border: 1px solid var(--border);
-  animation: reactPop .45s cubic-bezier(.2, .9, .3, 1.5) both;
+/* Sent emoji use the ordinary bubble; reactions belong to a specific message. */
+.msg__react-add {
+  display: inline-grid; place-items: center; flex: none;
+  width: 26px; height: 26px; margin-inline-start: auto;
+  padding: 0; border: 0; border-radius: 8px;
+  background: transparent; color: var(--muted-2); cursor: pointer;
+  align-self: center;
 }
-.msg--react .react-bubble small {
-  display: block; font-size: 9px; color: var(--muted-2);
-  font-weight: 800; text-align: center; margin-top: 1px; font-family: var(--font);
+.msg__react-add:hover, .msg__react-add[aria-expanded="true"] {
+  background: rgba(124, 92, 255, .18); color: var(--brand-2);
 }
-@keyframes reactPop { from { transform: scale(.4) rotate(-12deg); opacity: 0; } to { transform: none; opacity: 1; } }
+.msg__reactions { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 5px; }
+.msg__reaction {
+  display: inline-flex; align-items: center; justify-content: center; gap: 4px;
+  min-width: 40px; min-height: 27px; padding: 3px 8px;
+  border: 1px solid var(--border); border-radius: 999px;
+  background: rgba(255, 255, 255, .05); color: var(--text);
+  font: 600 12px/1.3 var(--font); cursor: pointer;
+}
+.msg__reaction:hover { background: rgba(124, 92, 255, .16); }
+.msg__reaction[aria-pressed="true"] {
+  background: rgba(124, 92, 255, .23); border-color: rgba(124, 92, 255, .6);
+}
+.msg__react-add:focus-visible, .msg__reaction:focus-visible, .msg-menu__reaction:focus-visible {
+  outline: 2px solid var(--brand-2); outline-offset: 2px;
+}
 
 /* ---------- وضع الرسائل (إخفاء المشغّل) ---------- */
 .focus-toggle {
@@ -1716,19 +1730,7 @@ body.drawer-open { overflow: hidden; }
 .queue-empty { display: flex; align-items: center; justify-content: center; gap: 9px; min-height: 90px; padding: 15px; border: 1px dashed var(--border); border-radius: 12px; color: var(--muted-2); font-size: 12px; text-align: center; }
 .queue-empty[hidden] { display: none !important; }
 
-/* Discovery and extraction */
-.discovery { margin-top: 32px; padding: clamp(18px, 4vw, 36px); }
-.discovery h1 { font-size: clamp(24px, 4vw, 36px); }
-.discovery p { color: var(--muted, #a9abc1); line-height: 1.9; margin: 16px 0; }
-.site-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 14px; margin: 24px 0; }
-.site-card { border: 1px solid #ffffff20; border-radius: 18px; padding: 18px 10px; text-align: center; background: #ffffff05; }
-.site-card a { display: flex; flex-direction: column; align-items: center; gap: 12px; color: inherit; text-decoration: none; }
-.site-card:hover { border-color: #7c5cff; background: #7c5cff15; }
-.site-icon { width: 48px; height: 48px; border-radius: 14px; background: #7c5cff35; display: grid; place-items: center; font-size: 24px; position: relative; overflow: hidden; }
-.site-icon img { position: absolute; width: 100%; height: 100%; object-fit: contain; background: #161626; }
-.site-form { display: grid; gap: 16px; padding: 20px 0; }
-.site-form label { display: grid; gap: 8px; }
-.discovery summary { cursor: pointer; padding: 12px; }
+/* Video extraction */
 .resolve-dialog { color: #eee; background: #141527; border: 1px solid #7c5cff80; border-radius: 22px; padding: 28px; width: min(440px, 90vw); margin: auto; text-align: center; }
 .resolve-dialog::backdrop { background: #03040ccf; backdrop-filter: blur(8px); }
 .resolve-dialog p { margin: 20px 0; line-height: 1.8; }
@@ -1879,22 +1881,6 @@ body.drawer-open { overflow: hidden; }
   .room-bar .drawer-open { padding: 6px 7px; }
 }
 
-/* عارض المواقع داخل الصفحة (تصفّح المواقع) */
-.site-viewer {
-  position: fixed; inset: 0; z-index: 200; display: flex; flex-direction: column;
-  background: #0b0f1a; padding-top: env(safe-area-inset-top, 0px);
-}
-.site-viewer[hidden] { display: none; }
-.site-viewer__bar {
-  display: flex; align-items: center; gap: 6px; padding: 8px 10px;
-  background: #1f2632; border-bottom: 1px solid #2c3544; min-height: 52px;
-}
-.site-viewer__title { flex: 1; min-width: 0; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.site-viewer__bar .btn { color: #e6ebf3; }
-.site-viewer__frame { flex: 1; width: 100%; border: 0; background: #fff; min-height: 0; }
-.site-viewer__note { margin: 0; padding: 6px 10px; font-size: 11px; color: #8a94a6; background: #151b25; text-align: center; }
-body.site-viewer-open { overflow: hidden; }
-
 /* =========================================================
    الإصدار 2.5 — إعادة تصميم الغرفة
    (ملاحظة 2.6: قواعد طبقة التحكم فوق الفيديو أُزيلت — الشريط
@@ -2038,6 +2024,8 @@ body.site-viewer-open { overflow: hidden; }
   position: absolute; inset: 0; z-index: 4;
   background: transparent; cursor: pointer;
 }
+/* iframe الخارجي يملك أزراره؛ الطبقة الشفافة كانت تبتلع كل نقراته. */
+.player.is-embed .vclicklayer { display: none; }
 
 /* =========================================================
    الإصدار 2.6 — التحكم أسفل الفيديو + الرسائل تأخذ المساحة الكبيرة
@@ -2265,15 +2253,33 @@ body.drawer-open { overscroll-behavior: none; }
      مع وسم «تم التعديل». كلاهما يُزامَن مع بقية المنضمين.
    ========================================================= */
 
-/* قائمة خيارات الرسالة */
+/* قائمة خيارات الرسالة والتفاعلات (2.6.9) */
 .msg-menu {
   position: fixed; z-index: 130;
-  display: flex; flex-direction: column; min-width: 136px;
+  display: flex; flex-direction: column; width: 288px; max-width: calc(100vw - 20px);
+  max-height: calc(100dvh - 20px); overflow-y: auto;
   padding: 5px; border-radius: 12px;
   background: #1b2330; border: 1px solid var(--border);
   box-shadow: 0 14px 34px rgba(0, 0, 0, .4);
 }
 .msg-menu[hidden] { display: none !important; }
+.msg-menu__reactions {
+  display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 3px;
+  padding: 3px 1px 7px; margin-bottom: 4px; border-bottom: 1px solid var(--border);
+}
+.msg-menu__reaction {
+  display: grid; place-items: center; min-width: 0; height: 36px; padding: 0;
+  border: 1px solid transparent; border-radius: 9px;
+  background: transparent; color: var(--text); font-size: 20px; cursor: pointer;
+}
+.msg-menu__reaction:hover, .msg-menu__reaction[aria-pressed="true"] {
+  background: rgba(124, 92, 255, .23); border-color: rgba(124, 92, 255, .5);
+}
+@media (pointer: coarse) {
+  .msg__react-add { width: 32px; height: 32px; }
+  .msg__reaction { min-height: 34px; }
+  .msg-menu__reaction { height: 42px; }
+}
 .msg-menu__btn {
   display: flex; align-items: center; gap: 8px;
   padding: 9px 11px; border: 0; border-radius: 9px;
@@ -2311,12 +2317,15 @@ body.drawer-open { overscroll-behavior: none; }
   .msg-menu__btn { min-height: 42px; }
 }
 
-/* Minimal video controls and an eight-message scroll window. */
+/* Minimal video controls and an 8-row scroll window (12 when the video is hidden). */
 .video-fullscreen {
   position: absolute; bottom: 12px; inset-inline-end: 12px; z-index: 15;
   display: grid; place-items: center; width: 42px; height: 42px;
   border: 1px solid rgba(255,255,255,.25); border-radius: 12px;
   background: rgba(0,0,0,.6); color: #fff; cursor: pointer;
+}
+@media (pointer: coarse) {
+  .video-fullscreen { width: 44px; height: 44px; }
 }
 .video-fullscreen:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 #stage:fullscreen { width: 100%; height: 100%; background: #000; display: flex; flex-direction: column; }
@@ -2326,3 +2335,7 @@ body.drawer-open { overscroll-behavior: none; }
 .room-main > #chat .chat__body { flex: 0 0 auto; min-height: 90px; overflow-y: auto; overflow-anchor: auto; }
 .chat__body > .msg { flex-shrink: 0; }
 body.chat-focus .room-main > #chat { flex: 0 0 auto; }
+
+/* Own account portrait: only the validated Supabase avatar path is used. */
+#meAvatar { position:relative; overflow:hidden; }
+#meAvatar img { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; border-radius:inherit; }

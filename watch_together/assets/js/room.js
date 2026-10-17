@@ -156,7 +156,13 @@
       updatePlayIcon();
       pokeVideoUI();
     },
-    onEvent: (d) => { if (d.type === 'error') U.toast('حدث خطأ في المشغّل', 'error'); },
+    onEvent: (d) => {
+      if (d.type === 'error') U.toast(d.message || 'حدث خطأ في المشغّل', 'error');
+      if (d.type === 'autoplay-blocked') showAutoplayPrompt();
+      if (d.type === 'retry' && session.videoParsed) {
+        loadVideo(session.videoParsed, { autoplay: st.playing, initial: true });
+      }
+    },
     onTime: () => updateProgressUI()
   });
 
@@ -164,20 +170,9 @@
   function initGate() {
     const user = Auth.currentUser();
     const saved = (user && user.name) || U.store.get('name', '') || '';
-    if (saved) el.gateName.value = saved;
+    if (saved && !el.gateName.value) el.gateName.value = saved;
     paintAvatar();
     el.gateName.addEventListener('input', paintAvatar);
-
-    /* من أنشأ الغرفة وله اسم محفوظ → يدخل مباشرة */
-    const autoName = (createInfo && createInfo.name) || (user && user.name) || '';
-    if (autoName && (createInfo || params.get('auto') === '1')) {
-      session.name = U.cleanName(autoName);
-      el.gateName.value = session.name;
-      paintAvatar();
-      setTimeout(() => { el.gate.hidden = true; enterRoom(); }, 50);
-      return;
-    }
-    el.gateName.focus();
 
     el.gateForm.addEventListener('submit', function (e) {
       e.preventDefault();
@@ -196,6 +191,18 @@
       U.store.set('name', name);
       enterRoom();
     });
+
+    /* Real accounts enter any room directly, including cards and invitation links.
+       Guests always confirm a name, even with a saved guest session or ?auto=1. */
+    const account = Auth.accountUser();
+    if (account) {
+      session.name = U.cleanName(account.name) || 'مستخدم';
+      el.gate.hidden = true;
+      setTimeout(() => enterRoom({ accountOnly: true }), 0);
+    } else {
+      el.gate.hidden = false;
+      el.gateName.focus();
+    }
   }
 
   function paintAvatar() {
@@ -356,6 +363,7 @@
 
   /** إعادة الاتصال من الصفر: نغلق النقل الحالي ونعيد البناء */
   async function reconnect() {
+    if (enteringRoom) { U.toast('جارٍ الدخول إلى الغرفة — انتظر اكتمال الاتصال', 'info'); return; }
     try { if (session.transport) session.transport.close(); } catch (e) { }
     session.ready = false;
     session.transport = null;
@@ -370,34 +378,52 @@
   }
 
   /* ============================== الدخول ============================== */
-  async function enterRoom() {
+  let enteringRoom = false;
+  async function enterRoom(options) {
+    options = options || {};
+    if (enteringRoom || session.ready) return;
+    enteringRoom = true;
     el.gate.hidden = true;
     el.room.hidden = false;
+    setStatus('connecting', 'جارٍ التحقق من الجلسة…');
+    try {
+      /* validSession يعيد الجلسة لا كائن المستخدم. الأزرار مربوطة مسبقاً،
+         وطلبات الحساب محدودة المهلة، فلا تبقى الغرفة متجمّدة عند تجديد token. */
+      const authSession = await (Auth ? Auth.validSession().catch(() => null) : null);
+      const user = authSession && authSession.user;
+      const account = authSession && authSession.access_token && user && user.id && !user.guest ? user : null;
+      if (options.accountOnly && !account) {
+        session.name = '';
+        el.room.hidden = true;
+        el.gate.hidden = false;
+        el.gateSubmit.disabled = false;
+        el.gateError.textContent = 'انتهت جلسة الحساب — أدخل اسمك كضيف أو سجّل الدخول';
+        el.gateName.focus();
+        return;
+      }
+      session.userId = account ? account.id : null;
+      session.isGuest = !account;
+      if (account) session.name = U.cleanName(account.name) || 'مستخدم';
 
-    /* هوية المستخدم */
-    const user = await (Auth ? Auth.validSession().catch(() => null) : null);
-    if (user && user.id) {
-      session.userId = user.id;
-      session.isGuest = !!user.guest;
-      if (!session.name) session.name = U.cleanName(user.name) || 'مستخدم';
-    }
+      const startUrl = (createInfo && createInfo.videoUrl) || paramVideo || '';
+      if (startUrl) {
+        const parsed = U.parseWatchUrl(startUrl);
+        if (parsed) { st.url = parsed.src; st.kind = parsed.kind; session.videoParsed = parsed; }
+      }
 
-    const startUrl = (createInfo && createInfo.videoUrl) || paramVideo || '';
-    if (startUrl) {
-      const parsed = U.parseWatchUrl(startUrl);
-      if (parsed) { st.url = parsed.src; st.kind = parsed.kind; session.videoParsed = parsed; }
-    }
+      const title = (createInfo && createInfo.title) || U.store.get('roomTitle:' + roomId) || '';
+      session.roomTitle = title || ('غرفة ' + roomId);
+      if (title) U.store.set('roomTitle:' + roomId, title);
 
-    const title = (createInfo && createInfo.title) || U.store.get('roomTitle:' + roomId) || '';
-    session.roomTitle = title || ('غرفة ' + roomId);
-    if (title) U.store.set('roomTitle:' + roomId, title);
-
-    paintMe();
-    addMember(session.clientId, session.name, { me: true });
-    renderPlayerPlaceholder();
-
-    wireUI();
-    await connect();
+      paintMe();
+      addMember(session.clientId, session.name, { me: true });
+      renderPlayerPlaceholder();
+      await connect();
+    } catch (err) {
+      console.error(err);
+      setStatus('offline', 'تعذّر تهيئة الغرفة — افتح تشخيص الاتصال لإعادة المحاولة');
+      U.toast('تعذّر الدخول إلى الغرفة — أعد المحاولة من قائمة التشخيص', 'error');
+    } finally { enteringRoom = false; }
   }
 
   function paintMe() {
@@ -406,6 +432,12 @@
     el.meAvatar.style.background = U.colorFor(session.name);
     el.meName.textContent = session.name;
     const user = Auth && Auth.currentUser ? Auth.currentUser() : null;
+    const picture = Auth && Auth.avatarURL ? Auth.avatarURL(user) : '';
+    if (picture) {
+      const image = document.createElement('img'); image.src = picture; image.alt = ''; image.referrerPolicy = 'no-referrer';
+      image.onerror = () => { image.remove(); }; el.meAvatar.appendChild(image);
+    }
+
     el.meMail.textContent = user && user.email ? user.email : 'دخول كضيف — بدون حساب';
     el.meNameInput.value = session.name;
   }
@@ -474,11 +506,11 @@
       const savedUrl = (result && result.state && result.state.url) || '';
       if (st.url && !savedUrl) publish({ force: true });
 
-      /* حمّل الفيديو (الموضع يُحسب داخل applyState) */
-      if (st.url) await loadVideo(U.parseWatchUrl(st.url), { autoplay: st.playing, initial: true });
+      /* تحميل الفيديو لا يحجز الحضور والدردشة أو اكتمال الاتصال. */
+      if (st.url) loadVideo(U.parseWatchUrl(st.url), { autoplay: st.playing, initial: true });
       else {
         renderPlayerPlaceholder();
-        sysMessage('لا يوجد فيديو في هذه الغرفة بعد — سيظهر تلقائياً حين يبدأ المضيف، أو أضفه من زر «تغيير الفيديو»');
+        sysMessage('لا يوجد فيديو في هذه الغرفة بعد — أضف فيديو إلى قائمة التشغيل وابدأ عرضه');
       }
 
       pingPresence(true);
@@ -791,10 +823,12 @@
   }
 
   /* ============================== الفيديو ============================== */
+  let videoLoadVersion = 0;
   async function loadVideo(parsed, opts) {
     opts = opts || {};
     if (!parsed) { renderPlayerPlaceholder('الرابط غير مدعوم'); return; }
-
+    const version = ++videoLoadVersion;
+    clearAutoplayPrompt();
     session.videoParsed = parsed;
     st.url = parsed.src;
     st.kind = parsed.kind;
@@ -804,21 +838,25 @@
       el.player.classList.toggle('is-embed', parsed.kind === 'embed');
       pokeVideoUI();
       await player.load(parsed, { autoplay: !!opts.autoplay, controls: false });
+      if (version !== videoLoadVersion) return;
       if (el.placeholder) { el.placeholder.remove(); el.placeholder = null; }
 
       /* الموضع: عند الانضمام نحسب الوقت المتوقع، وإلا نستخدم الموضع المحفوظ */
       const target = opts.initial ? expectedPos() : (st.pos || 0);
       if (player.canSync() && target > 0.6) player.seek(target);
 
-      if (opts.autoplay) {
+      if (st.playing && player.canSync()) {
         player.play();
-        setTimeout(() => { if (st.playing && !player.isPlaying()) showAutoplayPrompt(); }, 1200);
+        setTimeout(() => {
+          if (version === videoLoadVersion && st.playing && player.isReady() && !player.isPlaying()) showAutoplayPrompt();
+        }, 1200);
       }
       updatePlayIcon();
       updateProgressUI();
       updateSyncBadge();
     } catch (err) {
-      U.toast('تعذّر تحميل الفيديو — جرّب رابطاً آخر', 'error', 4500);
+      if (version !== videoLoadVersion || (err && err.code === 'load-cancelled')) return;
+      updatePlayIcon();
     }
   }
 
@@ -830,28 +868,36 @@
       '<span class="ic player__placeholder-icon">' + IC.html('film', 46) + '</span>' +
       '<p class="player__placeholder-text">' + (text
         ? U.esc(text)
-        : 'لا يوجد فيديو في هذه الغرفة بعد.<br>أضف رابطاً من زر «تغيير الفيديو» لبدء المشاهدة معاً.') + '</p>';
+        : 'لا يوجد فيديو في هذه الغرفة بعد.<br>أضف فيديو إلى قائمة التشغيل المشتركة لبدء المشاهدة معاً.') + '</p>';
     el.player.appendChild(d);
     el.placeholder = d;
   }
 
+  function clearAutoplayPrompt() {
+    if (session.autoplayPrompt) session.autoplayPrompt.remove();
+    session.autoplayPrompt = null;
+    session.autoplayBlocked = false;
+  }
+
   function showAutoplayPrompt() {
-    if (session.autoplayBlocked) return;
+    if (session.autoplayBlocked || !st.playing || !player.isReady() || !player.canSync()) return;
     session.autoplayBlocked = true;
     const ov = document.createElement('div');
-    ov.className = 'player__overlay';
+    session.autoplayPrompt = ov;
+    ov.className = 'player__overlay player__overlay--autoplay';
     ov.innerHTML =
       '<div class="player__overlay-box">' +
-      '<button class="btn btn--primary btn--lg" id="unblockPlay">' + IC.html('play', 19) + ' اضغط للتشغيل</button>' +
+      '<button type="button" class="btn btn--primary btn--lg" id="unblockPlay">' + IC.html('play', 19) + ' اضغط للتشغيل</button>' +
       '<p class="player__overlay-text">متصفحك يمنع التشغيل التلقائي — اضغط الزر لتلتحق بالجميع.</p>' +
       '</div>';
     el.player.appendChild(ov);
-    ov.querySelector('#unblockPlay').addEventListener('click', () => {
+    ov.querySelector('#unblockPlay').addEventListener('click', (e) => {
+      e.stopPropagation();
+      clearAutoplayPrompt();
+      if (!st.playing) return;
+      player.seek(expectedPos());
       player.play();
-      st.playing = true;
-      ov.remove();
-      session.autoplayBlocked = false;
-      publish();
+      /* السماح المحلي بالتشغيل ليس أمراً جديداً للغرفة، خصوصاً للمشاهد. */
       updatePlayIcon();
     });
   }
@@ -1080,14 +1126,21 @@
 
   /* ============================== الرسائل ==============================
      • بطاقة مدمجة: سطر واحد للاسم والوقت + النص — لا تأخذ إلا مساحة محتواها.
-     • السحب على رسالة ← الرد عليها · الضغط المطوّل (أو زر الفأرة الأيمن) ← تعديل/حذف.
+     • الإيموجي يُرسل كبطاقة عادية؛ زر الوجه على كل بطاقة يضيف تفاعلاً عليها.
+     • السحب على رسالة ← الرد عليها · الضغط المطوّل (أو زر الفأرة الأيمن) ← تفاعل/تعديل/حذف.
      • الحذف يترك مكان الرسالة بنص «محذوفة»، والتعديل يحدثها في مكانها.
-     • الرد/التعديل/الحذف تُزامَن عبر غلاف JSON مدمج في نص الرسالة
+     • الرد/التعديل/الحذف والتفاعلات تُزامَن عبر غلاف JSON مدمج في نص الرسالة
        (يعمل مع أي ناقل: WebSocket أو Supabase أو محلي) دون تغيير الجداول.
      ==================================================================== */
 
-  /* غلاف البيانات التعريفي: \u0001 + JSON — يحمل المعرف والاقتباس والتعديل */
+  /* غلاف البيانات التعريفي: \u0001 + JSON — يحمل المعرف والاقتباس والتعديل والتفاعل */
   const CHAT_MARK = '\u0001';
+  const CHAT_REACTIONS = Array.from(new Set(
+    (CFG.chat && Array.isArray(CFG.chat.reactions) ? CFG.chat.reactions : ['👍', '❤️', '😂', '😮', '🔥', '👏', '🍿'])
+      .filter(emoji => typeof emoji === 'string' && emoji.length > 0 && emoji.length <= 32)
+  )).slice(0, 14);
+  /* Hold reactions delivered before their message; bounded like the visible history. */
+  const pendingReactions = new Map();
   function encodeChatText(text, meta) {
     if (!meta) return String(text == null ? '' : text);
     try {
@@ -1104,7 +1157,10 @@
           text: String(o.t || ''),
           cid: String(o.c || ''),
           reply: o.r ? { name: String(o.r.n || ''), text: String(o.r.t || '') } : null,
-          next: o.n != null ? String(o.n) : ''
+          next: o.n != null ? String(o.n) : '',
+          action: o.a === 'reaction' ? 'reaction' : '',
+          reaction: typeof o.e === 'string' && typeof o.u === 'string'
+            ? { emoji: o.e, actor: o.u, version: o.v } : null
         };
       } catch (e) {
         /* ليس غلافاً — نسقط العلامة ونتعامل معه كنص عادي */
@@ -1118,12 +1174,16 @@
     opts = opts || {};
     if (!m) return;
 
-    /* أحداث التعديل والحذف تُطبَّق على رسالة موجودة ولا تُدرج كرسائل جديدة */
+    const d = decodeChatText(m.text);
+    /* The envelope also identifies reactions on legacy tables without a kind column. */
+    if (m.kind === 'reaction' || d.action === 'reaction') return applyMessageReaction(m);
     if (m.kind === 'edit' || m.kind === 'del') return applyChatAction(m, m.kind);
 
-    const d = decodeChatText(m.text);
     const text = d.text;
     const cid = d.cid || String(m.id || '') || U.uid('m');
+    /* BroadcastChannel + storage, Realtime + polling, or reconnect history may repeat a message. */
+    const existing = Array.from(el.chatBody.children).find(child => child.dataset && child.dataset.cid === cid);
+    if (existing) return existing;
     if (el.chatEmpty) el.chatEmpty.style.display = 'none';
 
     const mine = !!opts.mine || m.client === session.clientId;
@@ -1132,11 +1192,8 @@
     if (m.kind === 'system' || opts.system) {
       row.className = 'msg msg--system';
       row.innerHTML = '<div class="msg__bubble">' + U.esc(text || '') + '</div>';
-    } else if (m.kind === 'react') {
-      row.className = 'msg msg--react';
-      row.innerHTML = '<div class="react-bubble">' + U.esc(text || '👍') +
-        '<small>' + U.esc(m.name || '') + '</small></div>';
     } else {
+      /* Legacy kind=react messages also use the ordinary sender-aligned bubble. */
       row.className = 'msg' + (mine ? ' msg--me' : '');
       const color = U.colorFor(m.name || '?');
       row.innerHTML =
@@ -1147,7 +1204,9 @@
           '<span class="msg__quote-text">' + U.esc(d.reply.text) + '</span></div>' : '') +
         '<p class="msg__meta">' +
         '<span class="msg__name" style="color:' + color + '">' + U.esc(m.name || 'زائر') + (mine ? ' • أنت' : '') + '</span>' +
-        '<span class="msg__time">' + U.fmtClock(m.ts || Date.now()) + '</span></p>' +
+        '<span class="msg__time">' + U.fmtClock(m.ts || Date.now()) + '</span>' +
+        '<button type="button" class="msg__react-add" aria-label="إضافة تفاعل" title="إضافة تفاعل" aria-haspopup="dialog" aria-expanded="false">' +
+        IC.html('smile', 15) + '</button></p>' +
         '<p class="msg__text">' + U.linkify(U.esc(text || '')) + '</p>' +
         '</div>';
       /* بيانات المطابقة للرد/التعديل/الحذف (محلياً وعن بُعد) */
@@ -1155,10 +1214,26 @@
       row.dataset.client = String(m.client || m.sender || '');
       row.dataset.text = text;
       row.dataset.name = String(m.name || '');
+      row._reactions = new Map();
+      const reactButton = row.querySelector('.msg__react-add');
+      reactButton.addEventListener('click', (event) => {
+        event.stopPropagation();
+        if (session.msgMenu && !session.msgMenu.hidden && session.msgMenu._row === row) {
+          hideMsgMenu(true);
+          return;
+        }
+        const rect = reactButton.getBoundingClientRect();
+        openMsgMenu(row, rect.left + rect.width / 2, rect.top, reactButton);
+      });
     }
 
     const followLatest = el.chatBody.scrollHeight - el.chatBody.scrollTop - el.chatBody.clientHeight < 80;
     el.chatBody.appendChild(row);
+    if (row._reactions && pendingReactions.has(cid)) {
+      row._reactions = pendingReactions.get(cid);
+      pendingReactions.delete(cid);
+      renderMessageReactions(row);
+    }
     if (window.WTIcons && window.WTIcons.apply) window.WTIcons.apply(row);
     const limit = (CFG.chat && CFG.chat.historyLimit) || 200;
     while (el.chatBody.children.length > limit) el.chatBody.removeChild(el.chatBody.firstChild);
@@ -1184,6 +1259,95 @@
     return fallback;
   }
 
+  function canReactToMessage(row) {
+    return !!(row && row.parentNode === el.chatBody && row.dataset && row.dataset.cid &&
+      !row.classList.contains('msg--system') && !row.classList.contains('msg--deleted'));
+  }
+
+  function renderMessageReactions(row) {
+    const followLatest = el.chatBody.scrollHeight - el.chatBody.scrollTop - el.chatBody.clientHeight < 80;
+    let group = row.querySelector('.msg__reactions');
+    const totals = new Map();
+    row._reactions.forEach((reaction, actor) => {
+      if (!reaction.emoji) return;
+      if (!totals.has(reaction.emoji)) totals.set(reaction.emoji, { names: [], mine: false });
+      const total = totals.get(reaction.emoji);
+      total.names.push(actor === session.clientId ? 'أنت' : reaction.name);
+      if (actor === session.clientId) total.mine = true;
+    });
+    if (!totals.size) {
+      if (group) group.remove();
+    } else {
+      if (!group) {
+        group = document.createElement('div');
+        group.className = 'msg__reactions';
+        group.setAttribute('role', 'group');
+        group.setAttribute('aria-label', 'تفاعلات الرسالة');
+        row.querySelector('.msg__bubble').appendChild(group);
+      }
+      group.innerHTML = '';
+      CHAT_REACTIONS.forEach(emoji => {
+        const total = totals.get(emoji);
+        if (!total) return;
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'msg__reaction';
+        button.dataset.emoji = emoji;
+        button.textContent = emoji + ' ' + total.names.length;
+        button.setAttribute('aria-pressed', String(total.mine));
+        button.setAttribute('aria-label', emoji + '، ' + total.names.length + ' تفاعل' + (total.mine ? '، إلغاء تفاعلك' : '، إضافة تفاعلك'));
+        button.setAttribute('title', total.names.join('، '));
+        button.addEventListener('click', () => toggleMessageReaction(row, emoji));
+        group.appendChild(button);
+      });
+    }
+    sizeChatWindow();
+    if (followLatest) scrollChat(true);
+  }
+
+  function applyMessageReaction(m) {
+    const d = decodeChatText(m.text);
+    const reaction = d.reaction;
+    const actor = String(m.client || m.sender || (reaction && reaction.actor) || '');
+    if (!d.cid || d.cid.length > 120 || !reaction || !actor || actor.length > 120 ||
+      reaction.actor !== actor || !Number.isSafeInteger(reaction.version) || reaction.version < 1 ||
+      (reaction.emoji !== '' && !CHAT_REACTIONS.includes(reaction.emoji))) return null;
+    const row = Array.from(el.chatBody.children).find(child => child.dataset && child.dataset.cid === d.cid);
+    if (row && !canReactToMessage(row)) return null;
+    let state = row ? row._reactions : pendingReactions.get(d.cid);
+    if (!state) {
+      state = new Map();
+      pendingReactions.set(d.cid, state);
+      const limit = (CFG.chat && CFG.chat.historyLimit) || 200;
+      while (pendingReactions.size > limit) pendingReactions.delete(pendingReactions.keys().next().value);
+    }
+    const previous = state.get(actor);
+    /* Explicit set/remove plus a per-actor version makes replay/dual delivery idempotent. */
+    if (previous && previous.version >= reaction.version) return row || null;
+    state.set(actor, { emoji: reaction.emoji, version: reaction.version, name: String(m.name || 'زائر').slice(0, 30) });
+    if (row) renderMessageReactions(row);
+    return row || null;
+  }
+
+  function toggleMessageReaction(row, emoji) {
+    if (!canReactToMessage(row) || !CHAT_REACTIONS.includes(emoji)) return false;
+    if (!session.ready || !session.transport) {
+      U.toast('لم يكتمل الاتصال بعد — حاول بعد ثانية', 'warn');
+      return false;
+    }
+    const previous = row._reactions.get(session.clientId);
+    const version = Math.max(Date.now(), previous ? previous.version + 1 : 1);
+    const wire = encodeChatText('', {
+      a: 'reaction', c: row.dataset.cid, u: session.clientId,
+      e: previous && previous.emoji === emoji ? '' : emoji, v: version
+    });
+    const message = { name: session.name, text: wire, kind: 'reaction', client: session.clientId, ts: Date.now() };
+    session.transport.sendChat(message);
+    rememberChatSend(wire, message.kind, message.ts);
+    applyMessageReaction(message);
+    return true;
+  }
+
   function markEdited(row) {
     if (!row || (row.classList && row.classList.contains('msg--edited'))) return;
     if (row.classList) row.classList.add('msg--edited');
@@ -1200,6 +1364,12 @@
     if (!row || !row.classList) return;
     row.classList.add('msg--deleted');
     row.classList.remove('msg--edited');
+    const reactions = row.querySelector('.msg__reactions');
+    if (reactions) reactions.remove();
+    const reactButton = row.querySelector('.msg__react-add');
+    if (reactButton) reactButton.remove();
+    if (row._reactions) row._reactions.clear();
+    if (session.msgMenu && session.msgMenu._row === row) hideMsgMenu();
     const quote = row.querySelector('.msg__quote');
     if (quote) quote.remove();
     const textEl = row.querySelector('.msg__text');
@@ -1210,6 +1380,7 @@
     const ed = row.querySelector('.msg__edited');
     if (ed) ed.remove();
     if (row.dataset) row.dataset.text = '';
+    sizeChatWindow();
   }
 
   function applyEditToRow(row, next) {
@@ -1232,11 +1403,12 @@
     addChatMessage({ text, kind: 'system', ts: Date.now(), name: 'النظام' }, { system: true });
   }
 
-  // Keep eight recent message rows visible; older rows remain in the scroll area.
+  // Show 8 recent rows with the video, or 12 when it is hidden; keep older rows scrollable.
   function sizeChatWindow() {
     const body = el.chatBody;
     const rows = Array.from(body.children).filter(row => row.classList.contains('msg'));
-    const recent = rows.slice(-8);
+    const visibleRows = session.focusMode ? 12 : 8;
+    const recent = rows.slice(-visibleRows);
     if (!recent.length || !window.getComputedStyle) return;
     const style = window.getComputedStyle(body);
     const gap = parseFloat(style.rowGap) || 0;
@@ -1268,13 +1440,20 @@
     el.messagesCount.textContent = session.unread > 99 ? '99+' : String(session.unread);
   }
 
+  function rememberChatSend(wire, kind, now) {
+    session.recentSent[wire + '|' + kind] = now;
+    session.recentSent[wire] = now;
+    setTimeout(() => { delete session.recentSent[wire + '|' + kind]; delete session.recentSent[wire]; }, 15000);
+  }
+
   function sendMessage(text, kind) {
+    if (kind === 'react') kind = 'chat';
     text = String(text || '').trim();
     if (!text) return false;
     if (!session.ready) { U.toast('لم يكتمل الاتصال بعد — حاول بعد ثانية', 'warn'); return false; }
 
     const now = Date.now();
-    if (kind !== 'react' && now - session.lastChatSend < ((CFG.chat && CFG.chat.cooldownMs) || 400)) {
+    if (now - session.lastChatSend < ((CFG.chat && CFG.chat.cooldownMs) || 400)) {
       U.toast('على مهلك', 'warn', 1300); return false;
     }
     session.lastChatSend = now;
@@ -1300,9 +1479,7 @@
     };
     if (reply) msg.reply = reply;
     session.transport.sendChat({ name: msg.name, text: wire, kind: msg.kind, client: session.clientId });
-    session.recentSent[wire + '|' + msg.kind] = now;
-    session.recentSent[wire] = now;
-    setTimeout(() => { delete session.recentSent[wire + '|' + msg.kind]; delete session.recentSent[wire]; }, 15000);
+    rememberChatSend(wire, msg.kind, now);
     addChatMessage(msg, { mine: true });
     if (isChat) clearComposer();
     scrollChat(true);
@@ -1401,19 +1578,23 @@
     if (sent) { input.value = ''; autosize(); }
   }
 
-  /* قائمة خيارات الرسالة (رد · تعديل · حذف) */
+  /* خيارات الرسالة: تفاعل بالإيموجي · رد · تعديل · حذف */
   function ensureMsgMenu() {
     if (session.msgMenu) return session.msgMenu;
     const menu = document.createElement('div');
     menu.className = 'msg-menu';
     menu.hidden = true;
+    menu.setAttribute('role', 'dialog');
+    menu.setAttribute('aria-label', 'خيارات الرسالة والتفاعلات');
     menu.innerHTML =
+      '<div class="msg-menu__reactions" role="group" aria-label="اختر تفاعلاً">' +
+      CHAT_REACTIONS.map(emoji => '<button type="button" class="msg-menu__reaction" data-emoji="' + U.esc(emoji) +
+        '" aria-label="تفاعل ' + U.esc(emoji) + '" aria-pressed="false">' + U.esc(emoji) + '</button>').join('') + '</div>' +
       '<button type="button" class="msg-menu__btn" data-act="reply">رد</button>' +
       '<button type="button" class="msg-menu__btn" data-act="edit">تعديل</button>' +
       '<button type="button" class="msg-menu__btn msg-menu__btn--danger" data-act="delete">حذف</button>';
     document.body.appendChild(menu);
     if (window.WTIcons && window.WTIcons.apply) window.WTIcons.apply(menu);
-    /* ربط مباشر على كل زر — يعمل مع الفقاعات الداخليات ودونها */
     (menu.querySelectorAll('.msg-menu__btn') || []).forEach((btn) => {
       btn.addEventListener('click', () => {
         const row = menu._row;
@@ -1425,31 +1606,74 @@
         else if (act === 'delete') deleteMessage(row);
       });
     });
+    menu.querySelectorAll('.msg-menu__reaction').forEach(button => {
+      button.addEventListener('click', () => {
+        const row = menu._row;
+        const emoji = button.dataset.emoji;
+        hideMsgMenu(true);
+        toggleMessageReaction(row, emoji);
+      });
+    });
     session.msgMenu = menu;
     return menu;
   }
 
-  function openMsgMenu(row, x, y) {
-    if (!row || !row.classList) return;
+  function openMsgMenu(row, x, y, trigger) {
+    if (!canReactToMessage(row)) return;
+    hideMsgMenu();
     const menu = ensureMsgMenu();
     menu._row = row;
     menu.hidden = false;
+    menu._trigger = trigger || row.querySelector('.msg__react-add');
+    if (menu._trigger) menu._trigger.setAttribute('aria-expanded', 'true');
+    const current = row._reactions.get(session.clientId);
+    menu.querySelectorAll('.msg-menu__reaction').forEach(button => {
+      button.setAttribute('aria-pressed', String(!!current && current.emoji === button.dataset.emoji));
+    });
     const isMine = row.classList.contains('msg--me');
-    /* تعديل/حذف لرسائلي فقط — والرد متاح للجميع */
+    /* تعديل/حذف لرسائلي فقط — والرد والتفاعل متاحان للجميع */
     (menu.querySelectorAll('.msg-menu__btn') || []).forEach(b => {
       const act = b.dataset ? b.dataset.act : '';
       b.hidden = (act === 'edit' || act === 'delete') ? !isMine : false;
     });
-    const pad = 10;
-    const w = menu.offsetWidth || 150, h = menu.offsetHeight || 110;
-    const vw = window.innerWidth || 390, vh = window.innerHeight || 844;
-    menu.style.left = Math.max(pad, Math.min((x || 0) - w / 2, vw - w - pad)) + 'px';
-    menu.style.top = Math.max(pad, Math.min((y || 0) - h - 10, vh - h - pad)) + 'px';
+    positionMsgMenu(menu, x, y);
+    if (trigger) {
+      const first = menu.querySelector('.msg-menu__reaction');
+      if (first) first.focus({ preventScroll: true });
+    }
   }
 
-  function hideMsgMenu() {
+  function positionMsgMenu(menu, x, y) {
+    const pad = 10;
+    const w = menu.offsetWidth || 280, h = menu.offsetHeight || 160;
+    const vw = window.innerWidth || 390, vh = window.innerHeight || 844;
+    menu.style.left = Math.max(pad, Math.min((x || 0) - w / 2, vw - w - pad)) + 'px';
+    const above = (y || 0) - h - 10;
+    const top = above < pad && (y || 0) + h + 10 < vh - pad ? (y || 0) + 10 : above;
+    menu.style.top = Math.max(pad, Math.min(top, vh - h - pad)) + 'px';
+  }
+
+  function followMsgMenu() {
     const menu = session.msgMenu;
-    if (menu) { menu.hidden = true; menu._row = null; }
+    if (!menu || menu.hidden || !menu._trigger) return;
+    if (!canReactToMessage(menu._row)) { hideMsgMenu(); return; }
+    const rect = menu._trigger.getBoundingClientRect();
+    /* Smooth scrolling/focus and the mobile keyboard must not dismiss a freshly opened picker. */
+    positionMsgMenu(menu, rect.left + rect.width / 2, rect.top);
+  }
+
+  function hideMsgMenu(restoreFocus) {
+    const menu = session.msgMenu;
+    if (menu) {
+      const trigger = menu._trigger;
+      menu.hidden = true;
+      menu._row = null;
+      menu._trigger = null;
+      if (trigger) {
+        trigger.setAttribute('aria-expanded', 'false');
+        if (restoreFocus && trigger.parentNode) trigger.focus({ preventScroll: true });
+      }
+    }
     const kids = el.chatBody ? (el.chatBody.children || []) : [];
     for (let i = 0; i < kids.length; i++) if (kids[i].classList) kids[i].classList.remove('is-menu');
   }
@@ -1473,8 +1697,7 @@
       return t && t.closest ? t.closest('.msg') : null;
     };
     const actionable = (row) => row && row.classList &&
-      !row.classList.contains('msg--system') && !row.classList.contains('msg--react') &&
-      !row.classList.contains('msg--deleted');
+      !row.classList.contains('msg--system') && !row.classList.contains('msg--deleted');
     const resetRow = (row) => {
       if (!row) return;
       const bubble = row.querySelector('.msg__bubble');
@@ -1483,6 +1706,8 @@
     };
 
     el.chatBody.addEventListener('pointerdown', (e) => {
+      const target = e && e.target;
+      if (target && target.closest && (target.closest('.msg__react-add') || target.closest('.msg__reaction') || target.closest('a'))) return;
       const row = rowOf(e);
       if (!actionable(row)) return;
       if (drag) { clearTimeout(drag.lpTimer); resetRow(drag.row); }
@@ -1534,6 +1759,10 @@
     el.chatBody.addEventListener('pointercancel', endDrag);
 
     /* زر الفأرة الأيمن على الحاسوب = نفس قائمة الخيارات */
+    el.chatBody.addEventListener('scroll', followMsgMenu, { passive: true });
+    window.addEventListener('resize', followMsgMenu);
+    window.addEventListener('scroll', followMsgMenu, { passive: true });
+
     el.chatBody.addEventListener('contextmenu', (e) => {
       const row = rowOf(e);
       if (!actionable(row)) return;
@@ -1578,12 +1807,15 @@
       el.messagesBtn.setAttribute('title', label + ' (D)');
       el.messagesIcon.innerHTML = IC.html(session.focusMode ? 'chatUp' : 'chatDown', 19);
     }
+    /* Recalculate the 8/12-row window immediately when the video is shown/hidden. */
+    scrollChat(true);
     if (session.focusMode) {
       session.unread = 0;
       updateMessagesBadge();
-      setTimeout(() => { scrollChat(true); el.chatInput.focus(); }, 90);
-    } else {
-      scrollChat(true);
+      setTimeout(() => {
+        if (!session.focusMode) return;
+        el.chatInput.focus({ preventScroll: true });
+      }, 90);
     }
   }
 
@@ -1724,7 +1956,7 @@
       pokeVideoUI();
     };
 
-    el.videoFullscreen.addEventListener('click', async () => {
+    if (el.videoFullscreen) el.videoFullscreen.addEventListener('click', async () => {
       const target = document.getElementById('stage');
       try {
         if (document.fullscreenElement) await document.exitFullscreen();
@@ -1780,8 +2012,10 @@
     el.progressBar.addEventListener('pointerup', endDrag);
     el.progressBar.addEventListener('pointercancel', endDrag);
     el.progressBar.addEventListener('keydown', (e) => {
-      if (e.key === 'ArrowLeft') { e.preventDefault(); skip(-5); }
-      if (e.key === 'ArrowRight') { e.preventDefault(); skip(5); }
+      if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+      e.preventDefault();
+      e.stopPropagation();             /* لا تنفّذ اختصار الصفحة مرة ثانية */
+      skip(e.key === 'ArrowLeft' ? 5 : -5);   /* RTL: اليسار يتقدم */
     });
 
     /* ---- أدوات المشاهدة ---- */
@@ -1948,6 +2182,8 @@
       }
     });
     el.clearChatBtn.addEventListener('click', () => {
+      hideMsgMenu();
+      pendingReactions.clear();
       el.chatBody.innerHTML = '';
       el.chatEmpty.style.display = '';
       el.chatBody.appendChild(el.chatEmpty);
@@ -1956,11 +2192,11 @@
       updateChatCount();
     });
 
-    /* ---- التفاعلات (الإيموجي هنا فقط) ---- */
+    /* ---- إرسال إيموجي كرسالة عادية، مستقلة عن تفاعلات البطاقات ---- */
     el.reactRow.querySelectorAll('[data-react]').forEach(b => {
       b.addEventListener('click', () => {
         const emoji = (b.dataset && b.dataset.react) || b.getAttribute('data-react');
-        sendMessage(emoji, 'react');
+        sendMessage(emoji, 'chat');
         b.animate
           ? b.animate([{ transform: 'scale(1)' }, { transform: 'scale(1.35)' }, { transform: 'scale(1)' }], { duration: 260 })
           : null;
@@ -1971,9 +2207,16 @@
 
     /* ---- اختصارات ---- */
     document.addEventListener('keydown', (e) => {
+      if (e.defaultPrevented) return;
+      if (e.key === 'Escape' && session.msgMenu && !session.msgMenu.hidden) {
+        e.preventDefault();
+        hideMsgMenu(true);
+        return;
+      }
       const tag = (e.target.tagName || '').toLowerCase();
-      if (tag === 'input' || tag === 'textarea' || e.target.isContentEditable) return;
-      if (e.key === ' ' || e.code === 'Space') { e.preventDefault(); el.centerPlay.click(); }
+      const interactive = ['input', 'textarea', 'select', 'button', 'a', 'summary'].includes(tag) || e.target.isContentEditable;
+      if (interactive && e.key !== 'Escape') return;
+      if (e.key === ' ' || e.code === 'Space') { e.preventDefault(); togglePlay(); }
       else if (e.key === 'ArrowLeft') { e.preventDefault(); skip(+10); }
       else if (e.key === 'ArrowRight') { e.preventDefault(); skip(-10); }
       else if (e.key.toLowerCase() === 'c') copy(roomUrl(), 'تم نسخ رابط الغرفة');
@@ -1991,7 +2234,10 @@
     /* ---- حفظ الحالة عند المغادرة (خروج آخر مستخدم) ---- */
     window.addEventListener('pagehide', () => goodbye(true));
     window.addEventListener('beforeunload', () => goodbye(true));
-    document.addEventListener('visibilitychange', () => { if (document.hidden) goodbye(true); });
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) goodbye(true, true); // Saving on tab switch is not leaving the room.
+      else if (session.ready) pingPresence(false);
+    });
     window.addEventListener('focus', () => { if (session.focusMode) { session.unread = 0; updateMessagesBadge(); } });
   }
 
@@ -2020,7 +2266,7 @@
 
   /* ============================== الوداع وحفظ آخر حالة ============================== */
   let goodbyeDone = false;
-  function goodbye(keepAlive) {
+  function goodbye(keepAlive, saveOnly) {
     const t = session.transport;
     if (!t) return;
 
@@ -2044,6 +2290,8 @@
         session.lastPersistAt = Date.now();
       }
     } catch (e) { }
+
+    if (saveOnly) return;
 
     /* 2) أشعر الآخرين بالمغادرة واحذف صف الحضور */
     if (!goodbyeDone) {
@@ -2072,6 +2320,7 @@
   }
 
   function updatePlayIcon() {
+    if (!st.playing || !player.isReady()) clearAutoplayPrompt();
     const playing = player.isReady() ? (player.isPlaying() || !!st.playing) : !!st.playing;
     if (el.player) {
       el.player.classList.toggle('is-playing', playing);
@@ -2106,6 +2355,9 @@
   }
 
   /* ============================== تشغيل ============================== */
+  /* ربط الواجهة مرة واحدة، قبل أي طلب شبكة أو تجديد لجلسة الحساب. */
+  wireUI();
+  updateControlAccess();
   initGate();
 
   /* رابط تصحيح: يفيد الاختبارات الآلية، ويفيدك في الكونسول (WTRoom.state) */
@@ -2123,7 +2375,7 @@
     reconnect,
     chat: {
       addChatMessage, setReplyTo, startEdit, deleteMessage, commitEdit,
-      submitChat, clearComposer, encodeChatText, decodeChatText, findMsgRow
+      submitChat, clearComposer, encodeChatText, decodeChatText, findMsgRow, toggleMessageReaction
     },
     setVideo(url) {
       const parsed = U.parseWatchUrl(url);
