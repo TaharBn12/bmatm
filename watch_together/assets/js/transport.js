@@ -49,6 +49,18 @@
     return '';
   }
 
+  /** رابط الوسائط من صفّ الرسالة (عمود media_url) — قد لا يوجد في الجداول القديمة */
+  function mediaFromRow(row) {
+    if (!row) return null;
+    const url = row.media_url || row.mediaUrl || null;
+    if (!url) return null;
+    return {
+      url: String(url).slice(0, 1000),
+      type: String(row.media_type || row.mediaType || '').slice(0, 20),
+      meta: row.media_meta || row.mediaMeta || null
+    };
+  }
+
   /** استخراج العمود/الجدول من رسالة PostgREST «Could not find the 'x' column of 'y'» */
   function parseMissingColumn(raw) {
     const m = String(raw || '').match(/could not find the '([^']+)' column of '([^']+)'/i);
@@ -421,7 +433,8 @@
             self._msgsReady = true;
             return list.map(r => ({
               id: String(r.id), name: r.name, text: msgText(r),
-              ts: Date.parse(r.created_at) || Date.now(), kind: r.kind || 'chat', client: r.client_id || null
+              ts: Date.parse(r.created_at) || Date.now(), kind: r.kind || 'chat', client: r.client_id || null,
+              media: mediaFromRow(r)
             }));
           })
           .catch(err => {
@@ -557,6 +570,7 @@
       rest: { ok: false, status: 0, ms: 0, error: null },
       tables: { rooms: false, messages: false, presence: false, room_members: false, room_queue: false },
       realtime: { ok: false, ms: 0, error: null },
+      media: { columns: false },
       room: { id: this.roomId || null, found: !!this._found },
       transport: this.kind,
       warnings: [],
@@ -592,6 +606,13 @@
               report.warnings.push(d);
             })
         ));
+      })
+      .then(() => {
+        if (!report.rest.ok || !report.tables.messages) return null;
+        /* هل أعمدة رابط الوسائط موجودة؟ (اختيارية — تُضاف بـ 08-room-media.sql) */
+        return this._fetch('/rest/v1/messages?select=media_url&limit=1', { timeoutMs: opts.timeoutMs || 8000 })
+          .then(() => { report.media = { columns: true }; })
+          .catch(() => { report.media = { columns: false }; });
       })
       .then(() => {
         if (!report.rest.ok || !report.tables.messages) return null;
@@ -765,7 +786,8 @@
         if (r.client_id && r.client_id === self.meta.clientId) return;
         self.emit('chat', {
           id: String(r.id), name: r.name, text: msgText(r),
-          ts: Date.parse(r.created_at) || Date.now(), kind: r.kind || 'chat', client: r.client_id || null
+          ts: Date.parse(r.created_at) || Date.now(), kind: r.kind || 'chat', client: r.client_id || null,
+          media: mediaFromRow(r)
         });
       });
       if (Array.isArray(roles)) {
@@ -859,7 +881,8 @@
         if (c.table === 'messages') {
           if (c.type === 'DELETE') return;
           self.emit('chat', { id: String(rec.id), name: rec.name, text: msgText(rec),
-            ts: Date.parse(rec.created_at) || Date.now(), kind: rec.kind || 'chat', client: rec.client_id || null });
+            ts: Date.parse(rec.created_at) || Date.now(), kind: rec.kind || 'chat', client: rec.client_id || null,
+            media: mediaFromRow(rec) });
         } else if (c.table === 'rooms' && rec.state) {
           self._found = true;
           const sig = U.stateSig(rec.state);
@@ -946,12 +969,17 @@
       id: U.uid('m'), name: message.name, text: message.text,
       ts: Date.now(), kind: message.kind || 'chat'
     };
+    /* رابط الوسائط (صورة/فيديو) يُخزَّن في أعمدة مستقلة beside الغلاف */
+    const media = message.media || null;
     this._pendingChats.push({
       room_id: this.roomId,
       name: String(message.name || 'زائر').slice(0, 30),
       text: String(message.text || '').slice(0, 1000),
       kind: message.kind || 'chat', client_id: this.meta.clientId || null,
-      user_id: this.meta.userId || null
+      user_id: this.meta.userId || null,
+      media_url: media && media.url ? String(media.url).slice(0, 1000) : null,
+      media_type: media && media.type ? String(media.type).slice(0, 20) : null,
+      media_meta: media && media.meta ? media.meta : null
     });
     if (this._pendingChats.length > 200) this._pendingChats.splice(0, this._pendingChats.length - 200);
     this._flushPendingChats();
@@ -1031,6 +1059,11 @@
     if (!drop.kind) row.kind = item.kind;
     if (!drop.client_id) row.client_id = item.client_id || null;
     if (!drop.user_id && item.user_id) row.user_id = item.user_id;
+    /* رابط الوسائط في أعمدة مستقلة (تُضاف بـ 08-room-media.sql).
+       إن لم تكن موجودة في الجدول القديم فإن التكيّف يتخلّى عنها تلقائياً. */
+    if (!drop.media_url && item.media_url) row.media_url = item.media_url;
+    if (!drop.media_type && item.media_type) row.media_type = item.media_type;
+    if (!drop.media_meta && item.media_meta) row.media_meta = item.media_meta;
     return row;
   };
 

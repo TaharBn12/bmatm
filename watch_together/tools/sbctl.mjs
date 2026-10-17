@@ -20,8 +20,9 @@
          جلب مفتاح anon، وربطه بالموقع تلقائياً.
          (يحتاج: SUPABASE_ACCESS_TOKEN في متغيّر البيئة)
 
-     node tools/sbctl.mjs sql [--social] [--out FILE]
+     node tools/sbctl.mjs sql [--social] [--media] [--out FILE]
          طباعة (أو حفظ) ملف SQL الجاهز لمشروع جديد
+         (--media = وسائط الغرفة: رابط الصور والفيديو + دلو التخزين المجاني)
 
      node tools/sbctl.mjs smoke [--room CODE] [--url U] [--key K]
          اختبار حي: ينشئ غرفة، يكتب حالة، يقرأها، يحذفها
@@ -536,6 +537,11 @@ export function repairSql(root = ROOT) {
   return readSql('04-repair-messages.sql', root);
 }
 
+/** (08) وسائط الغرفة: رابط الصور والفيديو + دلو التخزين المجاني */
+export function mediaSql(root = ROOT) {
+  return readSql('08-room-media.sql', root);
+}
+
 async function cmdCreate(args) {
   const token = process.env.SUPABASE_ACCESS_TOKEN || args.token;
   const name = args.name || 'watchtogether-' + new Date().toISOString().slice(0, 10).replace(/-/g, '');
@@ -703,10 +709,11 @@ async function cmdSet(args) {
 
 async function cmdSql(args) {
   const sql = args.social ? socialSql() : (args.repair || args['repair-messages']) ? repairSql()
-    : args.reset ? resetSql()
-      : args.health ? healthSql()
-        : args.cleanup ? cleanupSql()
-          : bootstrapSql();
+    : (args.media || args['room-media']) ? mediaSql()
+      : args.reset ? resetSql()
+        : args.health ? healthSql()
+          : args.cleanup ? cleanupSql()
+            : bootstrapSql();
   if (args.out) {
     fs.writeFileSync(args.out, sql, 'utf8');
     log(ok('حُفظ الملف: ' + args.out));

@@ -1,0 +1,255 @@
+/* =========================================================
+   WatchTogether — اختبار وسائط الغرفة (room-media.mjs)
+   التشغيل: node docs/tests/room-media.mjs
+   ---------------------------------------------------------
+   يغطي:
+     1) واجهة الإرفاق (زر · اختيار ملفات · شريط المرفقات · طبقة الإفلات).
+     2) الرفع إلى موقع تخزين مجاني (سلسلة مزوّدين مع بديل تلقائي).
+     3) إرسال الرابط إلى قاعدة البيانات مع الرسالة.
+     4) عرض الصورة/الفيديو كبطاقة داخل الدردشة + العارض المكبّر.
+     5) الأمان: رفض الملفات غير المدعومة والكبيرة، وروابط غير http/https.
+   ========================================================= */
+import fs from 'fs';
+import path from 'path';
+import { createRoomEnv, wait, base } from './harness.mjs';
+
+let pass = 0, fail = 0;
+const errors = [];
+const t = (name, cond, extra = '') => {
+  if (cond) pass++;
+  else { fail++; errors.push(`✗ ${name}${extra ? '  → ' + extra : ''}`); }
+};
+
+/* ==================== شبكة وهمية (XHR + FormData) ==================== */
+const requests = [];
+let plan = [];
+
+class FakeFormData {
+  constructor() { this.fields = {}; }
+  append(key, value) { this.fields[key] = value; }
+}
+
+class FakeXHR {
+  constructor() {
+    this.upload = { onprogress: null };
+    this.status = 0;
+    this.responseText = '';
+    this.onload = null; this.onerror = null; this.ontimeout = null; this.onabort = null;
+  }
+  open(method, url) { this.method = method; this.url = url; }
+  setRequestHeader() { }
+  send(body) {
+    requests.push({ method: this.method, url: this.url, body });
+    const next = plan.shift() || { status: 200, text: '' };
+    setTimeout(() => {
+      if (next.fail) { if (this.onerror) this.onerror(); return; }
+      this.status = next.status === undefined ? 200 : next.status;
+      this.responseText = next.text === undefined ? '' : next.text;
+      if (this.onload) this.onload();
+    }, 0);
+  }
+}
+
+const ownerToken = 'a'.repeat(64);
+const env = createRoomEnv({
+  search: '?id=MDIA01&host=1&v=https%3A%2F%2Fcommondatastorage.googleapis.com%2Fsample.mp4',
+  store: { 'wt:owner:MDIA01': JSON.stringify(ownerToken) },
+  globals: { FormData: FakeFormData, XMLHttpRequest: FakeXHR }
+});
+const { sandbox, documentStub, byId } = env;
+env.sandbox.WT_CONFIG.javaServer.enabled = false;
+env.sandbox.WT_CONFIG.supabase.ready = false;
+
+env.loaded.forEach(l => t(`تحميل ${path.basename(l.file)}`, l.ok, l.ok ? '' : String(l.error && l.error.message)));
+env.loaded.filter(l => !l.ok).forEach(l => console.log(l.error && l.error.stack));
+
+const image = { name: 'holiday.png', type: 'image/png', size: 24576 };
+const video = { name: 'clip.mp4', type: 'video/mp4', size: 5242880 };
+
+/** ينتظر تحقق شرط (بدل ثوابت عشوائية) */
+const until = async (fn, ms = 3000) => {
+  const start = Date.now();
+  while (Date.now() - start < ms) {
+    if (fn()) return true;
+    await wait(25);
+  }
+  return false;
+};
+
+const run = async () => {
+  await wait(100);
+
+  /* ---------- 1) الواجهة ---------- */
+  t('زر الإرفاق موجود', !!byId.get('attachBtn'));
+  t('حقل اختيار الملفات موجود ويقبل الصور والفيديو',
+    !!byId.get('mediaInput') && /image/.test(byId.get('mediaInput').attrs.accept || '') && /video/.test(byId.get('mediaInput').attrs.accept || ''));
+  t('شريط المرفقات موجود ومخفيّ افتراضياً', !!byId.get('mediaTray') && byId.get('mediaTray').hidden === true);
+  t('طبقة الإفلات موجودة ومخفية', !!byId.get('mediaDrop') && byId.get('mediaDrop').hidden === true);
+  t('العارض المكبّر موجود ومخفي', !!byId.get('mediaLightbox') && byId.get('mediaLightbox').hidden === true);
+  t('وحدة الوسائط محمّلة', typeof sandbox.WTMedia === 'object' && typeof sandbox.WTMedia.upload === 'function');
+  t('سلسلة مزوّدي التخزين المجاني مرتّبة', sandbox.WTMedia.providerOrder().join(',') === 'supabase,catbox,pomf2,uguu',
+    sandbox.WTMedia.providerOrder().join(','));
+
+  /* ---------- 2) الدخول إلى الغرفة ---------- */
+  byId.get('gateName').value = 'أمين';
+  byId.get('gateForm').dispatch('submit', {});
+  await wait(300);
+  t('الغرفة جاهزة', sandbox.WTRoom.session.ready === true);
+
+  const chatBody = byId.get('chatBody');
+  const sent = [];
+  const transport = sandbox.WTRoom.session.transport;
+  const originalSend = transport.sendChat.bind(transport);
+  transport.sendChat = (m) => { sent.push(m); return originalSend(m); };
+
+  /* ---------- 3) الإرفاق والرفع ---------- */
+  plan = [{ status: 200, text: '' }];   /* Supabase Storage يردّ 200 */
+  byId.get('mediaInput').files = [image];
+  byId.get('mediaInput').dispatch('change', {});
+  await until(() => sandbox.WTRoom.media.attachments.length === 1 &&
+    sandbox.WTRoom.media.attachments[0].status === 'done');
+
+  const atts = sandbox.WTRoom.media.attachments;
+  t('المرفق أُضيف إلى القائمة', atts.length === 1 && atts[0].kind === 'image');
+  t('اكتمل الرفع', atts[0].status === 'done', atts[0].status + ' / ' + atts[0].error);
+  t('الرابط من موقع التخزين المجاني صالح', /^https:\/\//.test(atts[0].media.url), atts[0].media && atts[0].media.url);
+  t('الرابط يشير إلى دلو وسائط الغرفة', /wt-room-media/.test(atts[0].media.url), atts[0].media && atts[0].media.url);
+  t('اسم المزوّد محفوظ', atts[0].media.provider === 'supabase', atts[0].media.provider);
+  t('شريط المرفقات يظهر بطاقة الملف', byId.get('mediaTray').hidden === false && byId.get('mediaTray').children.length === 1);
+  t('الطلب ذهب إلى واجهة التخزين', requests.length === 1 && /storage\/v1\/object/.test(requests[0].url), requests[0] && requests[0].url);
+
+  /* ---------- 4) الإرسال: الرابط إلى قاعدة البيانات ---------- */
+  byId.get('chatInput').value = 'صورة من الرحلة';
+  byId.get('chatForm').dispatch('submit', {});
+  await until(() => sent.length === 1);
+
+  t('أُرسلت رسالة واحدة', sent.length === 1, String(sent.length));
+  t('الرابط أُرسل إلى قاعدة البيانات', sent[0].media && sent[0].media.url === atts[0].media.url, JSON.stringify(sent[0].media));
+  t('نوع الوسيط مُرسَل', sent[0].media && sent[0].media.type === 'image');
+  t('الغلاف يحمل الرابط', sent[0].text.indexOf(atts[0].media.url) > 0);
+  const decoded = sandbox.WTRoom.chat.decodeChatText(sent[0].text);
+  t('فك الغلاف يسترجع الوسيط', decoded.media.length === 1 && decoded.media[0].u === atts[0].media.url);
+  t('نص الرسالة باقٍ', decoded.text === 'صورة من الرحلة');
+  t('الغلاف لا يتجاوز حد التخزين (1000 محرف)', sent[0].text.length < 1000, String(sent[0].text.length));
+  t('شريط المرفقات أُفرغ بعد الإرسال', sandbox.WTRoom.media.attachments.length === 0 && byId.get('mediaTray').hidden === true);
+  t('خانة الكتابة أُفرغت', byId.get('chatInput').value === '');
+
+  /* ---------- 5) العرض داخل الدردشة ---------- */
+  const card = chatBody.querySelector('.msg-media');
+  t('بطاقة وسائط داخل الرسالة', !!card);
+  t('الصورة معروضة من رابط موقع الرفع', !!card.querySelector('.msg-media__img') && card.querySelector('.msg-media__img').src === atts[0].media.url,
+    card.querySelector('.msg-media__img') && card.querySelector('.msg-media__img').src);
+  t('أدوات البطاقة موجودة (تكبير · فتح · تنزيل)', card.querySelectorAll('.msg-media__tool').length >= 2);
+  t('النص يظهر مع الوسائط', !!chatBody.querySelector('.msg__text'));
+  t('الرسالة مُعلَّمة كرسالة وسائط', !!chatBody.querySelector('.msg--media'));
+
+  /* ---------- 6) العارض المكبّر ---------- */
+  const zoom = card.querySelector('[data-act="expand"]');
+  t('زر التكبير موجود', !!zoom);
+  zoom.dispatch('click', { target: zoom });
+  await wait(40);
+  t('العارض المكبّر يفتح', byId.get('mediaLightbox').hidden === false);
+  t('العارض يعرض الصورة', !!byId.get('mediaStage').querySelector('.media-lightbox__img'));
+  t('زر التنزيل يشير إلى الرابط', byId.get('mediaDownload').getAttribute('href') === atts[0].media.url);
+  byId.get('mediaClose').dispatch('click', {});
+  t('زر الإغلاق يغلق العارض', byId.get('mediaLightbox').hidden === true);
+
+  /* ---------- 7) فيديو ---------- */
+  plan = [{ status: 200, text: '' }];
+  byId.get('mediaInput').files = [video];
+  byId.get('mediaInput').dispatch('change', {});
+  await until(() => sandbox.WTRoom.media.attachments.length === 1 &&
+    sandbox.WTRoom.media.attachments[0].status === 'done');
+  t('الفيديو رُفع', sandbox.WTRoom.media.attachments[0] && sandbox.WTRoom.media.attachments[0].kind === 'video');
+  const videoUrl = sandbox.WTRoom.media.attachments[0].media.url;
+  await wait(450);   /* تهدئة الإرسال بين رسالتين */
+  byId.get('chatForm').dispatch('submit', {});
+  await until(() => !!chatBody.querySelector('.msg-media--video'));
+  const videoCard = chatBody.querySelector('.msg-media--video');
+  t('بطاقة فيديو داخل الرسالة', !!videoCard);
+  t('مشغّل الفيديو يعرض رابط الملف', !!videoCard.querySelector('.msg-media__video') && videoCard.querySelector('.msg-media__video').src === videoUrl,
+    videoCard.querySelector('.msg-media__video') && videoCard.querySelector('.msg-media__video').src);
+  t('نوع الوسائط في قاعدة البيانات فيديو', sent[sent.length - 1].media.type === 'video');
+
+  /* ---------- 8) سلسلة البدائل: فشل المزوّد الأول ---------- */
+  plan = [
+    { fail: true },                                                       /* Supabase: فشل */
+    { status: 200, text: 'https://files.catbox.moe/abc123.png' }          /* Catbox: نجح */
+  ];
+  byId.get('mediaInput').files = [image];
+  byId.get('mediaInput').dispatch('change', {});
+  await until(() => sandbox.WTRoom.media.attachments.length === 1 &&
+    sandbox.WTRoom.media.attachments[0].status === 'done');
+  const fallback = sandbox.WTRoom.media.attachments[0];
+  t('انتقل إلى المزوّد البديل تلقائياً', fallback && fallback.status === 'done' && fallback.media.provider === 'catbox',
+    fallback && (fallback.media.provider + ' ' + fallback.status));
+  t('الرابط من الموقع البديل', fallback && fallback.media.url === 'https://files.catbox.moe/abc123.png');
+  t('جرّب مزوّدين قبل النجاح', requests.length === 4, String(requests.length));
+  sandbox.WTRoom.media.clearAttachments();
+
+  /* ---------- 9) الإفلات واللصق ---------- */
+  byId.get('chat').dispatch('dragenter', { dataTransfer: { types: ['Files'], files: [image] } });
+  t('طبقة الإفلات تظهر عند السحب', byId.get('mediaDrop').hidden === false);
+  byId.get('chat').dispatch('drop', { dataTransfer: { types: ['Files'], files: [image] } });
+  await until(() => sandbox.WTRoom.media.attachments.length === 1);
+  t('طبقة الإفلات تختفي بعد الإفلات', byId.get('mediaDrop').hidden === true);
+  t('الملف المُفلَت أُرفق', sandbox.WTRoom.media.attachments.length === 1);
+
+  byId.get('chatInput').dispatch('paste', { clipboardData: { files: [image] } });
+  await until(() => sandbox.WTRoom.media.attachments.length === 2);
+  t('اللصق يضيف الملف', sandbox.WTRoom.media.attachments.length === 2);
+
+  /* ---------- 10) رفض الملفات غير الصالحة ---------- */
+  plan = [{ status: 200, text: '' }];
+  byId.get('mediaInput').files = [{ name: 'doc.pdf', type: 'application/pdf', size: 1000 }];
+  byId.get('mediaInput').dispatch('change', {});
+  await wait(60);
+  t('الملف غير المدعوم يُرفض', sandbox.WTRoom.media.attachments.length === 2, String(sandbox.WTRoom.media.attachments.length));
+
+  byId.get('mediaInput').files = [{ name: 'huge.png', type: 'image/png', size: 90 * 1048576 }];
+  byId.get('mediaInput').dispatch('change', {});
+  await wait(60);
+  t('الصورة الأكبر من الحد تُرفض', sandbox.WTRoom.media.attachments.length === 2, String(sandbox.WTRoom.media.attachments.length));
+
+  /* ---------- 11) الأمان: رابط غير آمن ---------- */
+  t('رابط javascript: مرفوض', sandbox.WTMedia.safeURL('javascript:alert(1)') === '');
+  t('رابط ببيانات دخول مرفوض', sandbox.WTMedia.safeURL('https://user:pass@example.com/a.png') === '');
+  t('رابط http/https مقبول', sandbox.WTMedia.safeURL('https://example.com/a.png') === 'https://example.com/a.png');
+  const badCard = sandbox.WTRoom.chat.addChatMessage({
+    id: 'bad-media', client: 'x', name: 'مخترق', kind: 'chat', ts: Date.now(),
+    text: sandbox.WTRoom.chat.encodeChatText('', { c: 'bad-media', m: { u: 'javascript:alert(1)', k: 'image' } })
+  });
+  t('رسالة برابط خبيث لا تعرض وسائط', !badCard.querySelector('.msg-media'));
+
+  /* ---------- 12) الرد على رسالة وسائط والحذف ---------- */
+  const mediaRow = chatBody.children.find(r => r.classList.contains('msg--media'));
+  sandbox.WTRoom.chat.setReplyTo(mediaRow);
+  t('الرد على رسالة وسائط يذكر نوعها', sandbox.WTRoom.session.replyTo.text.indexOf('صورة') >= 0,
+    sandbox.WTRoom.session.replyTo.text);
+  sandbox.WTRoom.chat.clearComposer();
+
+  const before = chatBody.children.length;
+  sandbox.WTRoom.chat.deleteMessage(mediaRow);
+  await wait(30);
+  t('حذف رسالة الوسائط يُبقي مكانها', chatBody.children.length === before);
+  t('حذف رسالة الوسائط يزيل البطاقة', !mediaRow.querySelector('.msg-media'));
+
+  /* ---------- 13) حدّ الملفات في الرسالة الواحدة ---------- */
+  const max = sandbox.WT_CONFIG.media.maxPerMessage;
+  sandbox.WTRoom.media.clearAttachments();
+  const many = [];
+  for (let i = 0; i < max + 3; i++) many.push({ name: 'f' + i + '.png', type: 'image/png', size: 1000 });
+  plan = many.map(() => ({ status: 200, text: '' }));
+  sandbox.WTRoom.media.handleFiles(many);
+  await until(() => sandbox.WTRoom.media.attachments.length >= 1);
+  t('الحد الأقصى للملفات في الرسالة الواحدة مُطبَّق', sandbox.WTRoom.media.attachments.length === max,
+    String(sandbox.WTRoom.media.attachments.length));
+
+  env.dispose();
+  console.log('');
+  if (errors.length) errors.forEach(e => console.log('  ' + e));
+  console.log(`  ${pass} passed, ${fail} failed`);
+  process.exit(fail ? 1 : 0);
+};
+
+run().catch(e => { console.error(e); process.exit(1); });

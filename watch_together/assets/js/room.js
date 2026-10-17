@@ -17,6 +17,7 @@
   const IC = window.WTIcons;
   const CFG = window.WT_CONFIG;
   const Auth = window.WTAuth;
+  const Media = window.WTMedia;   /* رفع الوسائط وعرضها (قد يكون غائباً في نسخة مخفّفة) */
   const $ = (id) => document.getElementById(id);
 
   /* ============================== المعرّفات ============================== */
@@ -82,7 +83,9 @@
     videoParsed: null,
     pendingDrift: 0,
     lastError: null,       /* آخر خطأ اتصال (مترجم) */
-    lastReport: null       /* آخر تقرير تشخيص */
+    lastReport: null,      /* آخر تقرير تشخيص */
+    attachments: [],       /* مرفقات جاهزة/قيد الرفع: {id, file, kind, status, progress, media} */
+    mediaSending: false    /* جارٍ انتظار اكتمال الرفع قبل الإرسال */
   };
 
   /** حالة الغرفة المتزامنة */
@@ -120,6 +123,7 @@
     chat: $('chat'), chatBody: $('chatBody'), chatEmpty: $('chatEmpty'), chatCount: $('chatCount'),
     clearChatBtn: $('clearChatBtn'), refreshChatBtn: $('refreshChatBtn'), chatForm: $('chatForm'),
     chatInput: $('chatInput'), chatSend: $('chatSend'), typing: $('typing'),
+    attachBtn: $('attachBtn'), mediaInput: $('mediaInput'), mediaTray: $('mediaTray'), mediaDrop: $('mediaDrop'),
     composerBar: $('composerBar'), composerBarLabel: $('composerBarLabel'), composerBarText: $('composerBarText'), composerBarCancel: $('composerBarCancel'),
     playlistModal: $('playlistModal'), playlistCloseBtn: $('playlistCloseBtn'), queueList: $('queueList'), queueEmpty: $('queueEmpty'),
     sbMeBtn: $('sbMeBtn'), qrModal: $('qrModal'), qrBox: $('qrBox'), qrUrl: $('qrUrl'), qrClose: $('qrClose'), qrCopy: $('qrCopy'),
@@ -311,6 +315,8 @@
         sb.tables && sb.tables.rooms ? 'is-good' : 'is-bad') +
       diagRow('chat', 'جدول الرسائل (messages)', sb.tables && sb.tables.messages ? 'موجود ✓' : 'مفقود ✕',
         sb.tables && sb.tables.messages ? 'is-good' : 'is-warn') +
+      diagRow('image', 'رابط الوسائط (media_url)', sb.media && sb.media.columns ? 'موجود ✓' : 'غير موجود (اختياري)',
+        sb.media && sb.media.columns ? 'is-good' : 'is-warn') +
       (sb.messageField ? diagRow('check', 'عمود نصّ الرسالة',
         '<code>' + U.esc(sb.messageField) + '</code>' + (sb.messageField === 'body' ? ' ✓' : ' — جدول قديم (تكيّف العميل)'),
         sb.messageField === 'body' ? 'is-good' : 'is-warn') : '') +
@@ -1146,6 +1152,13 @@
       return CHAT_MARK + JSON.stringify(Object.assign({ t: String(text == null ? '' : text) }, meta));
     } catch (e) { return String(text == null ? '' : text); }
   }
+
+  /** قائمة الوسائط داخل غلاف الرسالة (قد تكون واحدة أو عدة) */
+  function mediaListOf(raw) {
+    if (!raw || !Media || typeof Media.mediaList !== 'function') return [];
+    try { return Media.mediaList(raw) || []; } catch (e) { return []; }
+  }
+
   function decodeChatText(raw) {
     const s = String(raw == null ? '' : raw);
     if (s.charAt(0) === CHAT_MARK) {
@@ -1157,16 +1170,25 @@
           cid: String(o.c || ''),
           reply: o.r ? { name: String(o.r.n || ''), text: String(o.r.t || '') } : null,
           next: o.n != null ? String(o.n) : '',
+          media: mediaListOf(o.m),
           action: o.a === 'reaction' ? 'reaction' : '',
           reaction: typeof o.e === 'string' && typeof o.u === 'string'
             ? { emoji: o.e, actor: o.u, version: o.v } : null
         };
       } catch (e) {
         /* ليس غلافاً — نسقط العلامة ونتعامل معه كنص عادي */
-        return { ok: false, text: s.slice(1), cid: '', reply: null, next: '' };
+        return { ok: false, text: s.slice(1), cid: '', reply: null, next: '', media: [] };
       }
     }
-    return { ok: false, text: s, cid: '', reply: null, next: '' };
+    return { ok: false, text: s, cid: '', reply: null, next: '', media: [] };
+  }
+
+  /** وسائط من عمود قاعدة البيانات (media_url) حين لا تحمل الرسالة غلافاً */
+  function mediaFromMessage(m) {
+    if (!m || !m.media || !m.media.url) return [];
+    if (!Media || typeof Media.normalizeMedia !== 'function') return [];
+    const one = Media.normalizeMedia({ u: m.media.url, k: m.media.type || '' });
+    return one ? [one] : [];
   }
 
   function addChatMessage(m, opts) {
@@ -1193,7 +1215,10 @@
       row.innerHTML = '<div class="msg__bubble">' + U.esc(text || '') + '</div>';
     } else {
       /* Legacy kind=react messages also use the ordinary sender-aligned bubble. */
-      row.className = 'msg' + (mine ? ' msg--me' : '');
+      const media = (d.media && d.media.length) ? d.media : mediaFromMessage(m);
+      const hasMedia = media.length > 0;
+      const hasText = !!String(text || '').trim();
+      row.className = 'msg' + (mine ? ' msg--me' : '') + (hasMedia ? ' msg--media' : '');
       const color = U.colorFor(m.name || '?');
       row.innerHTML =
         '<span class="msg__avatar" style="background:' + color + '" title="' + U.esc(m.name || 'زائر') + '">' + U.esc(U.initials(m.name)) + '</span>' +
@@ -1201,7 +1226,7 @@
         (d.reply ? '<div class="msg__quote">' +
           '<span class="msg__quote-name">' + U.esc(d.reply.name) + '</span>' +
           '<span class="msg__quote-text">' + U.esc(d.reply.text) + '</span></div>' : '') +
-        '<p class="msg__text">' + U.linkify(U.esc(text || '')) + '</p>' +
+        (hasText ? '<p class="msg__text">' + U.linkify(U.esc(text || '')) + '</p>' : '') +
         '<p class="msg__meta">' +
         '<span class="msg__time">' + U.fmtClock(m.ts || Date.now()) + '</span>' +
         '</p>' +
@@ -1212,6 +1237,22 @@
       row.dataset.text = text;
       row.dataset.name = String(m.name || '');
       row._reactions = new Map();
+      /* الوسائط: بطاقات داخل الفقاعة + فهرسها للعارض المكبّر */
+      if (hasMedia) {
+        row._media = media;
+        row.dataset.media = '1';
+        const bubble = row.querySelector('.msg__bubble');
+        /* تُدرَج البطاقة قبل النص (أو قبل الوقت إن لم يكن نص) */
+        const anchor = bubble && bubble.querySelector
+          ? (bubble.querySelector('.msg__text') || bubble.querySelector('.msg__meta')) : null;
+        media.forEach((item) => {
+          if (!Media || typeof Media.renderCard !== 'function') return;
+          const card = Media.renderCard(item, { onExpand: () => openMediaViewer(item) });
+          if (!card) return;
+          if (bubble && bubble.insertBefore) bubble.insertBefore(card, anchor);
+          else row.appendChild(card);
+        });
+      }
     }
 
     const followLatest = el.chatBody.scrollHeight - el.chatBody.scrollTop - el.chatBody.clientHeight < 80;
@@ -1355,6 +1396,8 @@
     if (session.msgMenu && session.msgMenu._row === row) hideMsgMenu();
     const quote = row.querySelector('.msg__quote');
     if (quote) quote.remove();
+    const media = row.querySelector('.msg-media');
+    if (media) media.remove();
     const textEl = row.querySelector('.msg__text');
     if (textEl) {
       textEl.className = 'msg__text msg__text--gone';
@@ -1363,6 +1406,7 @@
     const ed = row.querySelector('.msg__edited');
     if (ed) ed.remove();
     if (row.dataset) row.dataset.text = '';
+    if (row._media) row._media = [];
   }
 
   function applyEditToRow(row, next) {
@@ -1471,10 +1515,11 @@
     setTimeout(() => { delete session.recentSent[wire + '|' + kind]; delete session.recentSent[wire]; }, 15000);
   }
 
-  function sendMessage(text, kind) {
+  function sendMessage(text, kind, media) {
     if (kind === 'react') kind = 'chat';
     text = String(text || '').trim();
-    if (!text) return false;
+    const mediaItems = mediaListOf(media);
+    if (!text && !mediaItems.length) return false;
     if (!session.ready) { U.toast('لم يكتمل الاتصال بعد — حاول بعد ثانية', 'warn'); return false; }
 
     const now = Date.now();
@@ -1484,11 +1529,14 @@
     session.lastChatSend = now;
 
     const maxLen = (CFG.chat && CFG.chat.maxLength) || 600;
-    const body = text.slice(0, maxLen);
+    /* الوسائط تُغلَّف مع النص، والغلاف محدود بـ 1000 محرف في التخزين */
+    const packed = (Media && typeof Media.packMedia === 'function') ? Media.packMedia(mediaItems) : null;
+    const budget = packed && Media.textBudget ? Media.textBudget(packed) : maxLen;
+    const body = text.slice(0, Math.max(0, Math.min(maxLen, budget)));
     const cid = U.uid('m');
     const isChat = !kind || kind === 'chat';
 
-    /* غلاف الرسالة: المعرف + اقتباس الرد — يُفكَّك لدى كل مستقبل */
+    /* غلاف الرسالة: المعرف + اقتباس الرد + الوسائط — يُفكَّك لدى كل مستقبل */
     let meta = null, reply = null;
     if (isChat) {
       meta = { c: cid };
@@ -1496,6 +1544,7 @@
         reply = { name: session.replyTo.name || '', text: String(session.replyTo.text || '').slice(0, 120) };
         meta.r = { n: reply.name, t: reply.text };
       }
+      if (packed) meta.m = packed;
     }
     const wire = encodeChatText(body, meta);
     const msg = {
@@ -1503,7 +1552,13 @@
       text: wire, ts: now, kind: kind || 'chat'
     };
     if (reply) msg.reply = reply;
-    session.transport.sendChat({ name: msg.name, text: wire, kind: msg.kind, client: session.clientId });
+    /* الرابط يُرسل إلى قاعدة البيانات مع الرسالة (عمود media_url) */
+    if (packed && mediaItems.length) {
+      msg.media = { url: mediaItems[0].u, type: mediaItems[0].k, meta: mediaItems };
+    }
+    session.transport.sendChat({
+      name: msg.name, text: wire, kind: msg.kind, client: session.clientId, media: msg.media || null
+    });
     rememberChatSend(wire, msg.kind, now);
     addChatMessage(msg, { mine: true });
     if (isChat) clearComposer();
@@ -1536,7 +1591,7 @@
     session.editing = null;
     session.replyTo = {
       cid: row.dataset.cid || '', name: row.dataset.name || '',
-      text: row.dataset.text || '', row: row
+      text: row.dataset.text || mediaLabelOf(row), row: row
     };
     setComposerBar();
     if (el.chatInput) el.chatInput.focus();
@@ -1598,9 +1653,262 @@
       autosize();
       return;
     }
-    const sent = sendMessage(text, 'chat');
-    /* لم يُرسَل (تهدئة/اتصال) → نُبقي النص وشريط الرد كي يعيد المحاولة */
-    if (sent) { input.value = ''; autosize(); }
+    const atts = (session.attachments || []).filter(a => a.status !== 'error');
+    if (!atts.length) {
+      const sent = sendMessage(text, 'chat');
+      /* لم يُرسَل (تهدئة/اتصال) → نُبقي النص وشريط الرد كي يعيد المحاولة */
+      if (sent) { input.value = ''; autosize(); }
+      return;
+    }
+    return sendWithMedia(text);
+  }
+
+  /* ============================== الوسائط: إرفاق ورفع وإرسال ==============================
+     • تُرفَق الملفات من الزر أو بالإفلات أو باللصق.
+     • الرفع يبدأ فوراً إلى موقع تخزين مجاني (سلسلة مزوّدين)، مع شريط تقدّم.
+     • عند الإرسال ننتظر اكتمال الرفع، ثم تُرسَل الروابط مع الرسالة إلى القاعدة.
+     ==================================================================== */
+  function mediaEnabled() {
+    if (!Media) return false;
+    if (CFG.media && CFG.media.enabled === false) return false;
+    return true;
+  }
+
+  /** رابط مؤقت للمعاينة المحلية (قد لا يدعمه المتصفح) */
+  function previewURL(file) {
+    try {
+      if (window.URL && typeof window.URL.createObjectURL === 'function') return window.URL.createObjectURL(file);
+    } catch (e) { }
+    return '';
+  }
+
+  function handleFiles(files) {
+    if (!mediaEnabled()) return;
+    const list = Array.from(files || []).filter(Boolean);
+    if (!list.length) return;
+    const max = (CFG.media && CFG.media.maxPerMessage) || 4;
+    const used = (session.attachments || []).filter(a => a.status !== 'error').length;
+    const room = Math.max(0, max - used);
+    if (!room) { U.toast('الحد ' + max + ' ملفات في الرسالة الواحدة', 'warn', 2600); return; }
+    const accepted = list.slice(0, room);
+    if (accepted.length < list.length) U.toast('سُجلت أول ' + room + ' ملفات فقط (الحد ' + max + ')', 'warn', 2800);
+    const added = accepted.map(addAttachment).filter(Boolean);
+    if (added.length) U.toast('جارٍ رفع ' + added.length + ' ملف إلى التخزين المجاني…', 'info', 2200);
+  }
+
+  function addAttachment(file) {
+    if (!Media) return null;
+    const check = Media.validate(file);
+    if (!check.ok) { U.toast(check.error || 'الملف غير مدعوم', 'error', 3200); return null; }
+    const att = {
+      id: U.uid('f'),
+      file: file,
+      kind: check.kind,
+      name: String((file && file.name) || (check.kind === 'video' ? 'فيديو' : 'صورة')).slice(0, 60),
+      size: Number(file && file.size) || 0,
+      preview: previewURL(file),
+      status: 'uploading',
+      progress: 0,
+      media: null,
+      error: '',
+      provider: ''
+    };
+    session.attachments.push(att);
+    renderTray();
+    startUpload(att);
+    return att;
+  }
+
+  async function mediaToken() {
+    try {
+      if (Auth && typeof Auth.validSession === 'function') {
+        const s = await Auth.validSession();
+        if (s && s.access_token) return s.access_token;
+      }
+    } catch (e) { }
+    const supa = CFG.supabase || {};
+    return supa.anonKey || '';
+  }
+
+  async function startUpload(att) {
+    try {
+      const token = await mediaToken();
+      const result = await Media.upload(att.file, {
+        roomId: roomId,
+        token: token,
+        onProgress: (pct, provider) => {
+          att.progress = Math.max(0, Math.min(100, Number(pct) || 0));
+          if (provider) att.provider = provider;
+          renderTray();
+        }
+      });
+      att.status = 'done';
+      att.progress = 100;
+      att.media = result;
+      renderTray();
+    } catch (err) {
+      att.status = 'error';
+      att.error = (err && err.message) || 'تعذّر الرفع';
+      renderTray();
+      U.toast('تعذّر رفع ' + att.name + ' — ' + att.error, 'error', 4200);
+    }
+  }
+
+  function removeAttachment(id) {
+    session.attachments = (session.attachments || []).filter(a => a.id !== id);
+    renderTray();
+  }
+
+  /** شريط المرفقات: بطاقات مصغّرة مع التقدّم */
+  function renderTray() {
+    const tray = el.mediaTray;
+    if (!tray) return;
+    const items = session.attachments || [];
+    tray.hidden = items.length === 0;
+    tray.innerHTML = '';
+    items.forEach((att) => {
+      const chip = document.createElement('div');
+      chip.className = 'media-chip' + (att.status === 'done' ? ' is-done' : '') + (att.status === 'error' ? ' is-error' : '');
+      chip.setAttribute('data-att', att.id);
+
+      const thumb = document.createElement('div');
+      thumb.className = 'media-chip__thumb';
+      if (att.preview && att.kind === 'image') {
+        const img = document.createElement('img');
+        img.src = att.preview;
+        img.alt = att.name;
+        thumb.appendChild(img);
+      } else {
+        const icon = document.createElement('span');
+        icon.className = 'ic media-chip__icon';
+        icon.innerHTML = IC.html(att.kind === 'video' ? 'videoFull' : 'image', 24);
+        thumb.appendChild(icon);
+      }
+      chip.appendChild(thumb);
+
+      const meta = document.createElement('div');
+      meta.className = 'media-chip__meta';
+      const name = document.createElement('span');
+      name.className = 'media-chip__name';
+      name.textContent = att.name;
+      name.title = att.name;
+      const size = document.createElement('span');
+      size.className = 'media-chip__size';
+      size.textContent = Media.fmtSize(att.size);
+      meta.appendChild(name);
+      meta.appendChild(size);
+      chip.appendChild(meta);
+
+      const bar = document.createElement('div');
+      bar.className = 'media-chip__bar';
+      const fill = document.createElement('div');
+      fill.className = 'media-chip__fill';
+      fill.style.width = (att.status === 'done' ? 100 : att.progress) + '%';
+      bar.appendChild(fill);
+      chip.appendChild(bar);
+
+      let note = null;
+      if (att.status === 'uploading') {
+        note = document.createElement('span');
+        note.className = 'media-chip__pct';
+        note.textContent = att.progress + '%';
+      } else if (att.status === 'error') {
+        note = document.createElement('span');
+        note.className = 'media-chip__note';
+        note.textContent = att.error || 'فشل الرفع';
+      } else if (att.media) {
+        note = document.createElement('span');
+        note.className = 'media-chip__note';
+        note.textContent = (att.media.providerLabel || 'تم الرفع') + (att.media.temporary ? ' · مؤقّت' : '');
+      }
+      if (note) chip.appendChild(note);
+
+      const remove = document.createElement('button');
+      remove.type = 'button';
+      remove.className = 'media-chip__status';
+      remove.setAttribute('data-remove', att.id);
+      remove.setAttribute('title', 'إزالة');
+      remove.setAttribute('aria-label', 'إزالة المرفق');
+      remove.innerHTML = IC.html('x', 12);
+      remove.addEventListener('click', () => removeAttachment(att.id));
+      chip.appendChild(remove);
+
+      tray.appendChild(chip);
+    });
+  }
+
+  /** ينتظر اكتمال الرفع (أو الفشل) لكل المرفقات */
+  function waitUploads(list) {
+    return new Promise((resolve) => {
+      const check = () => {
+        const failed = list.filter(a => a.status === 'error');
+        if (failed.length) return resolve(false);
+        const pending = list.filter(a => a.status === 'uploading' || a.status === 'pending');
+        if (!pending.length) return resolve(true);
+        setTimeout(check, 120);
+      };
+      check();
+    });
+  }
+
+  /** إرسال رسالة مع مرفقات (بعد اكتمال الرفع) */
+  async function sendWithMedia(text) {
+    if (session.mediaSending) return false;
+    const atts = (session.attachments || []).filter(a => a.status !== 'error');
+    const pending = atts.filter(a => a.status !== 'done');
+    if (pending.length) {
+      session.mediaSending = true;
+      if (el.chatSend) el.chatSend.disabled = true;
+      U.toast('جارٍ انتظار اكتمال الرفع…', 'info', 2000);
+      const ok = await waitUploads(pending);
+      session.mediaSending = false;
+      if (el.chatSend) el.chatSend.disabled = false;
+      if (!ok) {
+        U.toast('فشل رفع أحد الملفات — أعد المحاولة أو أزله من الشريط', 'error', 3400);
+        renderTray();
+        return false;
+      }
+    }
+    const done = (session.attachments || []).filter(a => a.status === 'done' && a.media);
+    if (!done.length) { U.toast('لا توجد ملفات جاهزة للإرسال', 'warn', 2600); return false; }
+    const sent = sendMessage(text, 'chat', done.map(a => a.media));
+    if (sent) {
+      if (el.chatInput) { el.chatInput.value = ''; autosize(); }
+      session.attachments = [];
+      renderTray();
+    }
+    return sent;
+  }
+
+  /** يفتح العارض المكبّر على وسائط الرسالة (مع تنقّل بين كل وسائط المحادثة) */
+  function openMediaViewer(media) {
+    if (!Media || typeof Media.openViewer !== 'function') return false;
+    const items = [];
+    let index = 0;
+    Array.from(el.chatBody.children || []).forEach((row) => {
+      const list = row && row._media;
+      if (!list || !list.length) return;
+      list.forEach((item) => {
+        if (media && item.u === media.u) index = items.length;
+        items.push(item);
+      });
+    });
+    if (!items.length && media) items.push(media);
+    return Media.openViewer(items, index);
+  }
+
+  /** تسمية وسائط للاقتباس (عند الرد على رسالة بلا نص) */
+  function mediaLabelOf(row) {
+    const list = row && row._media;
+    if (!list || !list.length) return '';
+    return Media && Media.label ? Media.label(list[0]) : 'وسائط';
+  }
+
+  /** طبقة «أفلت الملفات هنا» */
+  function showDropOverlay(on) {
+    if (!el.mediaDrop) return;
+    el.mediaDrop.hidden = !on;
+    el.mediaDrop.setAttribute('aria-hidden', on ? 'false' : 'true');
   }
 
   /* خيارات الرسالة: تفاعل بالإيموجي · رد · تعديل · حذف */
@@ -2168,6 +2476,7 @@
         'REST: ' + (sb && sb.rest && sb.rest.ok ? 'يعمل (' + sb.rest.ms + 'ms)' : 'فشل'),
         'جدول rooms: ' + (sb && sb.tables && sb.tables.rooms ? 'موجود' : 'مفقود'),
         'جدول messages: ' + (sb && sb.tables && sb.tables.messages ? 'موجود' : 'مفقود'),
+        'عمود رابط الوسائط media_url: ' + (sb && sb.media && sb.media.columns ? 'موجود' : 'مفقود (اختياري — 08-room-media.sql)'),
         'عمود نصّ الرسالة: ' + (sb && sb.messageField ? sb.messageField : 'غير معروف (body المتوقع)'),
         'جدول room_members (الأدوار): ' + (sb && sb.tables && sb.tables.room_members ? 'موجود' : 'مفقود'),
         'جدول room_queue (قائمة التشغيل): ' + (sb && sb.tables && sb.tables.room_queue ? 'موجود' : 'مفقود'),
@@ -2251,6 +2560,85 @@
     });
     if (el.refreshChatBtn) el.refreshChatBtn.addEventListener('click', () => { refreshChat(); });
 
+    /* ---- الوسائط: زر الإرفاق · اختيار الملفات · الإفلات · اللصق ---- */
+    if (el.attachBtn && el.mediaInput) {
+      el.attachBtn.addEventListener('click', () => {
+        if (!mediaEnabled()) { U.toast('إرفاق الوسائط غير مفعّل', 'warn'); return; }
+        try { el.mediaInput.click(); } catch (e) { }
+      });
+      el.mediaInput.addEventListener('change', () => {
+        const files = el.mediaInput.files;
+        handleFiles(files);
+        try { el.mediaInput.value = ''; } catch (e) { }
+      });
+    }
+
+    /* الإفلات فوق صندوق الرسائل */
+    if (el.chat) {
+      let dragDepth = 0;
+      const carriesFiles = (e) => {
+        const dt = e && e.dataTransfer;
+        if (!dt) return false;
+        const types = dt.types;
+        if (!types) return false;
+        for (let i = 0; i < types.length; i++) if (types[i] === 'Files') return true;
+        return false;
+      };
+      el.chat.addEventListener('dragenter', (e) => {
+        if (!carriesFiles(e)) return;
+        e.preventDefault();
+        dragDepth++;
+        showDropOverlay(true);
+      });
+      el.chat.addEventListener('dragover', (e) => {
+        if (!carriesFiles(e)) return;
+        e.preventDefault();
+        if (e.dataTransfer) { try { e.dataTransfer.dropEffect = 'copy'; } catch (err) { } }
+      });
+      el.chat.addEventListener('dragleave', (e) => {
+        /* ما زال المؤشّر داخل الصندوق (تنقّل بين العناصر) → لا نخفي الطبقة */
+        const to = e && e.relatedTarget;
+        if (to && el.chat.contains && el.chat.contains(to)) return;
+        dragDepth = Math.max(0, dragDepth - 1);
+        if (!dragDepth) showDropOverlay(false);
+      });
+      el.chat.addEventListener('drop', (e) => {
+        if (!carriesFiles(e)) return;
+        e.preventDefault();
+        dragDepth = 0;
+        showDropOverlay(false);
+        if (e.dataTransfer && e.dataTransfer.files) handleFiles(e.dataTransfer.files);
+      });
+    }
+
+    /* اللصق من الحافظة (صورة أو فيديو) */
+    if (el.chatInput) {
+      el.chatInput.addEventListener('paste', (e) => {
+        const dt = e && e.clipboardData;
+        if (!dt || !dt.files || !dt.files.length) return;
+        const files = Array.from(dt.files).filter(f => f && typeof f.type === 'string' &&
+          (f.type.indexOf('image/') === 0 || f.type.indexOf('video/') === 0));
+        if (!files.length) return;
+        e.preventDefault();
+        handleFiles(files);
+      });
+    }
+
+    /* منع المتصفح من فتح الملف عند الإفلات خارج صندوق الرسائل */
+    ['dragover', 'drop'].forEach((name) => {
+      window.addEventListener(name, (e) => {
+        const dt = e && e.dataTransfer;
+        if (!dt || !dt.types) return;
+        let hasFiles = false;
+        for (let i = 0; i < dt.types.length; i++) {
+          if (dt.types[i] === 'Files') { hasFiles = true; break; }
+        }
+        if (!hasFiles) return;
+        if (e.preventDefault) e.preventDefault();
+        if (name === 'drop') showDropOverlay(false);
+      });
+    });
+
     updateMessagesBadge();
     bindMobileViewport();
 
@@ -2271,6 +2659,10 @@
       else if (e.key.toLowerCase() === 'c') copy(roomUrl(), 'تم نسخ رابط الغرفة');
       else if (e.key.toLowerCase() === 'd') setFocusMode(!session.focusMode);
       else if (e.key === 'Escape') {
+        if (Media && typeof Media.closeViewer === 'function') {
+          const box = document.getElementById('mediaLightbox');
+          if (box && !box.hidden) { Media.closeViewer(); return; }
+        }
         if (!el.playlistModal.hidden) el.playlistModal.hidden = true;
         else if (el.diagModal && !el.diagModal.hidden) closeDiag();
         else if (!el.qrModal.hidden) el.qrModal.hidden = true;
@@ -2426,6 +2818,13 @@
       addChatMessage, setReplyTo, startEdit, deleteMessage, commitEdit,
       submitChat, clearComposer, encodeChatText, decodeChatText, findMsgRow, toggleMessageReaction, openMsgMenu,
       refreshChat
+    },
+    media: {
+      handleFiles, addAttachment, removeAttachment, renderTray, waitUploads, sendWithMedia,
+      openMediaViewer, showDropOverlay, mediaEnabled,
+      clearAttachments() { session.attachments = []; renderTray(); },
+      get attachments() { return session.attachments; },
+      get uploading() { return session.mediaSending; }
     },
     setVideo(url) {
       const parsed = U.parseWatchUrl(url);
