@@ -118,7 +118,7 @@
     changeBar: $('changeBar'), newUrl: $('newUrl'), newTitle: $('newTitle'), applyUrlBtn: $('applyUrlBtn'), cancelUrlBtn: $('cancelUrlBtn'),
     membersPanel: $('membersPanel'), membersList: $('membersList'), sideMembersCount: $('sideMembersCount'),
     chat: $('chat'), chatBody: $('chatBody'), chatEmpty: $('chatEmpty'), chatCount: $('chatCount'),
-    clearChatBtn: $('clearChatBtn'), chatForm: $('chatForm'),
+    clearChatBtn: $('clearChatBtn'), refreshChatBtn: $('refreshChatBtn'), chatForm: $('chatForm'),
     chatInput: $('chatInput'), chatSend: $('chatSend'), typing: $('typing'),
     composerBar: $('composerBar'), composerBarLabel: $('composerBarLabel'), composerBarText: $('composerBarText'), composerBarCancel: $('composerBarCancel'),
     playlistModal: $('playlistModal'), playlistCloseBtn: $('playlistCloseBtn'), queueList: $('queueList'), queueEmpty: $('queueEmpty'),
@@ -1397,6 +1397,65 @@
     el.chatCount.textContent = n + (n === 1 ? ' رسالة' : ' رسائل');
   }
 
+  /* زر «تحديث الرسائل» بجانب زر المسح: يعيد جلب أحدث الرسائل من السيرفر
+     (addChatMessage يتجاهل المكرر بالمعرف، فيُستعاد ما مُسح محلياً فقط) */
+  let refreshingChat = false;
+  async function refreshChat() {
+    if (refreshingChat) return { added: 0 };
+    if (!session.ready || !session.transport) {
+      U.toast('لم يكتمل الاتصال بعد — حاول بعد ثانية', 'warn');
+      return { added: 0 };
+    }
+    refreshingChat = true;
+    if (el.refreshChatBtn) {
+      el.refreshChatBtn.classList.add('is-spinning');
+      el.refreshChatBtn.disabled = true;
+    }
+    try {
+      const t = session.transport;
+      const before = el.chatBody.querySelectorAll('.msg:not(.msg--system)').length;
+      if (t.kind === 'supabase' && typeof t._fetch === 'function') {
+        /* نفس استعلام الدخول: أحدث 100 رسالة ثم نعرضها بالترتيب */
+        const rows = await t._fetch('/rest/v1/messages?room_id=eq.' + encodeURIComponent(roomId) +
+          '&select=*&order=id.desc&limit=100');
+        const list = Array.isArray(rows) ? rows.slice().reverse() : [];
+        const readText = (window.WTTransport && window.WTTransport.msgText) ||
+          ((r) => (r && (r.body || r.text || r.message || r.content || r.msg)) || '');
+        list.forEach(r => {
+          const n = +r.id;
+          if (Number.isFinite(n) && n > (t._lastMsgId || 0)) t._lastMsgId = n;
+          if (typeof t._learnMessageField === 'function') t._learnMessageField(r);
+          addChatMessage({
+            id: String(r.id), name: r.name, text: readText(r),
+            ts: Date.parse(r.created_at) || Date.now(), kind: r.kind || 'chat', client: r.client_id || null
+          }, { silent: true });
+        });
+        t._msgsReady = true;
+        if (typeof t._pollOnce === 'function') { try { await t._pollOnce(); } catch (e) { } }
+      } else if (t.kind === 'local' && t._msgsKey) {
+        const saved = U.store.get(t._msgsKey, []);
+        (Array.isArray(saved) ? saved : []).forEach(m => addChatMessage(m, { silent: true }));
+      } else if (t.kind === 'ws') {
+        /* سيرفر Java يدفع الرسائل لحظياً ولا يوفّر أرشيفاً — لا شيء إضافي يُجلب */
+      }
+      const after = el.chatBody.querySelectorAll('.msg:not(.msg--system)').length;
+      const added = Math.max(0, after - before);
+      updateChatCount();
+      scrollChat(true);
+      U.toast(added > 0 ? 'تم تحديث الرسائل (' + added + ' جديدة)' : 'الرسائل محدّثة — لا جديد', 'success', 2200);
+      return { added };
+    } catch (err) {
+      U.toast('تعذّر تحديث الرسائل — تحقق من الاتصال ثم أعد المحاولة', 'error', 3000);
+      return { added: 0 };
+    } finally {
+      refreshingChat = false;
+      if (el.refreshChatBtn) {
+        el.refreshChatBtn.classList.remove('is-spinning');
+        el.refreshChatBtn.disabled = false;
+      }
+    }
+  }
+
   /* الدردشة ظاهرة دائماً في الغرفة (تأخذ المساحة الكبيرة) → لا عدّاد «غير مقروء» */
   function isChatVisible() { return true; }
 
@@ -1770,7 +1829,7 @@
   function autosize() {
     const t = el.chatInput;
     t.style.height = 'auto';
-    t.style.height = Math.min(130, t.scrollHeight) + 'px';
+    t.style.height = Math.min(96, t.scrollHeight) + 'px';
   }
 
   /* يضمن ظهور كل محتوى الصفحة على كل هاتف: عند فتح لوحة المفاتيح
@@ -2190,6 +2249,7 @@
       clearComposer();
       updateChatCount();
     });
+    if (el.refreshChatBtn) el.refreshChatBtn.addEventListener('click', () => { refreshChat(); });
 
     updateMessagesBadge();
     bindMobileViewport();
@@ -2364,7 +2424,8 @@
     reconnect,
     chat: {
       addChatMessage, setReplyTo, startEdit, deleteMessage, commitEdit,
-      submitChat, clearComposer, encodeChatText, decodeChatText, findMsgRow, toggleMessageReaction, openMsgMenu
+      submitChat, clearComposer, encodeChatText, decodeChatText, findMsgRow, toggleMessageReaction, openMsgMenu,
+      refreshChat
     },
     setVideo(url) {
       const parsed = U.parseWatchUrl(url);

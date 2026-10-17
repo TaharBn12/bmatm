@@ -2440,3 +2440,71 @@ body.chat-focus .room-main > #chat {
   .room-main { padding-top: 6px; gap: 6px; }
   .room-body .stage { width: min(100%, max(240px, 42vh)); }
 }
+
+/* =========================================================
+   حقل الكتابة المضغوط + زر الإرسال خارجه + زر تحديث الرسائل
+   ---------------------------------------------------------
+   • حقل الكتابة أصغر (ارتفاع وحشو وخط أقل) ونصّه التلميحي «اكتب رسالتك».
+   • زر الإرسال خارج الحقل: زر مستقل مميّز بدل دمجه داخل خلفية الحقل.
+   • زر التحديث بجانب زر المسح في رأس الرسائل، ويدور أثناء التحديث.
+   • على الشاشات اللمسية تبقى الأهداف ≥ 44px (اختبار room-mobile)
+     مع 16px لمنع تكبير iOS عند الكتابة.
+   ========================================================= */
+.room-body .chat__form {
+  background: transparent;
+  border: 0;
+  padding: 0;
+  gap: 8px;
+  align-items: flex-end;
+  border-radius: 0;
+}
+.room-body .chat__input {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 34px;
+  max-height: 96px;
+  padding: 7px 10px;
+  font-size: 13.5px;
+  line-height: 1.5;
+  border-radius: 10px;
+  border: 1px solid #2c3544;
+  background: #242c3a;
+  color: #eef2f8;
+  box-shadow: none;
+}
+.room-body .chat__input::placeholder { color: #8a94a6; }
+.room-body .chat__input:focus {
+  outline: none;
+  border-color: rgba(124, 92, 255, .7);
+  box-shadow: 0 0 0 3px rgba(124, 92, 255, .14);
+  background: #202736;
+}
+.room-body .chat__send {
+  width: 36px;
+  height: 36px;
+  border-radius: 11px;
+  flex: none;
+  border: 0;
+  background: var(--grad);
+  color: #0a0715;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  transition: transform .18s, box-shadow .2s, opacity .2s;
+}
+.room-body .chat__send:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 24px rgba(124, 92, 255, .45);
+}
+.room-body .chat__send:disabled { opacity: .45; cursor: not-allowed; transform: none; box-shadow: none; }
+.room-body .chat__send svg { width: 18px; height: 18px; }
+
+/* زر تحديث الرسائل: دوران الأيقونة أثناء التحديث */
+#refreshChatBtn.is-spinning { pointer-events: none; opacity: .75; }
+#refreshChatBtn.is-spinning .ic svg { animation: spin .8s linear infinite; }
+
+/* اللمس: الهدف الأدنى 44px يبقى، والحقل مضغوط قدر الإمكان */
+@media (pointer: coarse) {
+  .room-body .chat__send { width: 44px; height: 44px; border-radius: 13px; }
+  .room-body .chat__input { min-height: 44px; padding: 9px 12px; font-size: 16px; }
+}

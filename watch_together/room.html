@@ -17,7 +17,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800;900&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="assets/css/app.css?v=3.0.2">
+  <link rel="stylesheet" href="assets/css/app.css?v=3.0.3">
 </head>
 <body class="room-body">
   <div class="bg-fx"></div>
@@ -214,6 +214,9 @@
           <h2 class="chat__title"><span class="ic" data-icon="chat" data-size="18"></span> الرسائل</h2>
           <span class="badge" id="chatCount">0</span>
           <span class="chat__spacer"></span>
+          <button class="btn btn--sm btn--ghost btn--icon-sm" id="refreshChatBtn" type="button" title="تحديث الرسائل" aria-label="تحديث الرسائل">
+            <span class="ic" data-icon="sync" data-size="16"></span>
+          </button>
           <button class="btn btn--sm btn--ghost btn--icon-sm" id="clearChatBtn" title="مسح الشاشة عندك فقط" aria-label="مسح">
             <span class="ic" data-icon="trash" data-size="16"></span>
           </button>
@@ -241,7 +244,7 @@
 
           <form class="chat__form" id="chatForm" autocomplete="off">
             <textarea class="chat__input" id="chatInput" rows="1" maxlength="600"
-                      placeholder="اكتب رسالتك… (Enter للإرسال، Shift+Enter لسطر جديد)"></textarea>
+                      placeholder="اكتب رسالتك"></textarea>
             <button class="chat__send" type="submit" id="chatSend" title="إرسال" aria-label="إرسال">
               <span class="ic" data-icon="send" data-size="19"></span>
             </button>
@@ -343,6 +346,6 @@
   <script src="assets/js/auth.js?v=3.0.0"></script>
   <script src="assets/js/transport.js?v=3.0.0"></script>
   <script src="assets/js/player.js?v=3.0.0"></script>
-  <script src="assets/js/room.js?v=3.0.2"></script>
+  <script src="assets/js/room.js?v=3.0.3"></script>
 </body>
 </html>
