@@ -56,8 +56,9 @@ const run = async () => {
   await wait(60);
   const row = chatBody.children[chatBody.children.length - 1];
   t('الرسالة أُضيفت', !!row && String(row._className).includes('msg--me'));
-  t('سطر واحد مدمج للاسم والوقت (msg__meta)', !!row.querySelector('.msg__meta'));
-  t('الاسم والوقت موجودان في البطاقة', !!row.querySelector('.msg__name') && !!row.querySelector('.msg__time'));
+  t('سطر مدمج للوقت (msg__meta)', !!row.querySelector('.msg__meta'));
+  t('الوقت موجود في البطاقة والاسم وأيقونة التفاعل أُزيلا منها',
+    !row.querySelector('.msg__name') && !row.querySelector('.msg__react-add') && !!row.querySelector('.msg__time'));
   t('لا سطر وقت مستقل قديم', !row.querySelector('.msg__time-old'));
   t('النص يظهر في msg__text', !!row.querySelector('.msg__text'));
   t('المعرّف والمرسل محفوظان على الصف', row.dataset.cid !== '' && row.dataset.client === sandbox.WTRoom.session.clientId);
@@ -239,14 +240,16 @@ const run = async () => {
   /* ---------- 12) الإيموجي المرسل: فقاعة عادية، حتى في التاريخ القديم ---------- */
   byId.get('messagesBtn').dispatch('click', {});
   await wait(450);
-  byId.get('reactRow').querySelectorAll('[data-react]')[0].dispatch('click', {});
+  chatInput.value = '👍';
+  chatForm.dispatch('submit', {});
   const emojiRow = chatBody.children[chatBody.children.length - 1];
-  t('الإيموجي يُرسل في نفس فقاعة رسائلي العادية', emojiRow.classList.contains('msg--me') &&
+  t('الإيموجي يُرسل في نفس فقاعة رسائلي العادية بلا شريط إيموجي علوي', !byId.has('reactRow') && emojiRow.classList.contains('msg--me') &&
     !!emojiRow.querySelector('.msg__bubble') && !!emojiRow.querySelector('.msg__text') && !emojiRow.classList.contains('msg--react'));
-  t('الإيموجي له اسم ووقت ومعرف مثل الرسائل', !!emojiRow.querySelector('.msg__meta') && !!emojiRow.dataset.cid && emojiRow.dataset.text === '👍');
+  t('الإيموجي له وقت ومعرف مثل الرسائل بلا اسم ولا أيقونة تفاعل داخلية',
+    !!emojiRow.querySelector('.msg__meta') && !emojiRow.querySelector('.msg__name') && !emojiRow.querySelector('.msg__react-add') && !!emojiRow.dataset.cid && emojiRow.dataset.text === '👍');
   const legacyEmoji = CH.addChatMessage({ id: 'legacy-emoji', kind: 'react', text: '😂', name: 'سليم', client: 'remote-1' });
   t('الإيموجي القديم لا يعود إلى وسط نافذة الرسائل', !!legacyEmoji.querySelector('.msg__bubble') &&
-    !legacyEmoji.classList.contains('msg--react') && legacyEmoji.dataset.text === '😂' && !!legacyEmoji.querySelector('.msg__react-add'));
+    !legacyEmoji.classList.contains('msg--react') && legacyEmoji.dataset.text === '😂' && !legacyEmoji.querySelector('.msg__react-add'));
   const beforeDuplicate = chatBody.children.length;
   const duplicate = CH.addChatMessage({ id: 'legacy-emoji', kind: 'react', text: '😂', name: 'سليم', client: 'remote-1' });
   t('إعادة بث الرسالة لا تضيف نسخة ثانية أو تفصل التفاعلات عنها', duplicate === legacyEmoji && chatBody.children.length === beforeDuplicate);
@@ -254,20 +257,21 @@ const run = async () => {
   t('رسالة الإيموجي تقبل الرد مثل الرسائل', composerBar.dataset.mode === 'reply' && !composerBar.hidden);
   CH.clearComposer();
 
-  /* ---------- 13) زر التفاعل، التبديل والإلغاء بلا رسالة منفصلة ---------- */
+  /* ---------- 13) التفاعل بالضغط المطوّل، التبديل والإلغاء بلا رسالة منفصلة ---------- */
   const beforeReactions = chatBody.children.length;
   const actor = sandbox.WTRoom.session.clientId;
-  const addButton = emojiRow.querySelector('.msg__react-add');
-  addButton.dispatch('click', {});
+  chatBody.dispatch('pointerdown', { clientX: 120, clientY: 210, pointerId: 9, target: emojiRow });
+  await wait(500);
+  chatBody.dispatch('pointerup', { clientX: 120, clientY: 210, pointerId: 9, target: emojiRow });
   const reactionMenu = documentStub.body.querySelector('.msg-menu');
-  t('زر الوجه يفتح قائمة تفاعلات الرسالة', !reactionMenu.hidden && reactionMenu._row === emojiRow && addButton.getAttribute('aria-expanded') === 'true');
+  t('الضغط المطوّل يفتح قائمة تفاعلات الرسالة', !reactionMenu.hidden && reactionMenu._row === emojiRow);
   const choices = reactionMenu.querySelectorAll('.msg-menu__reaction');
   t('خيارات التفاعل تأتي من الإعدادات', choices.length === sandbox.WT_CONFIG.chat.reactions.length);
   choices.find(b => b.dataset.emoji === '❤️').dispatch('click', {});
   const chipFor = (target, emoji) => target.querySelectorAll('.msg__reaction').find(b => b.dataset.emoji === emoji);
   t('اختيار القلب يضيفه أسفل الرسالة مع العدد', chipFor(emojiRow, '❤️')?.textContent === '❤️ 1');
   t('تفاعلي محدد ويمكن لقارئ الشاشة تمييزه', chipFor(emojiRow, '❤️')?.getAttribute('aria-pressed') === 'true');
-  t('التفاعل يغلق القائمة ويعيد حالة الزر', reactionMenu.hidden && addButton.getAttribute('aria-expanded') === 'false');
+  t('التفاعل يغلق القائمة ويعيد حالة الصف', reactionMenu.hidden && !emojiRow.classList.contains('is-menu'));
   t('التفاعل لا يضيف صفاً ولا يغيّر نص الرسالة', chatBody.children.length === beforeReactions && emojiRow.dataset.text === '👍');
   chipFor(emojiRow, '❤️').dispatch('click', {});
   t('الضغط على تفاعلي مرة ثانية يلغيه', !emojiRow.querySelector('.msg__reactions'));
@@ -313,16 +317,16 @@ const run = async () => {
   t('التفاعل الذي وصل قبل رسالته يُطبَّق عند وصولها بأحدث اختيار', chipFor(later, '🔥')?.textContent === '🔥 1' && !chipFor(later, '👍'));
   CH.commitEdit({ row: later, cid: later.dataset.cid, orig: later.dataset.text }, 'رسالة معدلة');
   t('تعديل الرسالة يحافظ على تفاعلاتها', chipFor(later, '🔥')?.textContent === '🔥 1' && later.dataset.text === 'رسالة معدلة');
-  later.querySelector('.msg__react-add').dispatch('click', {});
+  chatBody.dispatch('contextmenu', { clientX: 100, clientY: 180, target: later });
   documentStub.dispatch('keydown', { key: 'Escape' });
   t('Escape يغلق منتقي التفاعل دون إخفاء الفيديو', reactionMenu.hidden && !sandbox.WTRoom.session.focusMode);
   CH.deleteMessage(later);
-  t('حذف الرسالة يزيل زر التفاعل والتفاعلات', !later.querySelector('.msg__reactions') && !later.querySelector('.msg__react-add'));
+  t('حذف الرسالة يزيل التفاعلات', !later.querySelector('.msg__reactions') && !later.querySelector('.msg__react-add'));
   t('الرسالة المحذوفة لا تقبل تفاعلاً جديداً', !CH.toggleMessageReaction(later, '👍'));
   CH.addChatMessage(incoming('early-actor', '❤️', 3, 'future-id'));
   t('التفاعل القادم بعد الحذف لا يعيدها للحياة', !later.querySelector('.msg__reactions'));
   CH.addChatMessage(incoming('early-actor', '🔥', 3, 'cleared-id'));
-  emojiRow.querySelector('.msg__react-add').dispatch('click', {});
+  chatBody.dispatch('contextmenu', { clientX: 100, clientY: 180, target: emojiRow });
   byId.get('clearChatBtn').dispatch('click', {});
   const afterClear = CH.addChatMessage({ text: CH.encodeChatText('بعد المسح', { c: 'cleared-id' }), name: 'أمين', client: actor });
   t('مسح المحادثة يغلق القائمة ويمسح التفاعلات المعلقة', reactionMenu.hidden && !afterClear.querySelector('.msg__reactions'));

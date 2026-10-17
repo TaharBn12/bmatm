@@ -483,7 +483,7 @@ for (const v of VIEWPORTS) {
   }
   const chatBodyEl = byIdProbe('chatBody');
   t('نافذة الرسائل ثابتة لأربع رسائل قصيرة حتى قبل وصول الرسائل',
-    val(chatBodyEl, 'height', ctx) === '256px' && val(chatBodyEl, 'min-height', ctx) === '0',
+    val(chatBodyEl, 'height', ctx) === '154px' && val(chatBodyEl, 'min-height', ctx) === '0',
     `${val(chatBodyEl, 'height', ctx)} / ${val(chatBodyEl, 'min-height', ctx)}`);
   t('حشو قائمة الرسائل في الغرفة يساوي صفراً',
     val(chatBodyEl, 'padding', ctx) === '0', val(chatBodyEl, 'padding', ctx));

@@ -26,7 +26,7 @@ assert.ok(player.end <= bar.start && bar.end <= stage.end, 'progress bar below t
 for (const id of ['centerPlayBtn', 'videoFullscreenBtn', 'clickLayer', 'progressBar', 'progressTip']) {
   assert.ok(html.includes(`id="${id}"`), `${id} exists`);
 }
-for (const id of ['volRange', 'playPauseBtn', 'muteBtn', 'curTime', 'durTime', 'skipBackBtn', 'skipFwdBtn']) {
+for (const id of ['volRange', 'playPauseBtn', 'muteBtn', 'curTime', 'durTime', 'skipBackBtn', 'skipFwdBtn', 'reactRow']) {
   assert.ok(!html.includes(`id="${id}"`), `${id} remains removed`);
   assert.ok(!js.includes(`'${id}'`), `${id} is not dereferenced by room.js`);
 }
@@ -43,9 +43,9 @@ assert.match(css, /\[hidden\] \{ display: none !important; \}/, 'hidden overlays
 assert.match(css, /\.room-body \.ctrlbar\.vcontrols \{[^}]*position: static/);
 assert.match(css, /\.room-body \.stage \{[^}]*flex-direction: column/);
 assert.match(css, /width: min\(100%, max\(320px, 54vh\)\)/);
-assert.match(css, /\.room-main > #chat \.chat__body \{[^}]*height: 256px;[^}]*padding: 0;[^}]*overflow-y: auto/s,
+assert.match(css, /\.room-main > #chat \.chat__body \{[^}]*height: 154px;[^}]*padding: 0;[^}]*overflow-y: auto/s,
   'four short messages fit in a fixed-height, padding-free scroll area');
-assert.match(css, /\.room-main > #chat \.chat__body > \.msg \{[^}]*min-height: 58px/);
+assert.match(css, /\.room-main > #chat \.chat__body > \.msg \{[^}]*min-height: 34px/);
 assert.match(css, /body\.chat-focus \.room-main > #chat \.chat__body \{[^}]*flex: 1 1 auto/,
   'chat focus can use the available screen height');
 assert.doesNotMatch(js, /sizeChatWindow|chatBody\.style\.height/, 'message content must not resize the chat box');

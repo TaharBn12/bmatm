@@ -20,7 +20,6 @@ const env = createRoomEnv({
 const { sandbox, documentStub, byId, store, html } = env;
 env.sandbox.WT_CONFIG.javaServer.enabled = false;
 env.sandbox.WT_CONFIG.supabase.ready = false;
-const reactRow = byId.get('reactRow');
 
 env.loaded.forEach(l => t(`تحميل ${path.basename(l.file)}`, l.ok, l.ok ? '' : l.error.message));
 env.loaded.filter(l => !l.ok).forEach(l => console.log(l.error && l.error.stack));
@@ -38,7 +37,7 @@ const run = async () => {
     'progressBar', 'progressFill', 'progressBuffer', 'progressKnob', 'progressTip',
     'addVideoBtn', 'messagesBtn', 'messagesCount', 'playlistBtn', 'playlistCount',
     'changeBar', 'newUrl', 'newTitle', 'applyUrlBtn', 'cancelUrlBtn', 'chat', 'chatBody',
-    'chatEmpty', 'chatCount', 'clearChatBtn', 'reactRow', 'chatForm', 'chatInput', 'chatSend',
+    'chatEmpty', 'chatCount', 'clearChatBtn', 'chatForm', 'chatInput', 'chatSend',
     'typing', 'messagesIcon', 'playlistModal', 'playlistCloseBtn', 'queueList', 'queueEmpty',
     'sbMeBtn', 'qrModal', 'qrBox', 'qrUrl', 'qrClose', 'qrCopy', 'meModal', 'meClose',
     'meAvatar', 'meName', 'meMail', 'meNameInput', 'meSave', 'meSignout', 'diagModal',
@@ -47,7 +46,7 @@ const run = async () => {
   const missing = needed.filter(id => !byId.has(id));
   t('كل عناصر الواجهة الجديدة موجودة', missing.length === 0, missing.join(','));
 
-  t('إزالة العنوان والشعار وأزرار الفيديو الزائدة', !/id="(roomTitle|collapseBtn|backToVideoBtn)"|rtopbar__brand/.test(html));
+  t('إزالة العنوان والشعار وأزرار الفيديو الزائدة وشريط الإيموجي العلوي', !/id="(roomTitle|collapseBtn|backToVideoBtn|reactRow)"|rtopbar__brand/.test(html));
 
   const roomJs = fs.readFileSync(path.join(base, 'assets/js/room.js'), 'utf8');
   const refs = [...roomJs.matchAll(/\$\(['"]([^'"]+)['"]\)/g)].map(m => m[1]);
@@ -134,15 +133,16 @@ const run = async () => {
   t('رسائل الانضمام محصورة في نافذة الرسائل', chatBody.children.some(c => String(c._className).includes('msg--system')));
   t('الرسائل ظاهرة دائماً (لا عدّاد «غير مقروء» يغطّيها)',
     sandbox.WTRoom.session.unread === 0 && byId.get('messagesCount').hidden === true);
-  const beforeReact = chatBody.children.length;
-  const reactBtn = reactRow.children.find(c => c.dataset.react);
-  t('أزرار إرسال الإيموجي موجودة', !!reactBtn);
-  if (reactBtn) {
-    await wait(400);
-    reactBtn.dispatch('click', {});
-    await wait(40);
-    t('الإيموجي أُرسل كرسالة عادية بمحاذاة المرسل', chatBody.children.length > beforeReact && chatBody.children.at(-1).classList.contains('msg--me') && !!chatBody.children.at(-1).querySelector('.msg__bubble') && !chatBody.children.at(-1).classList.contains('msg--react'));
-  }
+  const sentMsg = chatBody.children.at(-1);
+  t('إزالة شريط الإيموجي فوق حقل الكتابة', !byId.has('reactRow'));
+  t('الرسالة المدمجة بلا اسم ظاهر وبلا أيقونة تفاعل داخل الفقاعة',
+    !!sentMsg && !sentMsg.querySelector('.msg__name') && !sentMsg.querySelector('.msg__react-add') && !!sentMsg.querySelector('.msg__time'));
+  chatBody.dispatch('pointerdown', { clientX: 100, clientY: 200, pointerId: 1, target: sentMsg });
+  await wait(500);
+  chatBody.dispatch('pointerup', { clientX: 100, clientY: 200, pointerId: 1, target: sentMsg });
+  const msgMenu = documentStub.body.querySelector('.msg-menu');
+  t('الضغط المطوّل يظهر إيموجي التفاعل للرسالة', !!msgMenu && !msgMenu.hidden && (msgMenu.querySelectorAll('.msg-menu__reaction') || []).length >= 5);
+  msgMenu.hidden = true;
 
   byId.get('messagesBtn').dispatch('click', {});
   await wait(40);

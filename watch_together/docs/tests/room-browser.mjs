@@ -170,7 +170,7 @@ async function chatMetrics(page) {
     return {
       total: rows.length, height: body.clientHeight, chatTop: chat.top, chatHeight: chat.height,
       stageBottom: stage.bottom, documentHeight: document.documentElement.scrollHeight,
-      viewportHeight: window.innerHeight, gap: parseFloat(style.rowGap) || 0, rowHeight: rows.length ? parseFloat(getComputedStyle(rows.at(-1)).minHeight) : 58,
+      viewportHeight: window.innerHeight, gap: parseFloat(style.rowGap) || 0, rowHeight: rows.length ? parseFloat(getComputedStyle(rows.at(-1)).minHeight) : 34,
       padding: [style.paddingTop, style.paddingRight, style.paddingBottom, style.paddingLeft],
       overflow: body.scrollHeight > body.clientHeight + 1,
       visible: rows.filter(row => {
@@ -294,6 +294,7 @@ try {
     await page.click('#playlistCloseBtn');
 
     /* Chat submit/Enter/reaction, focus mode and cancel/clear are actual pointer/keyboard actions. */
+    assert.equal(await page.locator('#reactRow').count(), 0, 'emoji bar above chat input is removed');
     await page.fill('#chatInput', 'رسالة بزر الإرسال');
     await page.click('#chatSend');
     assert.equal(await page.locator('#chatInput').inputValue(), '');
@@ -303,17 +304,25 @@ try {
     await page.press('#chatInput', 'Enter');
     assert.ok(await page.locator('.msg__text').filter({ hasText: 'رسالة بمفتاح الدخول' }).isVisible());
     await page.waitForTimeout(380);
-    await page.locator('[data-react="👍"]').click();
+    await page.fill('#chatInput', '👍');
+    await page.press('#chatInput', 'Enter');
     const emojiRow = page.locator('#chatBody .msg--me').last();
     assert.equal(await emojiRow.locator('.msg__text').textContent(), '👍');
-    assert.ok(await emojiRow.locator('.msg__name').isVisible());
+    assert.equal(await emojiRow.locator('.msg__name, .msg__react-add').count(), 0, 'no sender name or reaction icon inside message');
     assert.ok(await emojiRow.locator('.msg__time').isVisible());
     assert.equal(await emojiRow.evaluate(row => getComputedStyle(row).flexDirection), 'row-reverse');
     assert.equal(await page.locator('.msg--react, .react-bubble').count(), 0, 'emoji are ordinary messages, not centered rows');
     const beforeReactions = await page.locator('#chatBody .msg').count();
-    const addReaction = emojiRow.locator('.msg__react-add');
-    if (device.hasTouch) await addReaction.tap();
-    else await addReaction.click();
+    const openPickerFor = async (targetRow) => {
+      if (device.hasTouch) {
+        await targetRow.locator('.msg__text').dispatchEvent('pointerdown', { pointerType: 'touch', pointerId: 7, clientX: 100, clientY: 300 });
+        await page.waitForTimeout(500);
+        await targetRow.locator('.msg__text').dispatchEvent('pointerup', { pointerType: 'touch', pointerId: 7, clientX: 100, clientY: 300 });
+      } else {
+        await targetRow.locator('.msg__text').click({ button: 'right' });
+      }
+    };
+    await openPickerFor(emojiRow);
     const picker = page.locator('.msg-menu');
     assert.ok(await picker.isVisible());
     const menuRect = await picker.boundingBox();
@@ -323,24 +332,19 @@ try {
     assert.equal(await emojiRow.locator('.msg__reaction').textContent(), '❤️ 1');
     assert.equal(await emojiRow.locator('.msg__reaction').getAttribute('aria-pressed'), 'true');
     assert.equal(await page.locator('#chatBody .msg').count(), beforeReactions, 'reaction adds no chat row');
-    await addReaction.focus();
-    await page.keyboard.press('Enter');
+    await openPickerFor(emojiRow);
     assert.equal(await picker.locator('[data-emoji="❤️"]').getAttribute('aria-pressed'), 'true');
     await picker.locator('[data-emoji="😂"]').focus();
     await page.keyboard.press('Enter');
     assert.equal(await emojiRow.locator('.msg__reaction').textContent(), '😂 1', 'choosing another emoji replaces my reaction');
     await emojiRow.locator('.msg__reaction').click();
     assert.equal(await emojiRow.locator('.msg__reaction').count(), 0, 'clicking my reaction removes it');
-    if (device.hasTouch) {
-      await emojiRow.locator('.msg__text').dispatchEvent('pointerdown', { pointerType: 'touch', pointerId: 7, clientX: 100, clientY: 300 });
-      await page.waitForTimeout(500);
-      await emojiRow.locator('.msg__text').dispatchEvent('pointerup', { pointerType: 'touch', pointerId: 7, clientX: 100, clientY: 300 });
-    } else await emojiRow.locator('.msg__text').click({ button: 'right' });
-    assert.ok(await picker.isVisible(), 'long press/right click also exposes emoji reactions');
+    await openPickerFor(emojiRow);
+    assert.ok(await picker.isVisible(), 'long press/right click exposes emoji reactions');
     await picker.locator('[data-emoji="🔥"]').click();
     assert.equal(await emojiRow.locator('.msg__reaction').textContent(), '🔥 1');
     await page.click('#messagesBtn');
-    await addReaction.click();
+    await openPickerFor(emojiRow);
     await page.keyboard.press('Escape');
     assert.equal(await picker.isVisible(), false);
     assert.equal(await page.locator('#stage').isVisible(), false, 'Escape closes picker before exiting chat focus');
@@ -366,7 +370,7 @@ try {
     await page.click('#messagesBtn');
     assert.equal(await page.locator('#stage').isVisible(), false);
     const focused = await assertChatWindow(page, false, 12, true);
-    await page.locator('#chatBody .msg').last().locator('.msg__react-add').click();
+    await openPickerFor(page.locator('#chatBody .msg').last());
     await page.locator('.msg-menu__reaction[data-emoji="🔥"]').click();
     const reacted = await assertChatWindow(page, false, 12, true);
     assert.ok(Math.abs(reacted.chatHeight - focused.chatHeight) <= 1, 'reactions do not resize chat focus');
@@ -401,7 +405,7 @@ try {
       Math.abs(afterLong.chatHeight - beforeLong.chatHeight) <= 1 &&
       afterLong.documentHeight === beforeLong.documentHeight,
     'long text scrolls inside a stationary panel without covering the video');
-    await page.locator('#chatBody .msg').last().locator('.msg__react-add').click();
+    await openPickerFor(page.locator('#chatBody .msg').last());
     await page.locator('.msg-menu__reaction[data-emoji="🔥"]').click();
     const afterLongReaction = await chatMetrics(page);
     assert.ok(Math.abs(afterLongReaction.chatHeight - beforeLong.chatHeight) <= 1, 'long message reactions stay inside the panel');
@@ -671,11 +675,17 @@ try {
   await first.bringToFront();
   await first.fill('#chatInput', 'رسالة مشتركة للتفاعل');
   await first.click('#chatSend');
-  await waitFor(second, () => !!document.querySelector('.msg__react-add'));
+  await waitFor(second, () => !!document.querySelector('#chatBody .msg .msg__text'));
   const message = page => page.locator('#chatBody .msg').filter({ has: page.locator('.msg__text', { hasText: 'رسالة مشتركة للتفاعل' }) });
+  const openMenu = async page => {
+    const target = message(page).locator('.msg__text');
+    await target.dispatchEvent('pointerdown', { pointerType: 'touch', pointerId: 11, clientX: 100, clientY: 300 });
+    await page.waitForTimeout(500);
+    await target.dispatchEvent('pointerup', { pointerType: 'touch', pointerId: 11, clientX: 100, clientY: 300 });
+  };
   const choose = async (page, emoji) => {
     await page.bringToFront();
-    await message(page).locator('.msg__react-add').tap();
+    await openMenu(page);
     await page.locator('.msg-menu__reaction').filter({ hasText: emoji }).click();
   };
   await choose(second, '❤️');
@@ -697,7 +707,7 @@ try {
   await waitFor(first, () => document.querySelectorAll('.msg__reaction').length === 1);
   assert.equal(await message(first).locator('.msg__reaction').textContent(), '❤️ 1');
   await first.bringToFront();
-  await message(first).locator('.msg__react-add').tap();
+  await openMenu(first);
   await first.locator('.msg-menu__btn[data-act="delete"]').click();
   await waitFor(second, () => !!document.querySelector('.msg--deleted'));
   assert.equal(await second.locator('.msg__reaction, .msg__react-add').count(), 0, 'deletion removes reactions on both tabs');
