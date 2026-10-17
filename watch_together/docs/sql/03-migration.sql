@@ -77,6 +77,10 @@ alter table public.messages add column if not exists created_at timestamptz not 
 alter table public.messages add column if not exists user_id uuid;
 alter table public.messages add column if not exists client_id text;
 alter table public.messages add column if not exists kind text not null default 'chat';
+-- رابط الوسائط (صورة/فيديو) كما أعادته مواقع التخزين المجانية
+alter table public.messages add column if not exists media_url text;
+alter table public.messages add column if not exists media_type text;
+alter table public.messages add column if not exists media_meta jsonb;
 alter table public.messages add column if not exists id bigint;
 
 do $$
@@ -268,6 +272,35 @@ create policy rooms_read on public.rooms
   for select to anon, authenticated using (true);
 create policy messages_read_write on public.messages
   for all to anon, authenticated using (true) with check (true);
+
+-- ---------------------------------------------------------------------
+-- وسائط الغرفة: دلو تخزين مجاني في Supabase Storage (نفس 08-room-media.sql)
+-- ---------------------------------------------------------------------
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values (
+  'wt-room-media', 'wt-room-media', true, 104857600,
+  array[
+    'image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/avif', 'image/bmp',
+    'video/mp4', 'video/webm', 'video/quicktime', 'video/x-matroska', 'video/ogg', 'video/3gpp'
+  ]
+)
+on conflict (id) do update
+  set public = true,
+      file_size_limit = excluded.file_size_limit,
+      allowed_mime_types = excluded.allowed_mime_types;
+
+drop policy if exists wt_room_media_insert on storage.objects;
+create policy wt_room_media_insert on storage.objects for insert to anon, authenticated with check (
+  bucket_id = 'wt-room-media'
+  and (storage.foldername(name))[1] = 'rooms'
+  and (storage.foldername(name))[2] ~ '^[A-Za-z0-9]{1,12}$'
+  and (storage.foldername(name))[3] ~ '^[0-9]{10,16}-[a-f0-9]{8,40}\.(jpg|jpeg|png|webp|gif|avif|bmp|mp4|webm|mov|m4v|mkv|ogv|3gp)$'
+);
+
+drop policy if exists wt_room_media_read on storage.objects;
+create policy wt_room_media_read on storage.objects for select to anon, authenticated using (
+  bucket_id = 'wt-room-media'
+);
 create policy presence_read_write on public.presence
   for all to anon, authenticated using (true) with check (true);
 create policy room_members_read on public.room_members

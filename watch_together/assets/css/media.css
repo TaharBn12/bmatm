@@ -1,0 +1,402 @@
+/* =========================================================
+   WatchTogether — تصميم الوسائط (media.css)
+   ---------------------------------------------------------
+   واجهة حديثة لإرفاق الصور والفيديو في دردشة الغرفة:
+     • زر إرفاق بحلقة تدرّج متوهّجة
+     • شريط مرفقات (Tray) ببطاقات مصغّرة وتقدّم حيّ
+     • طبقة إفلات بحدود متحركة
+     • بطاقة وسائط داخل الرسالة (إطار زجاجي + أدوات)
+     • عارض مكبّر (Lightbox) بخلفية ضبابية
+   ========================================================= */
+
+/* ============================== زر الإرفاق ============================== */
+.chat__attach {
+  width: 46px; height: 46px; flex: none;
+  border-radius: 14px;
+  display: grid; place-items: center;
+  cursor: pointer;
+  color: var(--muted);
+  background: rgba(255, 255, 255, .05);
+  border: 1px solid var(--border);
+  position: relative;
+  transition: transform .18s cubic-bezier(.2, .9, .3, 1.3), color .18s, border-color .18s, box-shadow .22s;
+}
+.chat__attach:hover {
+  color: var(--text);
+  border-color: rgba(124, 92, 255, .55);
+  transform: translateY(-2px);
+  box-shadow: 0 10px 26px rgba(124, 92, 255, .28);
+}
+.chat__attach:active { transform: translateY(0) scale(.95); }
+.chat__attach:focus-visible { outline: 2px solid var(--brand-2); outline-offset: 2px; }
+.chat__attach svg { width: 19px; height: 19px; }
+
+/* حلقة متوهّجة خفيفة حول الزر (لمسة «حيّة») */
+.chat__attach::after {
+  content: "";
+  position: absolute; inset: -3px;
+  border-radius: 17px;
+  background: conic-gradient(from 140deg, rgba(124, 92, 255, .0), rgba(124, 92, 255, .55), rgba(0, 212, 255, .5), rgba(124, 92, 255, 0));
+  filter: blur(7px);
+  opacity: 0;
+  transition: opacity .25s;
+  z-index: -1;
+}
+.chat__attach:hover::after { opacity: .75; animation: attachSpin 4.5s linear infinite; }
+@keyframes attachSpin { to { transform: rotate(1turn); } }
+
+.chat__attach.is-busy { pointer-events: none; opacity: .6; }
+
+/* ============================== شريط المرفقات ============================== */
+.media-tray {
+  display: flex; gap: 8px;
+  padding: 9px 9px 3px;
+  overflow-x: auto;
+  scrollbar-width: thin;
+  -webkit-overflow-scrolling: touch;
+}
+.media-tray[hidden] { display: none !important; }
+.media-tray:empty { display: none !important; }
+
+.media-chip {
+  position: relative;
+  flex: 0 0 auto;
+  width: 128px;
+  border-radius: 14px;
+  padding: 7px;
+  display: flex; flex-direction: column; gap: 6px;
+  background: linear-gradient(160deg, rgba(124, 92, 255, .16), rgba(0, 212, 255, .07));
+  border: 1px solid rgba(124, 92, 255, .34);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, .35);
+  animation: chipIn .32s cubic-bezier(.2, .9, .3, 1.25) both;
+  overflow: hidden;
+}
+@keyframes chipIn { from { opacity: 0; transform: translateY(10px) scale(.94); } to { opacity: 1; transform: none; } }
+
+.media-chip.is-error { border-color: rgba(255, 92, 114, .55); background: linear-gradient(160deg, rgba(255, 92, 114, .18), rgba(255, 92, 114, .05)); }
+.media-chip.is-done { border-color: rgba(45, 212, 167, .45); }
+
+.media-chip__thumb {
+  position: relative;
+  height: 66px;
+  border-radius: 10px;
+  overflow: hidden;
+  background: rgba(0, 0, 0, .4);
+  display: grid; place-items: center;
+}
+.media-chip__thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.media-chip__thumb video { width: 100%; height: 100%; object-fit: cover; display: block; }
+.media-chip__icon { color: rgba(255, 255, 255, .65); }
+.media-chip__icon svg { width: 24px; height: 24px; }
+
+.media-chip__meta { display: flex; align-items: center; gap: 5px; min-width: 0; }
+.media-chip__name {
+  font-size: 10.5px; font-weight: 700; color: var(--text);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; min-width: 0;
+}
+.media-chip__size { font-size: 9px; color: var(--muted-2); font-weight: 700; flex: none; }
+
+.media-chip__bar {
+  height: 4px; border-radius: 999px;
+  background: rgba(255, 255, 255, .1);
+  overflow: hidden;
+}
+.media-chip__fill {
+  height: 100%; width: 0;
+  border-radius: 999px;
+  background: var(--grad);
+  transition: width .25s ease;
+}
+.media-chip.is-done .media-chip__fill { width: 100% !important; background: linear-gradient(135deg, #2dd4a7, #00d4ff); }
+.media-chip.is-error .media-chip__fill { width: 100% !important; background: linear-gradient(135deg, #ff5c72, #ffb020); }
+
+.media-chip__status {
+  position: absolute; inset-inline-end: 5px; inset-block-start: 5px;
+  width: 22px; height: 22px; border-radius: 50%;
+  display: grid; place-items: center;
+  background: rgba(6, 7, 15, .72);
+  border: 1px solid var(--border);
+  color: var(--text);
+  cursor: pointer;
+  transition: .15s;
+}
+.media-chip__status:hover { background: var(--err); border-color: transparent; color: #0a0715; }
+.media-chip__status svg { width: 12px; height: 12px; }
+
+.media-chip__pct {
+  position: absolute; inset-block-end: 30px; inset-inline: 7px;
+  text-align: center;
+  font-size: 9.5px; font-weight: 800; color: var(--brand-2);
+  text-shadow: 0 1px 6px rgba(0, 0, 0, .8);
+}
+
+.media-chip__note {
+  position: absolute; inset-block-end: 8px; inset-inline: 7px;
+  text-align: center; font-size: 9px; font-weight: 700;
+  color: var(--muted);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+/* ============================== طبقة الإفلات ============================== */
+.media-drop {
+  position: fixed; inset: 0; z-index: 90;
+  display: grid; place-items: center;
+  background: rgba(6, 7, 15, .72);
+  backdrop-filter: blur(10px) saturate(130%);
+  -webkit-backdrop-filter: blur(10px) saturate(130%);
+  animation: fadeIn .18s ease both;
+}
+.media-drop[hidden] { display: none !important; }
+
+.media-drop__box {
+  position: relative;
+  padding: 34px 44px;
+  border-radius: 26px;
+  text-align: center;
+  background: rgba(255, 255, 255, .04);
+  border: 2px dashed rgba(124, 92, 255, .65);
+  box-shadow: 0 30px 80px rgba(0, 0, 0, .6), inset 0 0 60px rgba(124, 92, 255, .10);
+  animation: dropPulse 1.8s ease-in-out infinite;
+}
+@keyframes dropPulse {
+  0%, 100% { transform: scale(1); border-color: rgba(124, 92, 255, .6); }
+  50% { transform: scale(1.025); border-color: rgba(0, 212, 255, .8); }
+}
+.media-drop__icon { color: var(--brand); display: block; margin-bottom: 10px; }
+.media-drop__icon svg { width: 46px; height: 46px; }
+.media-drop__title { font-size: 17px; font-weight: 900; margin: 0 0 4px; }
+.media-drop__hint { font-size: 12px; color: var(--muted); margin: 0; }
+
+/* ============================== بطاقة الوسائط ============================== */
+.msg-media {
+  flex: 1 1 100%;
+  margin: 3px 0 1px;
+  border-radius: 16px;
+  overflow: hidden;
+  background: rgba(0, 0, 0, .28);
+  border: 1px solid var(--border);
+  position: relative;
+  isolation: isolate;
+}
+.msg--me .msg-media { border-color: rgba(124, 92, 255, .38); }
+
+.msg-media__frame {
+  position: relative;
+  display: block;
+  background: rgba(0, 0, 0, .45);
+  overflow: hidden;
+  min-height: 60px;
+}
+
+.msg-media__img,
+.msg-media__video {
+  display: block;
+  width: 100%;
+  max-width: 320px;
+  max-height: 300px;
+  object-fit: cover;
+  background: rgba(0, 0, 0, .5);
+  transition: transform .4s cubic-bezier(.2, .8, .3, 1), filter .3s;
+}
+.msg-media__video { background: #000; }
+.msg-media__img { cursor: zoom-in; }
+
+/* توهّج خلفي يتدرّج بلون الصورة (تأثير بصري حديث) */
+.msg-media__glow {
+  position: absolute; inset: -40% -20%;
+  background: radial-gradient(60% 60% at 50% 40%, rgba(124, 92, 255, .35), transparent 70%);
+  filter: blur(24px);
+  opacity: .8;
+  z-index: -1;
+}
+
+.msg-media:hover .msg-media__img { transform: scale(1.035); }
+
+.msg-media__zoom {
+  position: absolute; inset-block-start: 8px; inset-inline-end: 8px;
+  width: 34px; height: 34px; border-radius: 12px;
+  display: grid; place-items: center;
+  cursor: pointer;
+  color: #fff;
+  background: rgba(6, 7, 15, .6);
+  border: 1px solid rgba(255, 255, 255, .18);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  opacity: 0; transform: translateY(-4px) scale(.9);
+  transition: .2s cubic-bezier(.2, .9, .3, 1.2);
+}
+.msg-media:hover .msg-media__zoom,
+.msg-media__zoom:focus-visible { opacity: 1; transform: none; }
+.msg-media__zoom:hover { background: var(--grad); color: #0a0715; border-color: transparent; }
+.msg-media__zoom svg { width: 17px; height: 17px; }
+
+.msg-media__badge {
+  position: absolute; inset-block-start: 8px; inset-inline-start: 8px;
+  padding: 3px 9px; border-radius: 999px;
+  font-size: 9.5px; font-weight: 800; letter-spacing: .3px;
+  color: #fff;
+  background: rgba(6, 7, 15, .62);
+  border: 1px solid rgba(255, 255, 255, .16);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+.msg-media__tools {
+  position: absolute; inset-block-start: 8px; inset-inline-end: 8px;
+  display: flex; gap: 5px;
+  opacity: 0; transform: translateY(-4px);
+  transition: .2s ease;
+}
+.msg-media:hover .msg-media__tools,
+.msg-media:focus-within .msg-media__tools { opacity: 1; transform: none; }
+.msg-media--video .msg-media__tools { opacity: 1; transform: none; }
+
+.msg-media__tool {
+  width: 30px; height: 30px; border-radius: 10px;
+  display: grid; place-items: center;
+  cursor: pointer;
+  color: #fff;
+  background: rgba(6, 7, 15, .6);
+  border: 1px solid rgba(255, 255, 255, .16);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  text-decoration: none;
+  transition: .16s;
+}
+.msg-media__tool:hover { background: var(--grad); color: #0a0715; border-color: transparent; transform: translateY(-1px); }
+.msg-media__tool svg { width: 15px; height: 15px; }
+
+.msg-media__caption {
+  padding: 5px 9px 6px;
+  font-size: 9.5px; font-weight: 700; color: var(--muted-2);
+  background: rgba(0, 0, 0, .22);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+/* هيكل تحميل متلألٍ حتى تظهر الصورة */
+.msg-media:not(.is-loaded) .msg-media__frame::after {
+  content: "";
+  position: absolute; inset: 0;
+  background: linear-gradient(100deg, transparent 20%, rgba(255, 255, 255, .08) 45%, transparent 70%);
+  background-size: 220% 100%;
+  animation: shimmer 1.5s linear infinite;
+}
+@keyframes shimmer { from { background-position: 120% 0; } to { background-position: -60% 0; } }
+.msg-media.is-error .msg-media__frame::after { display: none; }
+.msg-media.is-error .msg-media__frame {
+  background: rgba(255, 92, 114, .10);
+  min-height: 44px;
+}
+
+/* ============================== العارض المكبّر ============================== */
+.media-lightbox {
+  position: fixed; inset: 0; z-index: 120;
+  display: grid;
+  grid-template-rows: 1fr auto;
+  animation: fadeIn .2s ease both;
+}
+.media-lightbox[hidden] { display: none !important; }
+
+.media-lightbox__backdrop {
+  position: absolute; inset: 0;
+  background: rgba(4, 5, 12, .88);
+  backdrop-filter: blur(22px) saturate(130%);
+  -webkit-backdrop-filter: blur(22px) saturate(130%);
+}
+
+.media-lightbox__frame {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 8px;
+  padding: 16px;
+  min-height: 0;
+}
+
+.media-lightbox__stage {
+  grid-column: 2;
+  display: grid; place-items: center;
+  min-height: 0; height: 100%;
+  animation: pop .28s cubic-bezier(.2, .9, .3, 1.2) both;
+}
+.media-lightbox__img {
+  max-width: min(1000px, 92vw);
+  max-height: 76vh;
+  border-radius: 18px;
+  box-shadow: 0 40px 90px rgba(0, 0, 0, .65);
+  background: rgba(0, 0, 0, .4);
+}
+.media-lightbox__video {
+  max-width: min(1000px, 92vw);
+  max-height: 76vh;
+  border-radius: 18px;
+  box-shadow: 0 40px 90px rgba(0, 0, 0, .65);
+  background: #000;
+}
+
+.media-lightbox__nav {
+  position: relative;
+  width: 44px; height: 44px; border-radius: 50%;
+  display: grid; place-items: center;
+  cursor: pointer;
+  color: var(--text);
+  background: rgba(255, 255, 255, .07);
+  border: 1px solid var(--border);
+  transition: .18s;
+}
+.media-lightbox__nav[hidden] { display: none !important; }
+.media-lightbox__nav:hover { background: var(--grad); color: #0a0715; border-color: transparent; transform: scale(1.06); }
+.media-lightbox__nav svg { width: 20px; height: 20px; }
+
+.media-lightbox__bar {
+  position: relative;
+  display: flex; align-items: center; gap: 9px;
+  padding: 12px 16px calc(12px + env(safe-area-inset-bottom, 0px));
+  background: rgba(10, 12, 24, .72);
+  border-top: 1px solid var(--border);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+.media-lightbox__counter { font-size: 12px; font-weight: 800; color: var(--muted); }
+.media-lightbox__spacer { flex: 1; }
+.media-lightbox__btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  height: 38px; padding: 0 15px;
+  border-radius: 12px;
+  font: 700 12.5px/1 var(--font);
+  color: var(--text);
+  background: rgba(255, 255, 255, .07);
+  border: 1px solid var(--border);
+  cursor: pointer; text-decoration: none;
+  transition: .18s;
+}
+.media-lightbox__btn:hover { background: rgba(124, 92, 255, .22); border-color: rgba(124, 92, 255, .5); }
+.media-lightbox__btn--close { background: rgba(255, 92, 114, .16); border-color: rgba(255, 92, 114, .4); }
+.media-lightbox__btn--close:hover { background: rgba(255, 92, 114, .3); }
+.media-lightbox__btn svg { width: 15px; height: 15px; }
+
+body.media-lightbox-open { overflow: hidden; }
+
+/* ============================== الهاتف ============================== */
+@media (max-width: 640px) {
+  .chat__attach { width: 40px; height: 40px; border-radius: 12px; }
+  .chat__attach svg { width: 17px; height: 17px; }
+  .media-chip { width: 112px; }
+  .media-chip__thumb { height: 56px; }
+  .msg-media__img, .msg-media__video { max-width: 100%; max-height: 240px; }
+  .msg-media__zoom { opacity: 1; transform: none; }
+  .media-lightbox__frame { grid-template-columns: 1fr; padding: 10px; }
+  .media-lightbox__stage { grid-column: 1; }
+  .media-lightbox__nav { position: absolute; bottom: 62px; z-index: 2; }
+  .media-lightbox__nav--prev { inset-inline-start: 12px; }
+  .media-lightbox__nav--next { inset-inline-end: 12px; }
+  .media-lightbox__img, .media-lightbox__video { max-height: 62vh; }
+  .media-lightbox__btn { height: 34px; padding: 0 11px; font-size: 11.5px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .media-chip, .media-lightbox__stage, .media-drop { animation: none !important; }
+  .chat__attach:hover::after { animation: none; }
+  .msg-media:not(.is-loaded) .msg-media__frame::after { animation: none; }
+}

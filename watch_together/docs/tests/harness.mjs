@@ -100,7 +100,12 @@ class El {
     n.parentNode = this;
     return n;
   }
-  setAttribute(k, v) { this.attrs[k] = v; if (k === 'id') this.id = v; }
+  setAttribute(k, v) {
+    this.attrs[k] = v;
+    if (k === 'id') this.id = v;
+    /* كما في المتصفح: data-* يحدّث dataset أيضاً */
+    if (typeof k === 'string' && k.indexOf('data-') === 0) this.dataset[k.slice(5)] = v;
+  }
   getAttribute(k) { return this.attrs[k] !== undefined ? this.attrs[k] : null; }
   removeAttribute(k) { delete this.attrs[k]; }
   addEventListener(ev, fn) { (this._handlers[ev] = this._handlers[ev] || []).push(fn); }
@@ -320,13 +325,15 @@ export function createRoomEnv(o = {}) {
     _wh: {},
     YT: null, Hls: null, qrcode: null
   };
+  /* حقن كائنات إضافية (FormData / XMLHttpRequest / URL…) لاختبار الرفع */
+  Object.assign(sandbox, o.globals || {});
   sandbox.window = sandbox;
   sandbox.globalThis = sandbox;
   sandbox.self = sandbox;
   vm.createContext(sandbox);
 
   const scripts = o.scripts || ['assets/js/config.js', 'assets/js/util.js', 'assets/js/icons.js',
-    'assets/js/auth.js', 'assets/js/transport.js', 'assets/js/player.js', 'assets/js/room.js'];
+    'assets/js/auth.js', 'assets/js/transport.js', 'assets/js/player.js', 'assets/js/media.js', 'assets/js/room.js'];
   const loaded = [];
   for (const f of scripts) {
     try {
