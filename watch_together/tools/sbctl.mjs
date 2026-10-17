@@ -20,7 +20,7 @@
          جلب مفتاح anon، وربطه بالموقع تلقائياً.
          (يحتاج: SUPABASE_ACCESS_TOKEN في متغيّر البيئة)
 
-     node tools/sbctl.mjs sql [--out FILE]
+     node tools/sbctl.mjs sql [--social] [--out FILE]
          طباعة (أو حفظ) ملف SQL الجاهز لمشروع جديد
 
      node tools/sbctl.mjs smoke [--room CODE] [--url U] [--key K]
@@ -36,7 +36,7 @@ import { fileURLToPath } from 'url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export const ROOT = path.resolve(__dirname, '..');
 const CONFIG_PATH = path.join(ROOT, 'assets/js/config.js');
-const HTML_FILES = ['index.html', 'room.html', 'auth.html'];
+const HTML_FILES = ['index.html', 'room.html', 'auth.html', 'profile.html', 'friends.html', 'messages.html'];
 const API = 'https://api.supabase.com/v1';
 
 /* =========================================================
@@ -526,6 +526,11 @@ export function cleanupSql(root = ROOT) {
   return readSql('06-cleanup-cron.sql', root);
 }
 
+/** (07) ملفات الأعضاء والأصدقاء والمحادثات الخاصة — إضافة آمنة بعد 01 */
+export function socialSql(root = ROOT) {
+  return readSql('07-social.sql',root);
+}
+
 /** ملف إصلاح جدول الرسائل (خطأ PGRST204: العمود body غير موجود) */
 export function repairSql(root = ROOT) {
   return readSql('04-repair-messages.sql', root);
@@ -697,7 +702,7 @@ async function cmdSet(args) {
 }
 
 async function cmdSql(args) {
-  const sql = (args.repair || args['repair-messages']) ? repairSql()
+  const sql = args.social ? socialSql() : (args.repair || args['repair-messages']) ? repairSql()
     : args.reset ? resetSql()
       : args.health ? healthSql()
         : args.cleanup ? cleanupSql()
@@ -774,7 +779,7 @@ async function cmdSmoke(args) {
 /* =========================================================
    نقطة الدخول
    ========================================================= */
-const DEFAULT_VERSION = '2.6.4';
+const DEFAULT_VERSION = '3.0.0';
 
 const HELP = `
   ${C.bold('أداة سيرفر Supabase — WatchTogether')}

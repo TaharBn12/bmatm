@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
+  <meta name="theme-color" content="#101212">
+  <meta name="robots" content="noindex,nofollow">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <title>الملف الشخصي — WatchTogether</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='30' fill='%23b9f2cf'/%3E%3Cpath d='M40 30l30 20-30 20z' fill='%23172a1d'/%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="assets/css/app.css?v=3.0.0">
+  <link rel="stylesheet" href="assets/css/social.css?v=3.0.0">
+</head>
+<body class="social-page" data-page="profile" data-accent="mint">
+  <a class="s-skip" href="#socialMain">تخطّ إلى المحتوى</a>
+  <div class="s-shell">
+    <aside class="s-sidebar" id="socialNav" aria-label="مساحتك"></aside>
+    <div class="s-workspace">
+      <header class="s-header" id="socialHeader"></header>
+      <main id="socialMain" tabindex="-1">
+        <div id="socialState" aria-live="polite"><div class="s-state"><span class="s-loader" aria-hidden="true"></span><p>نجهّز مساحتك…</p></div></div>
+        <div id="socialContent" hidden>
+          <div id="profileView">
+            <div class="profile-preview-note" id="publicPreviewNote" hidden><span>معاينة ملفك كما يراه عضو آخر — إعداداتك وبريدك لا يظهران.</span><button class="s-text-link" id="endPreview" type="button">إنهاء المعاينة</button></div>
+            <section class="profile-hero" aria-labelledby="profileName">
+              <div class="profile-cover" id="profileCover" data-cover="orbit"><span class="cover-orb" aria-hidden="true"></span><span class="cover-edition"><span class="ic" data-icon="sparkle" data-size="14"></span> مساحة شخصية، بذائقة مختلفة</span><span class="cover-bottom" aria-hidden="true">YOUR OWN LITTLE UNIVERSE / WT</span></div>
+              <div class="profile-identity">
+                <button class="profile-photo" id="photoOpen" type="button" aria-label="إضافة صورة شخصية من الجهاز"><span id="profileAvatar"></span><span class="photo-badge" id="photoBadge"><span class="ic" data-icon="camera" data-size="15"></span></span></button>
+                <div class="profile-title"><h1 id="profileName"></h1><div class="profile-username" id="profileUsername"></div></div>
+                <div class="profile-actions" id="profileActions"></div>
+              </div>
+              <div class="profile-meta" id="profileMeta"></div>
+            </section>
+            <div class="s-error" id="profileError" hidden></div>
+            <div class="profile-layout">
+              <div class="profile-main-col">
+                <section class="s-panel"><div class="s-panel-title"><h2>وراء اسم المستخدم</h2><span class="ic" data-icon="user" data-size="18"></span></div><p class="profile-bio" id="profileBio"></p></section>
+                <section class="s-panel"><div class="s-panel-title"><h2>بصمة المشاهدة</h2><span class="s-eyebrow" style="margin:0">TASTE ORBIT</span></div><div class="profile-taste"><div class="taste-orbit" id="tasteMap" aria-label="تمثيل بصري لاهتمامات المشاهدة"></div><div><p>كل اهتمام نقطة في عالمك.</p><div class="s-tags" id="profileInterests"></div><p id="sharedTastes"></p></div></div></section>
+                <section class="s-panel"><div class="s-panel-title"><h2>على رفّ المفضلة</h2><span class="ic" data-icon="bookmark" data-size="18"></span></div><div class="favorite-list" id="profileFavorites"></div></section>
+              </div>
+              <aside class="profile-aside" aria-label="تفاصيل إضافية">
+                <section class="s-panel profile-status-card" id="moodCard"><div class="s-panel-title"><h2>مزاج المشاهدة</h2><span class="ic" data-icon="film" data-size="18"></span></div><div id="profileMood"></div><p style="margin-top:12px">حالة يختارها صاحب الملف، وليست مؤشر اتصال.</p><label class="s-hint" for="quickMood" id="quickMoodLabel">اختر مزاجك الحالي</label><select id="quickMood" class="profile-mood-select" aria-describedby="moodHint"><option value="none">على مهل</option><option value="open">مستعد لسهرة</option><option value="quiet">مزاج هادئ</option><option value="busy">مشغول الآن</option></select><span id="moodHint" class="s-hint">يُحفظ الاختيار فورًا.</span></section>
+                <section class="s-panel" id="profileStats"></section>
+                <section class="s-panel" id="profileCompletion"></section>
+                <section class="s-panel" id="profilePrivacy"></section>
+              </aside>
+            </div>
+          </div>
+          <section class="profile-editor" id="profileEditor" aria-labelledby="editorTitle" hidden>
+            <div class="s-editor-heading"><button class="s-icon-btn" id="closeEditor" type="button" aria-label="العودة إلى الملف"><span class="ic" data-icon="arrowRight" data-size="21"></span></button><div><h2 id="editorTitle">مساحة تشبهك.</h2><p>عدّل تفاصيلك، ودع ذائقتك تتحدّث عنك.</p></div></div>
+            <form id="profileForm" novalidate>
+              <div class="s-panel">
+                <div class="s-tabs" role="tablist" aria-label="أقسام تعديل الملف" id="profileEditTabs"><button class="s-tab is-active" id="tab-details" type="button" role="tab" aria-selected="true" aria-controls="edit-details" data-edit-tab="details"><span class="ic" data-icon="user" data-size="17"></span> التفاصيل</button><button class="s-tab" id="tab-taste" type="button" role="tab" aria-selected="false" aria-controls="edit-taste" tabindex="-1" data-edit-tab="taste"><span class="ic" data-icon="film" data-size="17"></span> الذائقة والمظهر</button><button class="s-tab" id="tab-privacy" type="button" role="tab" aria-selected="false" aria-controls="edit-privacy" tabindex="-1" data-edit-tab="privacy"><span class="ic" data-icon="shield" data-size="17"></span> الخصوصية</button></div>
+                <div id="edit-details" role="tabpanel" aria-labelledby="tab-details">
+                  <div class="s-form-grid">
+                    <div class="s-field"><label class="s-label" for="editName">اسم العرض <small>2–24 حرفًا</small></label><input class="s-input" id="editName" name="display_name" autocomplete="nickname" maxlength="24" required></div>
+                    <div class="s-field"><label class="s-label" for="editUsername">المعرّف الفريد <small>3–24</small></label><input class="s-input s-input--ltr" id="editUsername" name="username" autocapitalize="none" spellcheck="false" autocomplete="username" maxlength="24" required aria-describedby="usernameHint"><span class="s-hint" id="usernameHint">حروف لاتينية صغيرة، أرقام، أو _ دون مسافات.</span></div>
+                    <div class="s-field s-field--wide"><label class="s-label" for="editBio">نبذة عنك <small id="bioCounter">0 / 280</small></label><textarea class="s-input" id="editBio" name="bio" maxlength="280" placeholder="ما الذي يجعلك تختار فيلمًا دون آخر؟" aria-describedby="bioCounter"></textarea></div>
+                    <div class="s-field"><label class="s-label" for="editLocation">المدينة أو البلد <small>اختياري · علني للأعضاء</small></label><input class="s-input" id="editLocation" name="location" autocomplete="address-level2" maxlength="60" placeholder="مثلاً: سطيف، الجزائر"></div>
+                    <div class="s-field"><label class="s-label" for="editWebsite">رابطك <small>اختياري</small></label><input class="s-input s-input--ltr" id="editWebsite" name="website" type="url" inputmode="url" maxlength="200" placeholder="https://…" autocomplete="url"></div>
+                    <div class="s-field s-field--wide"><label class="s-label" for="profileEmail">بريد الحساب <small>خاص بك، لا يظهر للأعضاء</small></label><input class="s-input s-input--ltr" id="profileEmail" type="email" readonly aria-describedby="emailHint"><span class="s-hint" id="emailHint">الصور والنبذة والذائقة والموقع والرابط، إن أضفتها، ظاهرة لأعضاء الموقع الذين يفتحون رابط ملفك.</span></div>
+                  </div>
+                </div>
+                <div id="edit-taste" role="tabpanel" aria-labelledby="tab-taste" hidden>
+                  <div class="s-edit-section" style="margin-top:0"><h3>ما الذي يشدّ انتباهك؟</h3><p id="genreHint">اختر حتى 8 اهتمامات؛ نستخدمها لترتيب البحث وإظهار القواسم المشتركة فقط.</p><div class="s-choice-chips" id="genreChoices" role="group" aria-describedby="genreHint" aria-label="اهتمامات المشاهدة"></div></div>
+                  <div class="s-edit-section"><h3 id="favoritesTitle">ثلاثة عناوين تعني لك الكثير</h3><p>أفلام أو مسلسلات أو وثائقيات — رفّ صغير لذائقتك.</p><div class="s-favorite-fields" role="group" aria-labelledby="favoritesTitle"><label><b>01</b><input class="s-input" id="favorite0" maxlength="80" aria-label="العنوان المفضل الأول" placeholder="العنوان الأول"></label><label><b>02</b><input class="s-input" id="favorite1" maxlength="80" aria-label="العنوان المفضل الثاني" placeholder="العنوان الثاني"></label><label><b>03</b><input class="s-input" id="favorite2" maxlength="80" aria-label="العنوان المفضل الثالث" placeholder="العنوان الثالث"></label></div></div>
+                  <div class="s-edit-section"><h3>لون مساحتك</h3><div class="s-accent-options" id="accentChoices" role="group" aria-label="لون الملف"></div></div>
+                  <div class="s-edit-section"><h3>مشهد الغلاف</h3><p>رسومات هندسية خاصة بالموقع، دون صور خارجية أو تتبّع.</p><div class="s-cover-options" id="coverChoices" role="group" aria-label="غلاف الملف"></div></div>
+                </div>
+                <div id="edit-privacy" role="tabpanel" aria-labelledby="tab-privacy" hidden>
+                  <p class="s-muted s-small">مساحتك، قواعدك. الحفظ مطلوب لتطبيق التعديلات.</p>
+                  <label class="s-switch-row"><span><strong>الظهور في البحث</strong><small>متوقف افتراضيًا. عند تفعيله يستطيع الأعضاء العثور عليك بالاسم أو المعرّف أو الذائقة. رابط ملفك يبقى متاحًا للأعضاء الذين يعرفونه.</small></span><input class="s-switch" id="prefDiscoverable" type="checkbox" role="switch"></label>
+                  <label class="s-switch-row"><span><strong>استقبال طلبات الصداقة</strong><small>إيقافه يمنع الطلبات الجديدة، دون تغيير صداقاتك الحالية.</small></span><input class="s-switch" id="prefRequests" type="checkbox" role="switch"></label>
+                  <label class="s-switch-row"><span><strong>إيصالات القراءة</strong><small>اسمح للطرف الآخر بمعرفة أنك قرأت رسائله. إيقافها لا يؤثر على عدّادك الخاص.</small></span><input class="s-switch" id="prefReceipts" type="checkbox" role="switch"></label>
+                  <label class="s-switch-row"><span><strong>إظهار عدد الأصدقاء</strong><small>العدد فقط؛ قائمة أصدقائك لا تُعرض على ملفك.</small></span><input class="s-switch" id="prefFriendCount" type="checkbox" role="switch"></label>
+                  <a class="s-text-link" style="margin-top:20px" href="friends.html?tab=blocked"><span class="ic" data-icon="block" data-size="17"></span> إدارة الأعضاء المحظورين</a>
+                </div>
+                <div class="s-error" id="profileSaveError" hidden></div>
+                <div class="s-save-bar"><button class="s-btn s-btn--primary" type="submit" id="saveProfile"><span class="ic" data-icon="check" data-size="17"></span> حفظ التغييرات</button><button class="s-btn" type="button" id="resetProfile">تراجع</button><span class="s-dirty" id="profileDirty" hidden>تعديلات غير محفوظة</span><span class="s-success" id="profileSaved" role="status"></span></div>
+              </div>
+            </form>
+          </section>
+          <input id="photoInput" type="file" accept="image/*" hidden>
+</div>
+        <noscript><div class="s-empty"><h1>الملف الشخصي</h1><p>فعّل JavaScript لاستخدام هذه الصفحة. لا تُحمّل بيانات شخصية دون تسجيل الدخول.</p><a class="s-btn" href="index.html">الغرف</a></div></noscript>
+      </main>
+    </div>
+  </div>
+  <dialog class="s-dialog" id="socialConfirm" aria-labelledby="confirmTitle" aria-describedby="confirmBody"><h2 id="confirmTitle"></h2><p id="confirmBody"></p><div class="s-dialog-actions"><button class="s-btn" id="confirmNo" type="button">تراجع</button><button class="s-btn s-btn--primary" id="confirmYes" type="button">تأكيد</button></div></dialog>
+  <dialog class="s-dialog" id="photoDialog" aria-labelledby="photoTitle" aria-describedby="photoHelp"><div class="s-dialog-head"><h2 id="photoTitle">صورتك، على طريقتك.</h2><button class="s-icon-btn" id="closePhoto" type="button" aria-label="إغلاق محرّر الصورة"><span class="ic" data-icon="x" data-size="20"></span></button></div><p id="photoHelp">اسحب الصورة لضبطها، أو استخدم الأسهم بعد تحديد المعاينة. يدعم الرفع من معرض الهاتف.</p><div class="s-photo-crop"><canvas id="photoCanvas" width="512" height="512" tabindex="0" role="img" aria-label="معاينة قصّ الصورة، استخدم الأسهم لتحريكها وShift للتحريك الدقيق"></canvas></div><div class="s-photo-tools"><label for="photoZoom">التكبير<input id="photoZoom" type="range" min="1" max="3" step="0.01" value="1"></label><button class="s-icon-btn" id="rotatePhoto" type="button" aria-label="تدوير الصورة 90 درجة" title="تدوير"><span class="ic" data-icon="rotate" data-size="21"></span></button></div><div class="s-photo-privacy"><span class="ic" data-icon="shield" data-size="15"></span> تُعاد معالجة الصورة إلى WebP بحجم 512×512 لإزالة بيانات الموقع وEXIF. صورة الملف ورابطها علنيان؛ لا ترفع وثائق أو صورًا حساسة. JPEG وPNG وWebP، وHEIC إذا دعمه متصفحك.</div><div class="s-error" id="photoError" hidden></div><div class="s-dialog-actions"><button class="s-btn" id="photoCancel" type="button">تراجع</button><button class="s-btn s-btn--primary" id="photoSave" type="button"><span class="ic" data-icon="camera" data-size="17"></span> حفظ الصورة</button></div></dialog>
+  <script src="assets/js/config.js?v=3.0.0"></script>
+  <script src="assets/js/util.js?v=3.0.0"></script>
+  <script src="assets/js/icons.js?v=3.0.0"></script>
+  <script src="assets/js/auth.js?v=3.0.0"></script>
+  <script src="assets/js/social.js?v=3.0.0"></script>
+  <script src="assets/js/social-ui.js?v=3.0.0"></script>
+  <script src="assets/js/photo-editor.js?v=3.0.0"></script>
+  <script src="assets/js/profile.js?v=3.0.0"></script>
+</body>
+</html>

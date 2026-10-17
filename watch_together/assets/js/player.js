@@ -14,47 +14,54 @@
     if (ytApiPromise) return ytApiPromise;
     ytApiPromise = new Promise((resolve, reject) => {
       const prev = global.onYouTubeIframeAPIReady;
-      global.onYouTubeIframeAPIReady = function () {
-        try { prev && prev(); } catch (e) { }
-        resolve(global.YT);
-      };
       const s = document.createElement('script');
+      let timer;
+      const finish = (err) => {
+        clearTimeout(timer);
+        if (global.onYouTubeIframeAPIReady === ready) global.onYouTubeIframeAPIReady = prev;
+        s.onerror = null;
+        if (err) { s.remove(); reject(err); }
+        else resolve(global.YT);
+      };
+      const ready = () => {
+        try { prev && prev(); } catch (e) { }
+        if (global.YT && global.YT.Player) finish();
+      };
+      global.onYouTubeIframeAPIReady = ready;
       s.src = 'https://www.youtube.com/iframe_api';
       s.async = true;
-      s.onerror = () => reject(new Error('تعذّر تحميل مشغّل يوتيوب (تحقق من الاتصال)'));
-      document.head.appendChild(s);
-      setTimeout(() => {
-        (global.YT && global.YT.Player) ? resolve(global.YT) : reject(new Error('انتهت مهلة تحميل يوتيوب'));
+      s.onerror = () => finish(new Error('تعذّر تحميل مشغّل يوتيوب (تحقق من الاتصال)'));
+      timer = setTimeout(() => {
+        finish(global.YT && global.YT.Player ? null : new Error('انتهت مهلة تحميل يوتيوب — أعد المحاولة'));
       }, 12000);
+      document.head.appendChild(s);
+    }).catch((err) => {
+      ytApiPromise = null;       /* الفشل المؤقت لا يمنع المحاولة التالية */
+      throw err;
     });
     return ytApiPromise;
   }
 
-  /* حالة المشغّل الموحّدة */
   const S = { IDLE: 0, LOADING: 1, READY: 2, ERROR: 3 };
 
-  /**
-   * @param {HTMLElement} container  عنصر الحاوية (يُملأ بالمشغّل)
-   * @param {object} opts { onReady, onStateChange, onTime, onEvent(type) }
-   */
+  /** @param {object} opts { onReady, onStateChange, onTime, onEvent(type) } */
   function UnifiedPlayer(container, opts) {
     this.el = container;
     this.opts = opts || {};
-    this.kind = null;          /* youtube | html5 | hls | embed */
-    this.target = null;        /* رابط/معرّف当前 */
+    this.kind = null;
+    this.target = null;
     this.state = S.IDLE;
     this._yt = null;
     this._video = null;
     this._hls = null;
     this._iframe = null;
     this._muted = false;
-    this._eventsWired = false;
+    this._loadVersion = 0;
+    this._pendingLoad = null;
+    this._cancelLoad = null;
   }
 
   UnifiedPlayer.prototype.isReady = function () { return this.state === S.READY; };
-  /* ملاحظة مهمة: `file` هو اسم النوع الذي يأتي من util.parseWatchUrl لملفات
-     mp4/webm، وهو يُحمَّل عبر مشغّل HTML5 — فلابد أن يُعتبر قابلاً للمزامنة،
-     وإلا توقّفت مزامنة الموضع تماماً لكل من يشارك رابط ملف فيديو مباشر. */
   UnifiedPlayer.prototype.canSync = function () {
     return this.kind === 'youtube' || this.kind === 'html5' || this.kind === 'file' || this.kind === 'hls';
   };
@@ -64,139 +71,143 @@
     if (fn) { try { fn(data); } catch (e) { console.error(e); } }
   };
 
-  UnifiedPlayer.prototype._setLoading = function (show, text) {
-    let ov = this.el.querySelector('.player__overlay');
+  UnifiedPlayer.prototype._setLoading = function (show, text, error) {
+    /* منفصلة عن طبقة السماح بالتشغيل التلقائي التي تنشئها صفحة الغرفة. */
+    let ov = this.el.querySelector('.player__overlay--loading');
     if (!ov) {
       ov = document.createElement('div');
-      ov.className = 'player__overlay';
-      ov.innerHTML = `<div class="player__overlay-box"><span class="spinner"></span><p class="player__overlay-text"></p></div>`;
+      ov.className = 'player__overlay player__overlay--loading';
+      ov.innerHTML = '<div class="player__overlay-box"><span class="spinner"></span>' +
+        '<p class="player__overlay-text" role="status"></p>' +
+        '<button type="button" class="btn btn--primary player__retry" hidden>إعادة المحاولة</button></div>';
+      ov.querySelector('.player__retry').addEventListener('click', (e) => {
+        e.stopPropagation();
+        this._fire('onEvent', { type: 'retry', source: 'player' });
+      });
       this.el.appendChild(ov);
     }
     ov.querySelector('.player__overlay-text').textContent = text || '';
+    ov.querySelector('.spinner').hidden = !!error;
+    ov.querySelector('.player__retry').hidden = !error;
     ov.classList.toggle('is-hidden', !show);
   };
 
   UnifiedPlayer.prototype._clear = function () {
+    this._loadVersion++;
+    if (this._cancelLoad) this._cancelLoad();
+    this._pendingLoad = null;
+    const video = this._video;
+    this._video = null;          /* تجاهل أحداث pause/error المتأخرة للمصدر السابق */
     try { this._hls && this._hls.destroy(); } catch (e) { }
     this._hls = null;
     try { this._yt && this._yt.destroy && this._yt.destroy(); } catch (e) { }
     this._yt = null;
-    if (this._video) { try { this._video.pause(); } catch (e) { } this._video.remove(); this._video = null; }
-    if (this._iframe) { this._iframe.remove(); this._iframe = null; }
-    this.el.querySelectorAll('.player__placeholder').forEach(n => n.remove());
+    if (video) {
+      try { video.pause(); video.removeAttribute('src'); video.load(); } catch (e) { }
+    }
+    this._iframe = null;
+    this.el.querySelectorAll('.player__frame, .player__placeholder').forEach(n => n.remove());
     this.state = S.IDLE;
   };
 
-  /** تحميل مصدر جديد */
+  /** تحميل واحد مشترك للمصدر نفسه؛ كل محاولة لها مهلة وتجاهل لأحداث المصدر السابق. */
   UnifiedPlayer.prototype.load = function (parsed, opts) {
     opts = opts || {};
     if (!parsed) return Promise.reject(new Error('رابط غير صالح'));
-    const sameTarget = this.kind === parsed.kind &&
-      this.target === (parsed.kind === 'youtube' ? parsed.id : parsed.src);
-    if (sameTarget && this.state !== S.ERROR) return Promise.resolve(this);
+    const target = parsed.kind === 'youtube' ? parsed.id : parsed.src;
+    if (this.kind === parsed.kind && this.target === target) {
+      if (this.state === S.READY) return Promise.resolve(this);
+      if (this.state === S.LOADING && this._pendingLoad) return this._pendingLoad;
+    }
 
     this._clear();
     this.kind = parsed.kind;
-    this.target = parsed.kind === 'youtube' ? parsed.id : parsed.src;
+    this.target = target;
+    this.state = S.LOADING;
     this._setLoading(true, 'جارٍ تحميل المشغّل…');
+    const version = this._loadVersion;
+    const current = () => version === this._loadVersion;
 
-    if (parsed.kind === 'youtube') return this._loadYouTube(parsed, opts);
-    if (parsed.kind === 'file') return this._loadHtml5(parsed, opts);
-    if (parsed.kind === 'hls') return this._loadHls(parsed, opts);
-    return this._loadEmbed(parsed, opts);
+    this._pendingLoad = new Promise((resolve, reject) => {
+      let settled = false;
+      let timer;
+      const cleanup = () => { clearTimeout(timer); this._cancelLoad = null; };
+      this._cancelLoad = () => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        const err = new Error('تم تغيير مصدر الفيديو');
+        err.code = 'load-cancelled';
+        reject(err);
+      };
+      const ready = () => {
+        if (!current() || settled) return;
+        settled = true;
+        cleanup();
+        this.state = S.READY;
+        this._setLoading(false);
+        this._fire('onReady', { kind: this.kind });
+        resolve(this);
+      };
+      const fail = (err) => {
+        if (!current() || this.state === S.ERROR) return;
+        this.state = S.ERROR;
+        this._setLoading(true, err.message || 'تعذّر تحميل الفيديو', true);
+        this._fire('onEvent', { type: 'error', source: 'player', message: err.message });
+        if (!settled) { settled = true; cleanup(); reject(err); }
+      };
+      timer = setTimeout(() => fail(new Error('انتهت مهلة تحميل الفيديو — تحقق من الرابط أو أعد المحاولة')), opts.timeoutMs || 15000);
+      const load = { current, ready, fail };
+      try {
+        if (parsed.kind === 'youtube') this._loadYouTube(parsed, opts, load);
+        else if (parsed.kind === 'file') this._buildVideo(parsed.src, opts, load);
+        else if (parsed.kind === 'hls') this._loadHls(parsed, opts, load);
+        else this._loadEmbed(parsed, load);
+      } catch (err) { fail(err); }
+    });
+    return this._pendingLoad;
   };
 
   /* ---------- YouTube ---------- */
-  UnifiedPlayer.prototype._loadYouTube = function (parsed, opts) {
-    const self = this;
-    this.state = S.LOADING;
-    return loadYouTubeApi().then((YT) => new Promise((resolve, reject) => {
+  UnifiedPlayer.prototype._loadYouTube = function (parsed, opts, load) {
+    loadYouTubeApi().then((YT) => {
+      if (!load.current() || this.state !== S.LOADING) return;
       const holder = document.createElement('div');
       holder.className = 'player__frame';
-      self.el.appendChild(holder);
-
-      self._yt = new YT.Player(holder, {
+      this.el.appendChild(holder);
+      this._yt = new YT.Player(holder, {
         videoId: parsed.id,
         playerVars: {
           autoplay: opts.autoplay ? 1 : 0,
           controls: opts.controls === false ? 0 : 1,
-          rel: 0,
-          modestbranding: 1,
-          playsinline: 1,
-          origin: location.origin,
-          enablejsapi: 1
+          rel: 0, modestbranding: 1, playsinline: 1,
+          origin: location.origin, enablejsapi: 1
         },
         events: {
           onReady: () => {
-            self.state = S.READY;
-            self._setLoading(false);
-            self._fire('onReady', { kind: 'youtube' });
-            resolve(self);
+            if (!load.current()) return;
+            this.setMuted(this._muted);
+            load.ready();
           },
           onStateChange: (e) => {
+            if (!load.current() || !this.isReady()) return;
             const map = { '-1': 'unstarted', 0: 'ended', 1: 'playing', 2: 'paused', 3: 'buffering', 5: 'cued' };
-            self._fire('onEvent', { type: map[e.data] || 'unknown', source: 'player' });
-            if (map[e.data] === 'playing') self._fire('onStateChange', { playing: true });
-            if (map[e.data] === 'paused') self._fire('onStateChange', { playing: false });
-            if (map[e.data] === 'ended') self._fire('onStateChange', { playing: false, ended: true });
+            this._fire('onEvent', { type: map[e.data] || 'unknown', source: 'player' });
+            if (e.data === 1) this._fire('onStateChange', { playing: true });
+            if (e.data === 2) this._fire('onStateChange', { playing: false });
+            if (e.data === 0) this._fire('onStateChange', { playing: false, ended: true });
           },
-          onError: (e) => {
-            self.state = S.ERROR;
-            self._setLoading(true, 'تعذّر تشغيل هذا الفيديو على يوتيوب (رمز ' + e.data + ') — قد يكون خاصاً أو محذوفاً');
-            self._fire('onEvent', { type: 'error', source: 'player', code: e.data });
-            reject(new Error('yt-error-' + e.data));
-          }
+          onAutoplayBlocked: () => {
+            if (load.current()) this._fire('onEvent', { type: 'autoplay-blocked', source: 'player' });
+          },
+          onError: (e) => load.fail(new Error('تعذّر تشغيل فيديو يوتيوب (رمز ' + e.data + ') — قد يكون خاصاً أو يمنع التضمين'))
         }
       });
-    })).catch((err) => {
-      self.state = S.ERROR;
-      self._setLoading(true, String(err && err.message || 'فشل تحميل يوتيوب'));
-      throw err;
-    });
+    }).catch(load.fail);
   };
 
-  /* ---------- HTML5 (mp4/webm) ---------- */
-  UnifiedPlayer.prototype._loadHtml5 = function (parsed, opts) {
-    return this._buildVideo(parsed.src, opts);
-  };
-
-  /* ---------- HLS ---------- */
-  UnifiedPlayer.prototype._loadHls = function (parsed, opts) {
-    const self = this;
-    const ensureHls = (global.Hls && global.Hls.isSupported && global.Hls.isSupported())
-      ? Promise.resolve(global.Hls)
-      : Promise.reject(new Error('hls-unavailable'));
-
-    return ensureHls.then((Hls) => new Promise((resolve, reject) => {
-      const video = self._makeVideoEl(opts);
-      const hls = new Hls({ lowLatencyMode: true, backBufferLength: 60 });
-      self._hls = hls;
-      hls.loadSource(parsed.src);
-      hls.attachMedia(video);
-      hls.on(Hls.Events.MANIFEST_PARSED, () => {
-        self.state = S.READY;
-        self._setLoading(false);
-        self._fire('onReady', { kind: 'hls' });
-        resolve(self);
-      });
-      hls.on(Hls.Events.ERROR, (_e, data) => {
-        if (!data || !data.fatal) return;
-        self.state = S.ERROR;
-        self._setLoading(true, 'خطأ في البث: ' + (data.details || data.type));
-        reject(new Error('hls-error'));
-      });
-    })).catch(() => {
-      /* Safari يشغّل HLS أصلياً */
-      const v = document.createElement('video');
-      if (v.canPlayType('application/vnd.apple.mpegurl')) return self._buildVideo(parsed.src, opts);
-      self.state = S.ERROR;
-      self._setLoading(true, 'متصفحك لا يدعم بث HLS — جرّب Chrome أو سيرفر Java');
-      return Promise.reject(new Error('hls-unsupported'));
-    });
-  };
-
+  /* ---------- HTML5 (MP4/WebM) ---------- */
   UnifiedPlayer.prototype._makeVideoEl = function (opts) {
-    const self = this;
     const wrap = document.createElement('div');
     wrap.className = 'player__frame';
     const v = document.createElement('video');
@@ -204,82 +215,94 @@
     v.playsInline = true;
     v.setAttribute('playsinline', '');
     v.controls = opts.controls !== false;
-    v.crossOrigin = 'anonymous';
+    v.muted = this._muted;
+    /* تشغيل ملف بعيد لا يحتاج CORS. فرض crossOrigin=anonymous كان يمنع
+       ملفات MP4 صالحة؛ CORS مطلوب فقط لطلبات HLS عبر hls.js. */
     wrap.appendChild(v);
-    self.el.appendChild(wrap);
-    self._video = v;
-    self._wireVideo(v);
+    this.el.appendChild(wrap);
+    this._video = v;
+    this._wireVideo(v);
     return v;
   };
 
-  UnifiedPlayer.prototype._buildVideo = function (src, opts) {
-    const self = this;
-    this.state = S.LOADING;
-    return new Promise((resolve, reject) => {
-      const v = self._makeVideoEl(opts);
-      v.src = src;
-      v.load();
-      const ok = () => {
-        self.state = S.READY;
-        self._setLoading(false);
-        self._fire('onReady', { kind: self.kind });
-        resolve(self);
-      };
-      v.addEventListener('loadedmetadata', ok, { once: true });
-      v.addEventListener('error', () => {
-        self.state = S.ERROR;
-        self._setLoading(true, 'تعذّر تحميل ملف الفيديو — تحقق من الرابط أو من سماح الموقع بـ CORS');
-        reject(new Error('video-error'));
-      }, { once: true });
-      setTimeout(() => { if (self.state === S.LOADING) ok(); }, 8000);
+  UnifiedPlayer.prototype._watchVideo = function (video, load) {
+    video.addEventListener('loadedmetadata', load.ready, { once: true });
+    video.addEventListener('error', () => load.fail(new Error('تعذّر تحميل ملف الفيديو — تحقق من الرابط وصيغة الفيديو')), { once: true });
+  };
+
+  UnifiedPlayer.prototype._buildVideo = function (src, opts, load) {
+    const v = this._makeVideoEl(opts);
+    this._watchVideo(v, load);       /* اربط الأحداث قبل src/load حتى للملفات المخزنة */
+    v.src = src;
+    v.load();
+  };
+
+  /* ---------- HLS ---------- */
+  UnifiedPlayer.prototype._loadHls = function (parsed, opts, load) {
+    const video = this._makeVideoEl(opts);
+    this._watchVideo(video, load);
+    if (video.canPlayType('application/vnd.apple.mpegurl')) {
+      video.src = parsed.src;         /* Safari: مشغّل أصلي، عنصر فيديو واحد فقط */
+      video.load();
+      return;
+    }
+    const Hls = global.Hls;
+    if (!Hls || !Hls.isSupported || !Hls.isSupported()) {
+      load.fail(new Error('متصفحك لا يدعم بث HLS — جرّب متصفحاً حديثاً'));
+      return;
+    }
+    const hls = new Hls({ lowLatencyMode: true, backBufferLength: 60 });
+    this._hls = hls;
+    hls.on(Hls.Events.ERROR, (_e, data) => {
+      if (data && data.fatal) load.fail(new Error('تعذّر تحميل البث — تحقق من الرابط وسماح الخادم بـ CORS (' + (data.details || data.type) + ')'));
     });
+    hls.attachMedia(video);
+    hls.loadSource(parsed.src);
   };
 
   UnifiedPlayer.prototype._wireVideo = function (v) {
-    if (this._eventsWired === v) return;
-    this._eventsWired = v;
-    const self = this;
-    v.addEventListener('play', () => self._fire('onStateChange', { playing: true }));
-    v.addEventListener('playing', () => self._fire('onEvent', { type: 'playing', source: 'player' }));
-    v.addEventListener('pause', () => { if (!v.ended) self._fire('onStateChange', { playing: false }); });
-    v.addEventListener('ended', () => self._fire('onStateChange', { playing: false, ended: true }));
-    v.addEventListener('waiting', () => self._fire('onEvent', { type: 'buffering', source: 'player' }));
-    v.addEventListener('seeked', () => self._fire('onEvent', { type: 'seeked', source: 'player' }));
-    v.addEventListener('timeupdate', () => self._fire('onTime', { t: v.currentTime }));
+    const fire = (name, data) => { if (this._video === v) this._fire(name, data); };
+    v.addEventListener('play', () => fire('onStateChange', { playing: true }));
+    v.addEventListener('playing', () => fire('onEvent', { type: 'playing', source: 'player' }));
+    v.addEventListener('pause', () => { if (!v.ended) fire('onStateChange', { playing: false }); });
+    v.addEventListener('ended', () => fire('onStateChange', { playing: false, ended: true }));
+    v.addEventListener('waiting', () => fire('onEvent', { type: 'buffering', source: 'player' }));
+    v.addEventListener('seeked', () => fire('onEvent', { type: 'seeked', source: 'player' }));
+    v.addEventListener('timeupdate', () => fire('onTime', { t: v.currentTime }));
   };
 
-  /* ---------- iframe (روابط مضمّنة) ---------- */
-  UnifiedPlayer.prototype._loadEmbed = function (parsed) {
-    const self = this;
-    this.state = S.LOADING;
-    return new Promise((resolve) => {
-      const wrap = document.createElement('div');
-      wrap.className = 'player__frame';
-      const f = document.createElement('iframe');
-      f.src = parsed.src;
-      f.className = 'player__iframe';
-      f.allow = 'autoplay; fullscreen; encrypted-media; picture-in-picture';
-      f.allowFullscreen = true;
-      f.referrerPolicy = 'strict-origin-when-cross-origin';
-      f.addEventListener('load', () => {
-        self.state = S.READY;
-        self._setLoading(false);
-        self._fire('onReady', { kind: 'embed' });
-        resolve(self);
-      });
-      setTimeout(() => { if (self.state !== S.READY) { self.state = S.READY; self._setLoading(false); resolve(self); } }, 6000);
-      wrap.appendChild(f);
-      self.el.appendChild(wrap);
-      self._iframe = f;
-    });
+  /* ---------- iframe ---------- */
+  UnifiedPlayer.prototype._loadEmbed = function (parsed, load) {
+    const wrap = document.createElement('div');
+    wrap.className = 'player__frame';
+    const f = document.createElement('iframe');
+    f.className = 'player__iframe';
+    f.title = 'مشغّل الفيديو المضمّن';
+    f.allow = 'autoplay; fullscreen; encrypted-media; picture-in-picture';
+    f.allowFullscreen = true;
+    f.referrerPolicy = 'strict-origin-when-cross-origin';
+    f.addEventListener('load', load.ready, { once: true });
+    f.addEventListener('error', () => load.fail(new Error('تعذّر تحميل المشغّل المضمّن — قد يمنع الموقع التضمين')), { once: true });
+    f.src = parsed.src;
+    wrap.appendChild(f);
+    this.el.appendChild(wrap);
+    this._iframe = f;
   };
 
   /* ---------- واجهة التحكم الموحّدة ---------- */
   UnifiedPlayer.prototype.play = function () {
     try {
       if (this._yt && this._yt.playVideo) this._yt.playVideo();
-      else if (this._video) { const p = this._video.play(); if (p && p.catch) p.catch(() => { }); }
-    } catch (e) { }
+      else if (this._video) {
+        const video = this._video;
+        return Promise.resolve(video.play()).then(() => true, (err) => {
+          if (this._video === video) this._fire('onEvent', {
+            type: err.name === 'NotAllowedError' ? 'autoplay-blocked' : 'error', source: 'player', message: err.message
+          });
+          return false;
+        });
+      }
+    } catch (e) { this._fire('onEvent', { type: 'error', source: 'player', message: e.message }); }
   };
   UnifiedPlayer.prototype.pause = function () {
     try {
@@ -329,7 +352,6 @@
     } catch (e) { }
   };
 
-  /* صورة مصغّرة لليوتيوب */
   UnifiedPlayer.thumbFor = function (ytId) {
     return ytId ? `https://i.ytimg.com/vi/${ytId}/hqdefault.jpg` : null;
   };

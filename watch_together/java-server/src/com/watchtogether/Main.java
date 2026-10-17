@@ -74,6 +74,7 @@ public final class Main {
                             "هذه نقطة WebSocket — افتح الموقع من المتصفح على /");
                     return;
                 }
+                if (path.equals("/api/rooms")) { handleRooms(ex); return; }
                 if (path.equals("/api/resolve")) { VideoResolver.handle(ex); return; }
                 if (path.equals("/api/stats")) { sendJson(ex, 200, stats()); return; }
                 files.handle(ex);
@@ -94,6 +95,35 @@ public final class Main {
 
         server.start();
         banner(port, host, root);
+    }
+
+    private static void handleRooms(HttpExchange ex) throws IOException {
+        ex.getResponseHeaders().set("Access-Control-Allow-Origin", "*");
+        ex.getResponseHeaders().set("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+        ex.getResponseHeaders().set("Access-Control-Allow-Headers", "Content-Type");
+        if ("OPTIONS".equals(ex.getRequestMethod())) { ex.sendResponseHeaders(204, -1); return; }
+        if ("GET".equals(ex.getRequestMethod())) {
+            sendJson(ex, 200, Json.map("rooms", roomStore.publicRooms()));
+            return;
+        }
+        if (!"POST".equals(ex.getRequestMethod())) {
+            ex.getResponseHeaders().set("Allow", "GET, POST, OPTIONS");
+            sendJson(ex, 405, Json.map("error", "طريقة الطلب غير مدعومة"));
+            return;
+        }
+        byte[] raw = ex.getRequestBody().readNBytes(8193);
+        if (raw.length > 8192) { sendJson(ex, 413, Json.map("error", "الطلب كبير جداً")); return; }
+        try {
+            Map<String, Object> data = Json.parseObject(new String(raw, StandardCharsets.UTF_8));
+            if (data == null) throw new IllegalArgumentException("طلب غير صالح");
+            Map<String, Object> room = roomStore.createRoom(Json.str(data, "id", ""), Json.str(data, "title", ""),
+                    Json.str(data, "videoUrl", ""), Json.str(data, "ownerToken", ""));
+            sendJson(ex, 201, Json.map("room", room));
+        } catch (IllegalArgumentException error) {
+            sendJson(ex, 400, Json.map("error", "بيانات الغرفة غير صالحة"));
+        } catch (IllegalStateException error) {
+            sendJson(ex, 409, Json.map("error", "كود الغرفة مستخدم بالفعل — أعد المحاولة"));
+        }
     }
 
     private static Map<String, Object> stats() {

@@ -73,6 +73,7 @@ function findById(root, id) {
 function chainOf(el) { const chain = []; let n = el; while (n) { chain.push(n); n = n.parent; } return chain; }
 function insideOf(el, ancestorId) { let n = el.parent; while (n) { if (n.id === ancestorId) return true; n = n.parent; } return false; }
 
+const missingIds = [];
 const roomTree = parseTree(roomHtml);
 const drawerEl = findById(roomTree, 'roomDrawer');
 const scrimEl = findById(roomTree, 'drawerScrim');
@@ -118,7 +119,7 @@ t('المشاركون آخر أقسام الدراور (بعد المنظّمي�
    - يستبعد قواعد الحالات التفاعلية (:hover/:focus/:active/:disabled)
    - يتجاهل ::before/::after و @keyframes و @font-face
    ========================================================= */
-const STATEFUL = /:(hover|active|focus|focus-visible|focus-within|disabled|checked|placeholder|target|visited|first-child|last-child|nth-child|not\()/;
+const STATEFUL = /:(fullscreen|hover|active|focus|focus-visible|focus-within|disabled|checked|placeholder|target|visited|first-child|last-child|nth-child|not\()/;
 
 function stripComments(s) { return s.replace(/\/\*[\s\S]*?\*\//g, ''); }
 
@@ -441,8 +442,8 @@ for (const v of VIEWPORTS) {
 
   const ctx = ctxOf(VIEWPORTS[1]);
   const tapChecks = [
-    ['زر التشغيل/الإيقاف', 'playPauseBtn', ['width', 'height'], 44],
-    ['زر كتم الصوت', 'muteBtn', ['width', 'height'], 44],
+    ['زر التشغيل المركزي', 'centerPlayBtn', ['width', 'height'], 44],
+    ['زر ملء الشاشة', 'videoFullscreenBtn', ['width', 'height'], 44],
     ['زر الإرسال في الدردشة', 'chatSend', ['width', 'height'], 44],
     ['زر فتح القائمة', 'drawerOpenBtn', ['min-height', 'height'], 44],
     ['خانة الكتابة', 'chatInput', ['min-height', 'height'], 44],
@@ -470,12 +471,8 @@ for (const v of VIEWPORTS) {
     /-webkit-tap-highlight-color\s*:\s*transparent/.test(css));
   t('سحب شريط التقدّم لا يمرّر الصفحة (touch-action: none)',
     val(byIdProbe('progressBar'), 'touch-action', ctx) === 'none', val(byIdProbe('progressBar'), 'touch-action', ctx));
-  const timesEl = byIdProbe('curTime').parent;
-  t('الوقت الرقمي يُخفى على الشاشات ≤400px ليوسّع الشريط',
-    val(timesEl, 'display', ctxOf({ width: 390, height: 844, pointer: 'coarse' })) === 'none',
-    val(timesEl, 'display', ctxOf({ width: 390, height: 844, pointer: 'coarse' })));
-  t('الوقت الرقمي يبقى ظاهراً على 420px',
-    val(timesEl, 'display', ctxOf({ width: 420, height: 800, pointer: 'coarse' })) !== 'none');
+  t('شريط التحكم مبسّط بلا أوقات وأزرار محذوفة',
+    ['curTime', 'durTime', 'playPauseBtn', 'muteBtn'].every(id => !findById(roomTree, id)));
 
   /* عرض المحتوى لا يتجاوز الشاشة */
   for (const view of [VIEWPORTS[0], VIEWPORTS[1], VIEWPORTS[4]]) {
@@ -484,11 +481,13 @@ for (const v of VIEWPORTS) {
     t(`[${view.name}] بطاقة المشغّل محدودة بـ min() لا بعرض ثابت`, /^min\(/.test(stageW), stageW);
     t(`[${view.name}] بطاقة المشغّل لا تتجاوز 100%`, /100%/.test(stageW), stageW);
   }
-  const chatMin = evalLength(val(chatEl, 'min-height', ctxOf({ width: 360, height: 640, pointer: 'coarse' })), ctxOf({ width: 360, height: 640, pointer: 'coarse' }));
-  t('الرسائل لها ارتفاع أدنى معقول على الهاتف (≥200px وأقل من 300px)',
-    chatMin !== null && chatMin >= 200 && chatMin <= 300, String(chatMin));
-  t('الرسائل تتمدد لتملأ المساحة المتبقية على الهاتف',
-    /1 1 auto|flex:\s*1/.test(val(chatEl, 'flex', ctx)), val(chatEl, 'flex', ctx));
+  const chatBodyEl = byIdProbe('chatBody');
+  t('نافذة الرسائل تحتفظ بارتفاع قراءة أدنى',
+    evalLength(val(chatBodyEl, 'min-height', ctx), ctx) >= 90, val(chatBodyEl, 'min-height', ctx));
+  t('الرسائل القديمة تبقى قابلة للتمرير داخل نافذة المحادثة',
+    val(chatBodyEl, 'overflow-y', ctx) === 'auto', val(chatBodyEl, 'overflow-y', ctx));
+  t('بطاقة الرسائل تتبع ارتفاع نافذة 8 رسائل (12 عند إخفاء الفيديو)',
+    val(chatEl, 'flex', ctx) === '0 0 auto', val(chatEl, 'flex', ctx));
 
   /* القرب الفعلي: المسافة بين المشغّل والرسائل على الهاتف */
   for (const dev of [{ n: 'هاتف صغير', w: 360, h: 640 }, { n: 'هاتف مقلوب', w: 844, h: 390 }]) {
@@ -501,7 +500,7 @@ for (const v of VIEWPORTS) {
 
   /* ميزانية الارتفاع: هل يبقى للرسائل مكان معقول في شاشة هاتف حقيقية؟
      (أرقام معلنة في CSS: شريط الغرفة + أزرار الأدوات + الفيديو 16:9 + شريط التحكم + حشوة) */
-  const ctrlBarH = 64;          /* أزرار 44-50px + حشوة الشريط */
+  const ctrlBarH = 42;          /* شريط التقدم 26px + حشوة 16px */
   const mainPad = 28;           /* 10px أعلى + 18px أسفل */
   console.log('\n  📱 ميزانية ارتفاع الغرفة على الهاتف (كم يبقى للرسائل فعلياً):');
   for (const dev of [{ n: 'iPhone SE', w: 320, h: 568 }, { n: 'هاتف صغير', w: 360, h: 640 }, { n: 'iPhone 390', w: 390, h: 844 }]) {
@@ -515,11 +514,8 @@ for (const v of VIEWPORTS) {
     t(`[${dev.n}] تبقى مساحة معقولة للرسائل (≥ 180px)`, chatSpace >= 180, `${chatSpace}px`);
     t(`[${dev.n}] الفيديو لا يأكل أكثر من 45% من ارتفاع الشاشة`, videoH <= dev.h * 0.45, `${videoH} من ${dev.h}`);
   }
-  t('عنوان الغرفة يُقصّ بـ ellipsis ولا يكسر الشريط',
-    /vw/.test(val(byIdProbe('roomTitle'), 'max-width', ctx), '') || /vw/.test(val(byIdProbe('roomTitle'), 'max-width', ctx)),
-    val(byIdProbe('roomTitle'), 'max-width', ctx));
-  t('شريط الغرفة لا يلتفّ إلى سطرين على الهاتف', val(byIdProbe('drawerOpenBtn').parent.parent, 'flex-wrap', ctx) !== 'wrap',
-    val(byIdProbe('drawerOpenBtn').parent.parent, 'flex-wrap', ctx));
+  t('شريط الغرفة لا يلتفّ إلى سطرين على الهاتف', val(byIdProbe('drawerOpenBtn').parent, 'flex-wrap', ctx) !== 'wrap',
+    val(byIdProbe('drawerOpenBtn').parent, 'flex-wrap', ctx));
 
   /* ---- 5.ب) تداخل الشريط العلوي (2.6.5): الكتابة لا تلامس الأيقونات، والدراور في مكانه ----
      العطل السابق: .player-actions كانت تحتفظ بـ width: min(620px, 100%) من القاعدة
@@ -529,8 +525,7 @@ for (const v of VIEWPORTS) {
     const barEl = byIdProbe('drawerOpenBtn').parent;          /* div.room-bar */
     const barCtx = ctxOf(VIEWPORTS[1]);                      /* 360px — هاتف صغير */
     const playerActions = byIdProbe('addVideoBtn').parent;    /* nav.player-actions */
-    const titleEl = byIdProbe('roomTitle');
-    const rtopbarEl = titleEl.parent.parent;                 /* header.rtopbar */
+    const rtopbarEl = byIdProbe('roomSub').parent.parent;    /* header.rtopbar */
 
     t('أدوات الرأس داخل شريط الغرفة بعرض محتواها فقط (width: auto) — لا تملأ الشريط',
       /^(auto|)$/.test(val(playerActions, 'width', barCtx)) && !/min\(/.test(val(playerActions, 'width', barCtx)),
@@ -542,15 +537,8 @@ for (const v of VIEWPORTS) {
     t('رأس الغرفة (rtopbar) هو أول من ينكمش عند الازدحام (flex: 1 1 auto + min-width: 0)',
       /1 1 auto|flex:\s*1/.test(val(rtopbarEl, 'flex', barCtx)) && val(rtopbarEl, 'min-width', barCtx) === '0',
       `flex=${val(rtopbarEl, 'flex', barCtx)}, min-width=${val(rtopbarEl, 'min-width', barCtx)}`);
-    t('عنوان الغرفة يُقصّ بدل أن يفيض فوق الأيقونات (overflow: hidden + text-overflow: ellipsis)',
-      /hidden/.test(val(titleEl, 'overflow', barCtx)) && val(titleEl, 'text-overflow', barCtx) === 'ellipsis',
-      `overflow=${val(titleEl, 'overflow', barCtx)}, text-overflow=${val(titleEl, 'text-overflow', barCtx)}`);
-    t('عنوان الغرفة قابل للانكماش (min-width: 0) فلا يكسر صف الشريط',
-      val(titleEl, 'min-width', barCtx) === '0', val(titleEl, 'min-width', barCtx));
-    t('سهم ▾ بجانب العنوان مطلق الموضع — لا يزاحم النص ولا الأيقونات',
-      /\.room-bar\s+\.rtopbar__title::after\s*\{[^}]*position:\s*absolute/s.test(css) &&
-      val(titleEl, 'position', barCtx) === 'relative',
-      `title position=${val(titleEl, 'position', barCtx)}`);
+    t('العنوان وأدوات الطيّ المحذوفة لا تزاحم أزرار الغرفة',
+      !findById(roomTree, 'roomTitle') && !findById(roomTree, 'collapseBtn'));
     t('عرض الشريط نفسه لا يزيح المحتوى: العنوان والأيقونات كلها داخل room-bar',
       /auto/.test(val(barEl, 'width', barCtx)) || val(barEl, 'width', barCtx) === '', val(barEl, 'width', barCtx));
 
@@ -561,18 +549,16 @@ for (const v of VIEWPORTS) {
         evalLength(val(byIdProbe('drawerOpenBtn'), 'padding', c), c) || 12);
       const drawerW = Math.round(21 + 4 + 17 + drawerPad * 2);          /* شارة + فجوة + أيقونة + حشو */
       const acts = 3 * 44 + 2 * 2;                                      /* 3 أزرار لمس + فجوتان */
-      const collapse = 34;
-      const gaps = 4 * 3;
+      const gaps = 4 * 2;
       const barPad = 2 * (evalLength(val(barEl, 'padding-inline', c), c) || 7);
-      const conn = view.width <= 380 ? 0 : 27;                          /* النقطة تُخفى ≤380px */
-      const fixed = Math.round(barPad + gaps + drawerW + acts + collapse + conn);
+      const conn = 27;                          /* النقطة تُخفى ≤380px */
+      const fixed = Math.round(barPad + gaps + drawerW + acts + conn);
       const titleSpace = view.width - 20 - fixed;                       /* 20 = حشو .room-main */
-      t(`[${view.name}] ميزانية الشريط تترك للعنوان مساحة مقروءة (≥ 24px) بلا تداخل`,
+      t(`[${view.name}] أزرار الرأس تتسع داخل الشاشة بهامش ≥ 24px`,
         titleSpace >= 24, `الثابت=${fixed}px، المتبقي للعنوان=${titleSpace}px من ${view.width}px`);
     }
-    t('نقطة الحالة تُخفى داخل شريط الغرفة على ≤380px لتحرير مساحة العنوان',
-      val({ tag: 'span', id: '', classes: ['room-connection'], attrs: {}, children: [], parent: rtopbarEl }, 'display', ctxOf(VIEWPORTS[0])) === 'none',
-      val({ tag: 'span', id: '', classes: ['room-connection'], attrs: {}, children: [], parent: rtopbarEl }, 'display', ctxOf(VIEWPORTS[0])));
+    t('شارة الاتصال تبقى داخل الرأس لا فوق أدوات الغرفة',
+      insideOf(byIdProbe('statusBadge'), 'roomBar'));
   }
 
   /* وضع الأفق القصير: قاعدة موجودة فعلاً */
@@ -611,7 +597,6 @@ for (const v of VIEWPORTS) {
 /* =========================================================
    6) سلوك الدراور فعلياً في بيئة الغرفة (فتح/إغلاق/قفل الخلفية)
    ========================================================= */
-const missingIds = [];
 function byIdProbe(id) {
   const el = findById(roomTree, id);
   if (!el) { missingIds.push(id); return { tag: 'div', id, classes: [], attrs: {}, children: [], parent: { tag: 'body', classes: ['room-body'], attrs: {}, children: [], id: '' } }; }
@@ -657,6 +642,7 @@ t('المشاركون داخل القائمة يعرضون أنفسهم (وصو�
 process.on('unhandledRejection', e => { console.log('UNHANDLED REJECTION:', (e && e.stack) || e); });
 process.on('uncaughtException', e => { console.log('UNCAUGHT:', (e && e.stack) || e); });
 
+t('لا توجد مراجع لعناصر محذوفة في اختبارات الهاتف', missingIds.length === 0, missingIds.join(','));
 console.log(`\n${pass} passed, ${fail} failed`);
 if (fail) console.log('\n' + errors.join('\n'));
 process.exit(fail ? 1 : 0);

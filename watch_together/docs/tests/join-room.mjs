@@ -336,7 +336,7 @@ async function testWebSocket() {
   await wait(140);
 
   t('ws: الضيف متصل بالسيرفر نفسه', guest.sandbox.WTRoom.session.transport.kind === 'ws' && guest.byId.get('statusBadge').getAttribute('data-state') === 'online');
-  t('ws: الضيف يدخل كـمشاهد بلا صلاحية تحكم', guest.sandbox.WTRoom.session.role === 'viewer' && guest.byId.get('playPauseBtn').disabled);
+  t('ws: الضيف يدخل كـمشاهد بلا صلاحية تحكم', guest.sandbox.WTRoom.session.role === 'viewer' && guest.byId.get('centerPlayBtn').disabled);
   t('ws: الضيف حصل على نفس الفيديو', !!findVideo(guest) && findVideo(guest).src === VIDEO_A, findVideo(guest) && findVideo(guest).src);
 
   hostVideo.currentTime = 120;
@@ -365,7 +365,7 @@ async function testWebSocket() {
   t('ws: زر تعيين منظّم يظهر للمنشئ', !!roleButton);
   if (roleButton) roleButton.dispatch('click', {});
   await wait(100);
-  t('ws: المنظّم الجديد يحصل على صلاحية التحكم', guest.sandbox.WTRoom.session.role === 'organizer' && !guest.byId.get('playPauseBtn').disabled);
+  t('ws: المنظّم الجديد يحصل على صلاحية التحكم', guest.sandbox.WTRoom.session.role === 'organizer' && !guest.byId.get('centerPlayBtn').disabled);
 
   const playQueue = guest.byId.get('playlistBtn');
   playQueue.dispatch('click', {});
@@ -378,7 +378,7 @@ async function testWebSocket() {
   /* إعادة الدور إلى مشاهد تزيل التحكم من الخادم والواجهة. */
   await host.sandbox.WTRoom.session.transport.setMemberRole(guest.sandbox.WTRoom.session.clientId, 'viewer');
   await wait(100);
-  t('ws: إزالة المنظّم تعيد قفل التحكم', guest.sandbox.WTRoom.session.role === 'viewer' && guest.byId.get('playPauseBtn').disabled);
+  t('ws: إزالة المنظّم تعيد قفل التحكم', guest.sandbox.WTRoom.session.role === 'viewer' && guest.byId.get('centerPlayBtn').disabled);
 
   host.sandbox.WTRoom.setVideo(VIDEO_A);
   await wait(200);
@@ -423,7 +423,7 @@ async function testSupabase() {
   await enter(guest, 'طهّار');
   await wait(200);
   t('sb: الضيف لم ينشئ صف غرفة جديداً', sb.calls.roomCreate === createsAfterHost);
-  t('sb: الضيف يبدأ كمشاهد', guest.sandbox.WTRoom.session.role === 'viewer' && guest.byId.get('playPauseBtn').disabled);
+  t('sb: الضيف يبدأ كمشاهد', guest.sandbox.WTRoom.session.role === 'viewer' && guest.byId.get('centerPlayBtn').disabled);
 
   findVideo(host).currentTime = 90;
   host.sandbox.WTRoom.publish({ force: true });
@@ -432,7 +432,11 @@ async function testSupabase() {
   t('sb: رابط الفيديو واحد لدى الجميع', guest.sandbox.WTRoom.state.url === VIDEO_A);
 
   findVideo(guest).currentTime = 200;
-  guest.sandbox.WTRoom.publish({ force: true });
+  t('sb: الواجهة تمنع نشر حالة المشاهد', await guest.sandbox.WTRoom.publish({ force: true }) === false);
+  /* اختبر رفض الخادم أيضاً، كما في حالة WebSocket، لا مجرد منع الواجهة. */
+  await guest.sandbox.WTRoom.session.transport.publishState(Object.assign({}, guest.sandbox.WTRoom.state, {
+    pos: 200, t: Date.now(), updatedBy: guest.sandbox.WTRoom.session.clientId
+  })).catch(() => {});
   await wait(150);
   t('sb: رفض الحالة من المشاهد', Math.round(host.sandbox.WTRoom.state.pos) === 90, 'host=' + host.sandbox.WTRoom.state.pos);
   t('sb: يعود المشاهد إلى حالة Supabase المرجعية', Math.round(guest.sandbox.WTRoom.state.pos) === 90 && Math.round(findVideo(guest).currentTime) === 90);
@@ -443,7 +447,7 @@ async function testSupabase() {
 
   await host.sandbox.WTRoom.session.transport.setMemberRole(guest.sandbox.WTRoom.session.clientId, 'organizer');
   await wait(180);
-  t('sb: RPC يعيّن المنظّم ويحدّث دوره', guest.sandbox.WTRoom.session.role === 'organizer' && !guest.byId.get('playPauseBtn').disabled);
+  t('sb: RPC يعيّن المنظّم ويحدّث دوره', guest.sandbox.WTRoom.session.role === 'organizer' && !guest.byId.get('centerPlayBtn').disabled);
   const spoofJoin = await sb.fetchStub('/rest/v1/rpc/wt_join_room', { method: 'POST', body: JSON.stringify({
     p_room_id: 'SB001', p_client_id: guest.sandbox.WTRoom.session.clientId,
     p_member_token: 'z'.repeat(64), p_display_name: 'انتحال'
@@ -474,7 +478,7 @@ async function testSupabase() {
 
   await host.sandbox.WTRoom.session.transport.setMemberRole(guest.sandbox.WTRoom.session.clientId, 'viewer');
   await wait(160);
-  t('sb: سحب دور المنظّم يقفل التحكم مجدداً', guest.sandbox.WTRoom.session.role === 'viewer' && guest.byId.get('playPauseBtn').disabled);
+  t('sb: سحب دور المنظّم يقفل التحكم مجدداً', guest.sandbox.WTRoom.session.role === 'viewer' && guest.byId.get('centerPlayBtn').disabled);
 }
 /* ==================== 3) المنطق: ترتيب الحالات ==================== */
 async function testOrdering() {

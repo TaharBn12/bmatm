@@ -16,7 +16,7 @@ export const base = path.resolve(__dirname, '../..');
 class ClassList {
   constructor(el) { this.el = el; this.set = new Set(); }
   add(...c) { c.forEach(x => x && this.set.add(x)); this.sync(); }
-  remove(...c) { c.forEach(x => x.delete && this.set.delete(x)); this.sync(); }
+  remove(...c) { c.forEach(x => this.set.delete(x)); this.sync(); }
   toggle(c, force) {
     if (!c) return;
     const on = force === undefined ? !this.set.has(c) : !!force;
@@ -73,6 +73,8 @@ class El {
     while ((m = re.exec(this._html))) {
       const c = new El(m[1]);
       const attrs = m[2] || '';
+      const idm = attrs.match(/\bid="([^"]*)"/); if (idm) c.id = idm[1];
+      if (/\bhidden\b/.test(attrs)) c.hidden = true;
       const cm = attrs.match(/class="([^"]*)"/); if (cm) c.className = cm[1];
       const tm = attrs.match(/type="([^"]*)"/); if (tm) c.type = tm[1];
       Array.from(attrs.matchAll(/data-([a-zA-Z-]+)="([^"]*)"/g)).forEach(dm => { c.dataset[dm[1]] = dm[2]; c.attrs['data-' + dm[1]] = dm[2]; });
@@ -82,7 +84,7 @@ class El {
   }
   get firstChild() { return this.children[0] || null; }
   appendChild(c) { c.parentNode = this; this.children.push(c); return c; }
-  removeChild(c) { this.children = this.children.filter(x => x !== c); return c; }
+  removeChild(c) { this.children = this.children.filter(x => x !== c); c.parentNode = null; return c; }
   remove() { if (this.parentNode) this.parentNode.removeChild(this); }
   replaceChild(n, old) {
     const i = this.children.indexOf(old);
@@ -100,6 +102,7 @@ class El {
   }
   setAttribute(k, v) { this.attrs[k] = v; if (k === 'id') this.id = v; }
   getAttribute(k) { return this.attrs[k] !== undefined ? this.attrs[k] : null; }
+  removeAttribute(k) { delete this.attrs[k]; }
   addEventListener(ev, fn) { (this._handlers[ev] = this._handlers[ev] || []).push(fn); }
   removeEventListener(ev, fn) { if (this._handlers[ev]) this._handlers[ev] = this._handlers[ev].filter(f => f !== fn); }
   dispatch(ev, e) {
@@ -134,8 +137,10 @@ class El {
   querySelector(sel) { return this._query(sel)[0] || null; }
   querySelectorAll(sel) { return this._query(sel); }
   _query(sel) {
+    if (sel.includes(',')) return [...new Set(sel.split(',').flatMap(s => this._query(s.trim())))];
     const out = [];
     const match = (n) => {
+      if (sel.startsWith('#')) return n.id === sel.slice(1);
       if (sel.startsWith('.')) return n.classList.contains(sel.slice(1));
       if (sel.startsWith('[')) {
         const m = sel.match(/^\[([a-zA-Z-]+)\]?$/);
@@ -229,6 +234,14 @@ export function buildRoomDom() {
  */
 export function createRoomEnv(o = {}) {
   const { html, byId, body } = buildRoomDom();
+  (o.omitIds || []).forEach(id => { byId.get(id)?.remove(); byId.delete(id); });
+  const timeouts = new Set(), intervals = new Set();
+  const timers = {
+    setTimeout(fn, ms) { const id = setTimeout(() => { timeouts.delete(id); fn(); }, ms); timeouts.add(id); return id; },
+    clearTimeout(id) { clearTimeout(id); timeouts.delete(id); },
+    setInterval(fn, ms) { const id = setInterval(fn, ms); intervals.add(id); return id; },
+    clearInterval(id) { clearInterval(id); intervals.delete(id); }
+  };
   const store = o.store || {};
   const localStorageStub = {
     getItem: k => (k in store ? store[k] : null),
@@ -249,6 +262,7 @@ export function createRoomEnv(o = {}) {
 
   const documentStub = {
     body,
+    head: new El('head'),
     documentElement: new El('html'),
     getElementById: (id) => byId.get(id) || null,
     createElement: (tag) => new El(tag),
@@ -267,7 +281,7 @@ export function createRoomEnv(o = {}) {
 
   const sandbox = {
     console,
-    Date, Math, JSON, Promise, setTimeout, clearTimeout, setInterval, clearInterval,
+    Date, Math, JSON, Promise, ...timers, AbortController,
     Uint32Array, Array, Object, String, Number, Boolean, RegExp, Error, Map, Set, Symbol, Blob,
     isNaN, isFinite, parseInt, parseFloat, encodeURIComponent, decodeURIComponent,
     URLSearchParams, URL, Intl, Proxy, MutationObserver: class { observe() { } disconnect() { } },
@@ -323,7 +337,11 @@ export function createRoomEnv(o = {}) {
     }
   }
 
-  return { sandbox, documentStub, byId, body, html, store, channels, loaded, El };
+  const dispose = () => {
+    timeouts.forEach(clearTimeout); intervals.forEach(clearInterval);
+    timeouts.clear(); intervals.clear();
+  };
+  return { sandbox, documentStub, byId, body, html, store, channels, loaded, El, dispose };
 }
 
 export const wait = (ms) => new Promise(r => setTimeout(r, ms));

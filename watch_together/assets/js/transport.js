@@ -1153,6 +1153,7 @@
     this.roomId = roomId; this.meta = meta || {};
     /* مفاتيح منفصلة حتى لا تطمس الرسائلُ حالةَ المزامنة */
     this._key = 'wt:local:bus:' + roomId;        /* قناة النقل بين التبويبات */
+    this._presenceKey = 'local:presence:' + roomId + ':' + this.meta.clientId;
     this._stateKey = 'local:state:' + roomId;    /* آخر حالة مزامنة */
     this._msgsKey = 'local:msgs:' + roomId;      /* آخر الرسائل */
     this._queueKey = 'wt:local:queue:' + roomId;
@@ -1213,6 +1214,9 @@
   };
 
   LocalTransport.prototype._bc = function (obj) {
+    /* Per-connection leases avoid one tab overwriting another tab's attendance. */
+    if (obj.type === 'presence' && !this._closedByUser) U.store.set(this._presenceKey, { name: obj.name, lastSeen: Date.now() });
+    else if (obj.type === 'leave') U.store.del(this._presenceKey);
     obj.from = this.meta.clientId;
     try { this.bc && this.bc.postMessage(obj); } catch (e) { }
     /* قناة احتياطية بين التبويبات التي لا تدعم BroadcastChannel */
@@ -1227,6 +1231,7 @@
   LocalTransport.prototype.sendChat = function (message) {
     const m = {
       id: U.uid('m'), name: message.name, text: message.text,
+      client: this.meta.clientId || null,
       ts: Date.now(), kind: message.kind || 'chat'
     };
     this._bc({ type: 'chat', message: m });
@@ -1269,6 +1274,7 @@
   };
 
   LocalTransport.prototype.close = function () {
+    U.store.del(this._presenceKey);
     this._closedByUser = true;
     try { this.bc && this.bc.close(); } catch (e) { }
     global.removeEventListener('storage', this._onStorage);
