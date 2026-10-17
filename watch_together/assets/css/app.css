@@ -652,58 +652,65 @@ footer a:hover { color: var(--brand-2); }
 .chat__title { margin: 0; font-size: 15px; font-weight: 800; display: flex; align-items: center; gap: 8px; }
 .chat__spacer { flex: 1; }
 
-.chat__body { flex: 1; overflow-y: auto; padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; scroll-behavior: smooth; }
+.chat__body { flex: 1; overflow-y: auto; padding: 14px 16px; display: flex; flex-direction: column; gap: 6px; scroll-behavior: smooth; }
 
-.msg { display: flex; gap: 10px; align-items: flex-end; animation: msgIn .28s cubic-bezier(.2, .9, .3, 1.1) both; max-width: 100%; touch-action: pan-y; }
+.msg { display: flex; gap: 6px; align-items: flex-end; animation: msgIn .24s cubic-bezier(.2, .9, .3, 1.1) both; max-width: 100%; touch-action: pan-y; }
 .msg--me { flex-direction: row-reverse; }
 
-@keyframes msgIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+@keyframes msgIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 
-.msg__avatar { width: 32px; height: 32px; border-radius: 10px; flex: none; display: grid; place-items: center; font-size: 12px; font-weight: 900; color: #0a0715; }
+.msg__avatar { width: 24px; height: 24px; border-radius: 50%; flex: none; display: grid; place-items: center; font-size: 10px; font-weight: 800; color: #0a0715; }
 
 .msg__bubble {
-  padding: 6px 11px 5px;
-  border-radius: 15px;
-  background: rgba(255, 255, 255, .055);
+  display: inline-flex; flex-wrap: wrap; align-items: baseline; gap: 2px 6px;
+  padding: 4px 10px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, .07);
   border: 1px solid var(--border);
-  max-width: min(560px, 78%);
+  max-width: min(420px, 75%);
+  width: fit-content;
   min-width: 0;
   transition: transform .18s ease, border-color .15s ease;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
 }
 .msg.is-dragging .msg__bubble { transition: none; }
 .msg.is-swiped .msg__bubble { border-color: rgba(124, 92, 255, .55); }
+.msg.is-menu .msg__bubble { border-color: rgba(124, 92, 255, .6); }
 
-.msg--me .msg__bubble { background: rgba(124, 92, 255, .2); border-color: rgba(124, 92, 255, .38); }
-.msg__meta { display: flex; align-items: baseline; gap: 6px; margin: 0 0 2px; min-width: 0; }
-.msg__name { font-size: 10.5px; font-weight: 800; margin: 0; }
-.msg__text { margin: 0; font-size: 13.5px; line-height: 1.55; word-break: break-word; overflow-wrap: anywhere; }
+.msg--me .msg__bubble { background: rgba(124, 92, 255, .24); border-color: rgba(124, 92, 255, .42); }
+.msg__meta { display: inline-flex; align-items: baseline; gap: 4px; margin: 0; margin-inline-start: auto; min-width: 0; }
+.msg__text { margin: 0; font-size: 12.5px; line-height: 1.35; word-break: break-word; overflow-wrap: anywhere; }
 .msg__text a { color: var(--brand-2); }
-.msg__time { font-size: 9.5px; color: var(--muted-2); margin: 0; font-weight: 600; }
-.msg__edited { font-size: 9px; color: var(--muted-2); font-weight: 700; }
+.msg__time { font-size: 9px; line-height: 1; color: var(--muted-2); margin: 0; font-weight: 600; opacity: .8; }
+.msg__edited { font-size: 8.5px; line-height: 1; color: var(--muted-2); font-weight: 700; }
 
 /* اقتباس الرد داخل البطاقة */
 .msg__quote {
+  flex: 1 1 100%;
   display: flex; flex-direction: column; gap: 1px;
-  margin: 0 0 4px; padding: 3px 8px;
-  border-inline-start: 3px solid var(--brand-2); border-radius: 7px;
+  margin: 0 0 2px; padding: 2px 7px;
+  border-inline-start: 2.5px solid var(--brand-2); border-radius: 6px;
   background: rgba(124, 92, 255, .12); min-width: 0;
 }
-.msg__quote-name { font-size: 10px; font-weight: 800; color: var(--brand-2); }
+.msg__quote-name { font-size: 9.5px; font-weight: 800; color: var(--brand-2); }
 .msg__quote-text {
-  font-size: 11px; color: var(--muted); max-width: 240px;
+  font-size: 10.5px; color: var(--muted); max-width: 220px;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 
 /* رسالة محذوفة: تبقى في مكانها بنص «محذوفة» */
 .msg--deleted .msg__bubble { opacity: .72; background: rgba(255, 255, 255, .03); }
-.msg__text--gone { color: var(--muted-2); font-style: italic; font-size: 12.5px; }
+.msg__text--gone { color: var(--muted-2); font-style: italic; font-size: 11.5px; }
 
 .msg--system { justify-content: center; }
 .msg--system .msg__bubble {
+  padding: 3px 9px;
   background: rgba(255, 176, 32, .1);
   border-color: rgba(255, 176, 32, .25);
-  color: #ffe2b0; font-size: 12.5px; font-weight: 700;
-  text-align: center; max-width: 92%;
+  color: #ffe2b0; font-size: 11px; font-weight: 700;
+  text-align: center; max-width: 88%;
 }
 
 .chat__empty { margin: auto; text-align: center; color: var(--muted-2); font-size: 13.5px; line-height: 1.9; }
@@ -1157,50 +1164,20 @@ footer a:hover { color: var(--brand-2); }
   transition: height .3s cubic-bezier(.2, .8, .3, 1);
 }
 
-.react-row {
-  display: flex; align-items: center; gap: 6px;
-  margin-bottom: 9px; flex-wrap: wrap;
-}
-.react-btn {
-  min-width: 36px; height: 34px; padding: 0 8px;
-  border-radius: 11px; cursor: pointer;
-  background: rgba(255, 255, 255, .05);
-  border: 1px solid var(--border);
-  font-size: 16px; line-height: 1; transition: .16s;
-  display: grid; place-items: center;
-}
-.react-btn:hover { background: rgba(124, 92, 255, .22); border-color: rgba(124, 92, 255, .5); transform: translateY(-2px) scale(1.08); }
-.react-btn:active { transform: scale(.94); }
-.react-row__label {
-  display: inline-flex; align-items: center; gap: 5px;
-  margin-inline-start: auto;
-  font-size: 11px; color: var(--muted-2); font-weight: 800;
-}
-
-/* Sent emoji use the ordinary bubble; reactions belong to a specific message. */
-.msg__react-add {
-  display: inline-grid; place-items: center; flex: none;
-  width: 26px; height: 26px; margin-inline-start: auto;
-  padding: 0; border: 0; border-radius: 8px;
-  background: transparent; color: var(--muted-2); cursor: pointer;
-  align-self: center;
-}
-.msg__react-add:hover, .msg__react-add[aria-expanded="true"] {
-  background: rgba(124, 92, 255, .18); color: var(--brand-2);
-}
-.msg__reactions { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 5px; }
+/* Reactions belong to a specific message and are triggered via long-press/contextmenu. */
+.msg__reactions { flex: 1 1 100%; display: flex; flex-wrap: wrap; gap: 3px; margin-top: 2px; }
 .msg__reaction {
-  display: inline-flex; align-items: center; justify-content: center; gap: 4px;
-  min-width: 40px; min-height: 27px; padding: 3px 8px;
+  display: inline-flex; align-items: center; justify-content: center; gap: 3px;
+  min-width: 32px; min-height: 20px; padding: 1px 6px;
   border: 1px solid var(--border); border-radius: 999px;
-  background: rgba(255, 255, 255, .05); color: var(--text);
-  font: 600 12px/1.3 var(--font); cursor: pointer;
+  background: rgba(255, 255, 255, .06); color: var(--text);
+  font: 600 11px/1.2 var(--font); cursor: pointer;
 }
 .msg__reaction:hover { background: rgba(124, 92, 255, .16); }
 .msg__reaction[aria-pressed="true"] {
   background: rgba(124, 92, 255, .23); border-color: rgba(124, 92, 255, .6);
 }
-.msg__react-add:focus-visible, .msg__reaction:focus-visible, .msg-menu__reaction:focus-visible {
+.msg__reaction:focus-visible, .msg-menu__reaction:focus-visible {
   outline: 2px solid var(--brand-2); outline-offset: 2px;
 }
 
@@ -2275,8 +2252,7 @@ body.drawer-open { overscroll-behavior: none; }
   background: rgba(124, 92, 255, .23); border-color: rgba(124, 92, 255, .5);
 }
 @media (pointer: coarse) {
-  .msg__react-add { width: 32px; height: 32px; }
-  .msg__reaction { min-height: 34px; }
+  .msg__reaction { min-height: 24px; }
   .msg-menu__reaction { height: 42px; }
 }
 .msg-menu__btn {
@@ -2331,18 +2307,18 @@ body.drawer-open { overscroll-behavior: none; }
 #stage:fullscreen .player { flex: 1; width: 100%; height: auto; aspect-ratio: auto; }
 #ctrlbar { gap: 0; }
 .room-main > #chat { flex: 0 0 auto; height: auto; min-height: 0; }
-/* Four compact rows (4 × 58px + 3 × 8px); long messages scroll instead of moving the box/player. */
+/* Four compact Messenger-style rows (4 × 34px + 3 × 6px = 154px); long messages scroll instead of moving the box/player. */
 .room-main > #chat .chat__body {
   flex: 0 0 auto;
-  height: 256px;
+  height: 154px;
   min-height: 0;
   padding: 0;
-  gap: 8px;
+  gap: 6px;
   overflow-y: auto;
   overscroll-behavior: contain;
   overflow-anchor: auto;
 }
-.room-main > #chat .chat__body > .msg { flex-shrink: 0; min-height: 58px; }
+.room-main > #chat .chat__body > .msg { flex-shrink: 0; min-height: 34px; }
 /* Without the video, fill the available screen; still never size the box from message text. */
 body.chat-focus .room-main > #chat {
   flex: 0 0 auto;

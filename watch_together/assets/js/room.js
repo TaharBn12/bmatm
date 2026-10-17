@@ -118,7 +118,7 @@
     changeBar: $('changeBar'), newUrl: $('newUrl'), newTitle: $('newTitle'), applyUrlBtn: $('applyUrlBtn'), cancelUrlBtn: $('cancelUrlBtn'),
     membersPanel: $('membersPanel'), membersList: $('membersList'), sideMembersCount: $('sideMembersCount'),
     chat: $('chat'), chatBody: $('chatBody'), chatEmpty: $('chatEmpty'), chatCount: $('chatCount'),
-    clearChatBtn: $('clearChatBtn'), reactRow: $('reactRow'), chatForm: $('chatForm'),
+    clearChatBtn: $('clearChatBtn'), chatForm: $('chatForm'),
     chatInput: $('chatInput'), chatSend: $('chatSend'), typing: $('typing'),
     composerBar: $('composerBar'), composerBarLabel: $('composerBarLabel'), composerBarText: $('composerBarText'), composerBarCancel: $('composerBarCancel'),
     playlistModal: $('playlistModal'), playlistCloseBtn: $('playlistCloseBtn'), queueList: $('queueList'), queueEmpty: $('queueEmpty'),
@@ -1125,9 +1125,8 @@
   }
 
   /* ============================== الرسائل ==============================
-     • بطاقة مدمجة: سطر واحد للاسم والوقت + النص — لا تأخذ إلا مساحة محتواها.
-     • الإيموجي يُرسل كبطاقة عادية؛ زر الوجه على كل بطاقة يضيف تفاعلاً عليها.
-     • السحب على رسالة ← الرد عليها · الضغط المطوّل (أو زر الفأرة الأيمن) ← تفاعل/تعديل/حذف.
+     • بطاقة صغيرة بأسلوب مسنجر: النص والوقت فقط بلا اسم وبلا أيقونة تفاعل داخل الفقاعة.
+     • السحب على رسالة ← الرد عليها · الضغط المطوّل (أو زر الفأرة الأيمن) ← تفاعل بالإيموجي/رد/تعديل/حذف.
      • الحذف يترك مكان الرسالة بنص «محذوفة»، والتعديل يحدثها في مكانها.
      • الرد/التعديل/الحذف والتفاعلات تُزامَن عبر غلاف JSON مدمج في نص الرسالة
        (يعمل مع أي ناقل: WebSocket أو Supabase أو محلي) دون تغيير الجداول.
@@ -1197,17 +1196,15 @@
       row.className = 'msg' + (mine ? ' msg--me' : '');
       const color = U.colorFor(m.name || '?');
       row.innerHTML =
-        '<span class="msg__avatar" style="background:' + color + '">' + U.esc(U.initials(m.name)) + '</span>' +
+        '<span class="msg__avatar" style="background:' + color + '" title="' + U.esc(m.name || 'زائر') + '">' + U.esc(U.initials(m.name)) + '</span>' +
         '<div class="msg__bubble">' +
         (d.reply ? '<div class="msg__quote">' +
           '<span class="msg__quote-name">' + U.esc(d.reply.name) + '</span>' +
           '<span class="msg__quote-text">' + U.esc(d.reply.text) + '</span></div>' : '') +
-        '<p class="msg__meta">' +
-        '<span class="msg__name" style="color:' + color + '">' + U.esc(m.name || 'زائر') + (mine ? ' • أنت' : '') + '</span>' +
-        '<span class="msg__time">' + U.fmtClock(m.ts || Date.now()) + '</span>' +
-        '<button type="button" class="msg__react-add" aria-label="إضافة تفاعل" title="إضافة تفاعل" aria-haspopup="dialog" aria-expanded="false">' +
-        IC.html('smile', 15) + '</button></p>' +
         '<p class="msg__text">' + U.linkify(U.esc(text || '')) + '</p>' +
+        '<p class="msg__meta">' +
+        '<span class="msg__time">' + U.fmtClock(m.ts || Date.now()) + '</span>' +
+        '</p>' +
         '</div>';
       /* بيانات المطابقة للرد/التعديل/الحذف (محلياً وعن بُعد) */
       row.dataset.cid = cid;
@@ -1215,16 +1212,6 @@
       row.dataset.text = text;
       row.dataset.name = String(m.name || '');
       row._reactions = new Map();
-      const reactButton = row.querySelector('.msg__react-add');
-      reactButton.addEventListener('click', (event) => {
-        event.stopPropagation();
-        if (session.msgMenu && !session.msgMenu.hidden && session.msgMenu._row === row) {
-          hideMsgMenu(true);
-          return;
-        }
-        const rect = reactButton.getBoundingClientRect();
-        openMsgMenu(row, rect.left + rect.width / 2, rect.top, reactButton);
-      });
     }
 
     const followLatest = el.chatBody.scrollHeight - el.chatBody.scrollTop - el.chatBody.clientHeight < 80;
@@ -1364,8 +1351,6 @@
     row.classList.remove('msg--edited');
     const reactions = row.querySelector('.msg__reactions');
     if (reactions) reactions.remove();
-    const reactButton = row.querySelector('.msg__react-add');
-    if (reactButton) reactButton.remove();
     if (row._reactions) row._reactions.clear();
     if (session.msgMenu && session.msgMenu._row === row) hideMsgMenu();
     const quote = row.querySelector('.msg__quote');
@@ -1599,14 +1584,17 @@
     return menu;
   }
 
+  let suppressMenuCloseUntil = 0;
+
   function openMsgMenu(row, x, y, trigger) {
     if (!canReactToMessage(row)) return;
     hideMsgMenu();
     const menu = ensureMsgMenu();
     menu._row = row;
     menu.hidden = false;
-    menu._trigger = trigger || row.querySelector('.msg__react-add');
-    if (menu._trigger) menu._trigger.setAttribute('aria-expanded', 'true');
+    menu._trigger = trigger || row.querySelector('.msg__bubble') || row;
+    if (trigger && trigger.setAttribute) trigger.setAttribute('aria-expanded', 'true');
+    if (row.classList) row.classList.add('is-menu');
     const current = row._reactions.get(session.clientId);
     menu.querySelectorAll('.msg-menu__reaction').forEach(button => {
       button.setAttribute('aria-pressed', String(!!current && current.emoji === button.dataset.emoji));
@@ -1617,11 +1605,14 @@
       const act = b.dataset ? b.dataset.act : '';
       b.hidden = (act === 'edit' || act === 'delete') ? !isMine : false;
     });
-    positionMsgMenu(menu, x, y);
-    if (trigger) {
-      const first = menu.querySelector('.msg-menu__reaction');
-      if (first) first.focus({ preventScroll: true });
+    if (!x && !y && menu._trigger && menu._trigger.getBoundingClientRect) {
+      const rect = menu._trigger.getBoundingClientRect();
+      x = rect.left + rect.width / 2;
+      y = rect.top;
     }
+    positionMsgMenu(menu, x, y);
+    const first = menu.querySelector('.msg-menu__reaction');
+    if (first) first.focus({ preventScroll: true });
   }
 
   function positionMsgMenu(menu, x, y) {
@@ -1651,8 +1642,10 @@
       menu._row = null;
       menu._trigger = null;
       if (trigger) {
-        trigger.setAttribute('aria-expanded', 'false');
-        if (restoreFocus && trigger.parentNode) trigger.focus({ preventScroll: true });
+        if (trigger.getAttribute && trigger.getAttribute('aria-expanded') !== null) {
+          trigger.setAttribute('aria-expanded', 'false');
+        }
+        if (restoreFocus && trigger.parentNode && trigger.focus) trigger.focus({ preventScroll: true });
       }
     }
     const kids = el.chatBody ? (el.chatBody.children || []) : [];
@@ -1665,10 +1658,11 @@
     if (!menu || menu.hidden) return;
     const t = e && e.target;
     if (t && t.closest && t.closest('.msg-menu')) return;
+    if (Date.now() < suppressMenuCloseUntil) return;
     hideMsgMenu();
   });
 
-  /* ---- إيماءات الرسالة: السحب = رد · الضغط المطوّل = تعديل/حذف ---- */
+  /* ---- إيماءات الرسالة: السحب = رد · الضغط المطوّل = تفاعل/رد/تعديل/حذف ---- */
   (function bindMsgGestures() {
     if (!el.chatBody) return;
     let drag = null;
@@ -1688,7 +1682,7 @@
 
     el.chatBody.addEventListener('pointerdown', (e) => {
       const target = e && e.target;
-      if (target && target.closest && (target.closest('.msg__react-add') || target.closest('.msg__reaction') || target.closest('a'))) return;
+      if (target && target.closest && (target.closest('.msg__reaction') || target.closest('a'))) return;
       const row = rowOf(e);
       if (!actionable(row)) return;
       if (drag) { clearTimeout(drag.lpTimer); resetRow(drag.row); }
@@ -1697,6 +1691,7 @@
         lpTimer: setTimeout(function () {
           if (!drag || drag.mode) return;
           drag.mode = 'menu';
+          suppressMenuCloseUntil = Date.now() + 600;
           openMsgMenu(drag.row, drag.x0, drag.y0);
         }, 450)
       };
@@ -1734,7 +1729,8 @@
       const d = drag;
       drag = null;
       resetRow(d.row);
-      if (d.mode === 'swipe' && Math.abs(d.dx) > 48) setReplyTo(d.row);
+      if (d.mode === 'menu') suppressMenuCloseUntil = Date.now() + 400;
+      else if (d.mode === 'swipe' && Math.abs(d.dx) > 48) setReplyTo(d.row);
     };
     el.chatBody.addEventListener('pointerup', endDrag);
     el.chatBody.addEventListener('pointercancel', endDrag);
@@ -1748,6 +1744,7 @@
       const row = rowOf(e);
       if (!actionable(row)) return;
       if (e.preventDefault) e.preventDefault();
+      suppressMenuCloseUntil = Date.now() + 400;
       openMsgMenu(row, e.clientX || 0, e.clientY || 0);
     });
   })();
@@ -2172,17 +2169,6 @@
       updateChatCount();
     });
 
-    /* ---- إرسال إيموجي كرسالة عادية، مستقلة عن تفاعلات البطاقات ---- */
-    el.reactRow.querySelectorAll('[data-react]').forEach(b => {
-      b.addEventListener('click', () => {
-        const emoji = (b.dataset && b.dataset.react) || b.getAttribute('data-react');
-        sendMessage(emoji, 'chat');
-        b.animate
-          ? b.animate([{ transform: 'scale(1)' }, { transform: 'scale(1.35)' }, { transform: 'scale(1)' }], { duration: 260 })
-          : null;
-      });
-    });
-
     updateMessagesBadge();
 
     /* ---- اختصارات ---- */
@@ -2355,7 +2341,7 @@
     reconnect,
     chat: {
       addChatMessage, setReplyTo, startEdit, deleteMessage, commitEdit,
-      submitChat, clearComposer, encodeChatText, decodeChatText, findMsgRow, toggleMessageReaction
+      submitChat, clearComposer, encodeChatText, decodeChatText, findMsgRow, toggleMessageReaction, openMsgMenu
     },
     setVideo(url) {
       const parsed = U.parseWatchUrl(url);
