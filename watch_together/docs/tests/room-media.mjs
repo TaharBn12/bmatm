@@ -186,9 +186,9 @@ const run = async () => {
     /\.media-lightbox__frame[\s\S]*?grid-template-rows:\s*minmax\(0,\s*1fr\)/.test(mediaCss) &&
     /\.media-lightbox__stage[\s\S]*?align-self:\s*stretch/.test(mediaCss));
   t('نسخ الملفات محدّثة (تفادياً لنسخة المتصفح القديمة)',
-    /media\.css\?v=3\.1\.4/.test(fs.readFileSync(path.join(base, 'room.html'), 'utf8')) &&
-    /media\.js\?v=3\.1\.4/.test(fs.readFileSync(path.join(base, 'room.html'), 'utf8')) &&
-    /room\.js\?v=3\.1\.4/.test(fs.readFileSync(path.join(base, 'room.html'), 'utf8')));
+    /media\.css\?v=3\.1\.5/.test(fs.readFileSync(path.join(base, 'room.html'), 'utf8')) &&
+    /media\.js\?v=3\.1\.5/.test(fs.readFileSync(path.join(base, 'room.html'), 'utf8')) &&
+    /room\.js\?v=3\.1\.5/.test(fs.readFileSync(path.join(base, 'room.html'), 'utf8')));
   t('تنسيق بديل واضح عند فشل تحميل الصورة بدلاً من أيقونة Safari المكسورة',
     /\.media-lightbox__img\[hidden\][\s\S]*?display:\s*none\s*!important/.test(mediaCss) &&
     /\.media-lightbox__error\[hidden\][\s\S]*?display:\s*none\s*!important/.test(mediaCss) &&

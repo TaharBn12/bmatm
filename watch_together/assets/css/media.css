@@ -619,20 +619,22 @@ body.chat-focus .msg-media {
 .media-lightbox__bar {
   position: relative;
   z-index: 3;
-  display: flex; align-items: center; gap: 9px;
-  padding: 11px 16px calc(11px + env(safe-area-inset-bottom, 0px));
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 12px calc(10px + env(safe-area-inset-bottom, 0px));
   background: rgba(10, 12, 24, .78);
   border-top: 1px solid var(--border);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
+  flex-wrap: nowrap;
+  overflow: hidden;
 }
 .media-lightbox__counter {
-  font-size: 12px; font-weight: 800; color: var(--muted);
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  max-width: 48vw;
+  flex: 1 1 auto;
   min-width: 0;
+  font-size: 11.5px; font-weight: 800; color: var(--muted);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.media-lightbox__spacer { flex: 1; }
+.media-lightbox__spacer { flex: 0 0 2px; }
 .media-lightbox__btn {
   display: inline-flex; align-items: center; gap: 6px;
   height: 38px; padding: 0 15px;
@@ -643,11 +645,19 @@ body.chat-focus .msg-media {
   border: 1px solid var(--border);
   cursor: pointer; text-decoration: none;
   transition: .18s;
+  flex: none;
 }
 .media-lightbox__btn:hover { background: rgba(124, 92, 255, .22); border-color: rgba(124, 92, 255, .5); }
 .media-lightbox__btn--close { background: rgba(255, 92, 114, .16); border-color: rgba(255, 92, 114, .4); }
 .media-lightbox__btn--close:hover { background: rgba(255, 92, 114, .3); }
 .media-lightbox__btn svg { width: 15px; height: 15px; }
+/* أيقونة فقط — بدون نص: زر مربّع صغير يظهر كاملاً حتى على الهاتف */
+.media-lightbox__btn--icon {
+  width: 38px; height: 38px; padding: 0;
+  display: grid; place-items: center;
+  border-radius: 12px;
+}
+.media-lightbox__btn--icon svg { width: 16px; height: 16px; }
 
 body.media-lightbox-open { overflow: hidden; }
 
@@ -675,6 +685,9 @@ body.media-lightbox-open { overflow: hidden; }
   }
   .media-lightbox__canvas { padding: 6px; }
   .media-lightbox__btn { height: 34px; padding: 0 11px; font-size: 11.5px; }
+  .media-lightbox__btn--icon { width: 34px; height: 34px; padding: 0; }
+  .media-lightbox__bar { gap: 6px; padding: 8px 10px calc(8px + env(safe-area-inset-bottom, 0px)); }
+  .media-lightbox__counter { font-size: 10.5px; }
   .media-lightbox__zoom { height: 30px; }
   .media-lightbox__zbtn { width: 26px; height: 26px; }
   .media-lightbox__zlevel { min-width: 46px; height: 26px; font-size: 10px; }
