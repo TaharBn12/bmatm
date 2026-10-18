@@ -60,20 +60,20 @@ window.WT_CONFIG = {
   },
 
   /* ---------- 7) الوسائط (صور وفيديو في دردشة الغرفة) ----------
-     تُرفع الملفات إلى مواقع تخزين مجانية، ثم يُعرض المحتوى من الرابط
-     الذي يعيده موقع الرفع، ويُخزَّن الرابط في قاعدة البيانات مع الرسالة.
-     المزوّدون مجرّبون بالترتيب: إن فشل أحدهم ينتقل العميل للذي يليه. */
+     الموقع المضمون هو Supabase Storage داخل مشروعك (دائم وسريع)،
+     وإن فشل ينتقل العميل تلقائياً عبر البدائل المجانية بالترتيب. */
   media: {
     enabled: true,
     maxImageMB: 12,          /* أقصى حجم للصورة */
     maxVideoMB: 80,          /* أقصى حجم للفيديو */
     maxPerMessage: 4,        /* أقصى عدد ملفات في رسالة واحدة */
     supabaseBucket: 'wt-room-media',   /* دلو التخزين في Supabase (ينشئه 08-room-media.sql) */
-    providers: ['supabase', 'catbox', 'pomf2', 'uguu'],
-    /* مزوّدون مدعومون:
-         supabase → Supabase Storage (مساحة مجانية دائمة داخل مشروعك)
-         catbox   → catbox.moe (موقع مجاني دائم)
-         pomf2    → pomf2.lain.la (موقع مجاني بديل)
-         uguu     → uguu.se (موقع مجاني مؤقّت — آخر حل في السلسلة) */
+    providers: ['supabase', 'catbox', 'litterbox', 'tmpfiles', 'uguu'],
+    /* مزوّدون مدعومون (الترتيب = أولوية المحاولة):
+         supabase  → Supabase Storage — الموقع المضمون: مساحة دائمة داخل مشروعك
+         catbox    → catbox.moe (مجاني دائم — أحياناً يتعطّل فيُجرَّب التالي)
+         litterbox → litterbox.catbox.moe (موثوق — يحفظ الملف 72 ساعة)
+         tmpfiles  → tmpfiles.org (مجاني — يحفظ الملف 7 أيام)
+         uguu      → uguu.se (مؤقّت 3 ساعات — آخر حل في السلسلة) */
   }
 };
