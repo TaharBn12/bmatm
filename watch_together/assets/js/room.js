@@ -2723,6 +2723,22 @@
           Media.stepViewer(-1);
           return;
         }
+        /* تكبير/تصغير العارض: + و- و0 */
+        if ((e.key === '+' || e.key === '=') && typeof Media.stepViewerZoom === 'function') {
+          e.preventDefault();
+          Media.stepViewerZoom(1);
+          return;
+        }
+        if ((e.key === '-' || e.key === '_') && typeof Media.stepViewerZoom === 'function') {
+          e.preventDefault();
+          Media.stepViewerZoom(-1);
+          return;
+        }
+        if (e.key === '0' && typeof Media.resetViewerZoom === 'function') {
+          e.preventDefault();
+          Media.resetViewerZoom();
+          return;
+        }
       }
       const tag = (e.target.tagName || '').toLowerCase();
       const interactive = ['input', 'textarea', 'select', 'button', 'a', 'summary'].includes(tag) || e.target.isContentEditable;

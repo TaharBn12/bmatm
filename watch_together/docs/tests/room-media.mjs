@@ -167,10 +167,17 @@ const run = async () => {
     card.classList.contains('is-loaded') && card.getAttribute('data-orient') === 'landscape' && card.getAttribute('data-dims') === '1280x720');
 
   const mediaCss = fs.readFileSync(path.join(base, 'assets/css/media.css'), 'utf8');
-  t('تصميم المعاينة في الدردشة مصغّر ومتناسب مع الصورة (object-fit: contain)',
-    /\.msg-media__img[\s\S]*?max-width:\s*200px[\s\S]*?max-height:\s*148px[\s\S]*?object-fit:\s*contain/.test(mediaCss));
+  t('معاينة الدردشة تملأ عرض الرسالة (6/6) وتحافظ على نسبة الصورة',
+    /\.msg-media__frame[\s\S]*?width:\s*100%[\s\S]*?aspect-ratio:\s*var\(--media-ar/.test(mediaCss) &&
+    /\.msg-media__img[\s\S]*?object-fit:\s*contain/.test(mediaCss) &&
+    !/max-width:\s*200px/.test(mediaCss));
   t('العارض المكبّر يعرض الصورة كاملة بلا قصّ (object-fit: contain)',
     /\.media-lightbox__img[\s\S]*?object-fit:\s*contain/.test(mediaCss));
+  const zoomRule = (mediaCss.match(/\.media-lightbox__img\.is-zoomed\s*\{[^}]*\}/) || [''])[0];
+  t('تكبير العارض حقيقي (بلا transform: scale المشوّش) والصورة قابلة للتمرير',
+    /max-width:\s*none/.test(zoomRule) && /max-height:\s*none/.test(zoomRule) &&
+    !/transform:\s*scale/.test(zoomRule) &&
+    /\.media-lightbox__stage[\s\S]*?overflow:\s*auto/.test(mediaCss));
 
   /* ---------- 6) العارض المكبّر: الضغط على الصورة أو زر التكبير يظهرها كاملة ---------- */
   cardImg.dispatch('click', { target: cardImg });
@@ -178,8 +185,28 @@ const run = async () => {
   t('الضغط على صورة المعاينة مباشرة يفتح العارض الكامل', byId.get('mediaLightbox').hidden === false);
   const fullImg = byId.get('mediaStage').querySelector('.media-lightbox__img');
   t('العارض يعرض الصورة كاملة', !!fullImg && fullImg.src === atts[0].media.url);
+  t('الصورة داخل لوحة عرض قابلة للتمرير عند التكبير',
+    !!byId.get('mediaStage').querySelector('.media-lightbox__canvas'));
   fullImg.dispatch('click', { target: fullImg });
   t('الضغط على الصورة الكاملة يبدّل التكبير الإضافي (is-zoomed)', fullImg.classList.contains('is-zoomed'));
+  t('مؤشّر التكبير يعرض الحجم الحقيقي 100%', byId.get('mediaZoomLevel').textContent === '100%',
+    byId.get('mediaZoomLevel').textContent);
+
+  /* الصورة تأخذ حجمها الكامل بالبكسل (لا تحجيم مُموَّه) */
+  fullImg.naturalWidth = 1280;
+  fullImg.naturalHeight = 720;
+  fullImg.dispatch('load', {});
+  t('الصورة المكبّرة تُعرض بأبعادها الأصلية بالبكسل',
+    fullImg.style.width === '1280px' && fullImg.style.height === '720px',
+    fullImg.style.width + '×' + fullImg.style.height);
+
+  byId.get('mediaZoomIn').dispatch('click', {});
+  t('زر التكبير يرفع المستوى إلى 150%', byId.get('mediaZoomLevel').textContent === '150%' &&
+    fullImg.style.width === '1920px', byId.get('mediaZoomLevel').textContent + ' ' + fullImg.style.width);
+  sandbox.WTMedia.resetViewerZoom();
+  t('إعادة الضبط تُعيد الصورة إلى ملء الشاشة',
+    !fullImg.classList.contains('is-zoomed') && byId.get('mediaZoomLevel').textContent === 'ملء');
+
   byId.get('mediaLightbox').dispatch('click', { target: byId.get('mediaStage') });
   t('الضغط حول الصورة في الخلفية يغلق العارض', byId.get('mediaLightbox').hidden === true);
 

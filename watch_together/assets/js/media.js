@@ -131,11 +131,14 @@
       fig.setAttribute('data-dims', Math.round(w) + 'x' + Math.round(h));
       if (fig.style && fig.style.setProperty) {
         fig.style.setProperty('--media-ar', Math.round(w) + ' / ' + Math.round(h));
+        /* نسبة رقمية تُستعمل في CSS لضبط عرض الصندوق حسب الارتفاع الأقصى */
+        fig.style.setProperty('--media-ar-n', String(box.ratio));
         fig.style.setProperty('--media-w', box.w + 'px');
         fig.style.setProperty('--media-h', box.h + 'px');
       }
       if (frame && frame.style && frame.style.setProperty) {
         frame.style.setProperty('--media-ar', Math.round(w) + ' / ' + Math.round(h));
+        frame.style.setProperty('--media-ar-n', String(box.ratio));
       }
     } catch (e) { }
   }
@@ -722,8 +725,16 @@
 
   /* =========================================================
      العارض المكبّر (Lightbox)
+     ---------------------------------------------------------
+     التكبير هنا «حقيقي»: نُعيد رسم الصورة بالمقاس المطلوب
+     بالبكسل (لا transform: scale الذي يشوّش الصورة)، فتظهر
+     بالحجم الأصلي 100% أو أكبر منه، مع تمرير وسحب للتنقّل
+     داخل الصورة الكبيرة.
      ========================================================= */
   let viewer = null;
+
+  /* مستويات التكبير (1 = الحجم الحقيقي بالبكسل) */
+  const ZOOM_STEPS = [1, 1.5, 2, 3, 4, 6, 8];
 
   function viewerRoot() {
     if (viewer && viewer.root) return viewer;
@@ -741,8 +752,15 @@
       prev: byId('mediaPrev'),
       next: byId('mediaNext'),
       close: byId('mediaClose'),
+      zoomIn: byId('mediaZoomIn'),
+      zoomOut: byId('mediaZoomOut'),
+      zoomLevel: byId('mediaZoomLevel'),
       items: [],
-      index: 0
+      index: 0,
+      img: null,
+      zoom: 'fit',        /* 'fit' = ملء الشاشة · أو معامل رقمي (1 = 100%) */
+      pendingZoom: null,  /* تكبير مطلوب قبل اكتمال تحميل الصورة */
+      panMoved: false
     };
     if (!v.stage) return null;
     const hide = () => closeViewer();
@@ -750,15 +768,203 @@
     root.addEventListener('click', (e) => {
       const t = e && e.target;
       const act = findAction(t, root);
-      if (act === 'close' || t === v.stage || (t && t.classList && t.classList.contains('media-lightbox__frame'))) {
+      const onCanvas = !!(t && t.classList && t.classList.contains('media-lightbox__canvas'));
+      if (act === 'close' || t === v.stage || onCanvas ||
+        (t && t.classList && t.classList.contains('media-lightbox__frame'))) {
         if (e && e.preventDefault) e.preventDefault();
         hide();
       }
     });
     if (v.prev) v.prev.addEventListener('click', () => stepViewer(-1));
     if (v.next) v.next.addEventListener('click', () => stepViewer(1));
+    if (v.zoomIn) v.zoomIn.addEventListener('click', () => stepViewerZoom(1));
+    if (v.zoomOut) v.zoomOut.addEventListener('click', () => stepViewerZoom(-1));
+    if (v.zoomLevel) {
+      v.zoomLevel.addEventListener('click', () => {
+        if (!v.img) return;
+        if (v.zoom === 'fit') applyViewerZoom(v, 1);
+        else applyViewerZoom(v, 'fit');
+      });
+    }
+    /* عجلة الفأرة: تكبير/تصغير متدرّج (مع منع تمرير الصفحة) */
+    v.stage.addEventListener('wheel', (e) => {
+      if (!v.img) return;
+      if (e && e.preventDefault) e.preventDefault();
+      const delta = Number(e.deltaY) || 0;
+      if (!delta) return;
+      stepViewerZoom(delta < 0 ? 1 : -1);
+    }, { passive: false });
+    /* سحب الصورة المكبّرة للتنقّل داخلها (بالفأرة؛ اللمس يمرّر natively) */
+    v.stage.addEventListener('pointerdown', (e) => {
+      if (!v.img || v.zoom === 'fit') return;
+      if (e && e.pointerType && e.pointerType !== 'mouse') return;
+      if (e && e.button !== undefined && e.button !== 0) return;
+      const t = e && e.target;
+      if (t && t.closest && t.closest('.media-lightbox__nav')) return;
+      v.pan = {
+        x: Number(e.clientX) || 0,
+        y: Number(e.clientY) || 0,
+        sl: Number(v.stage.scrollLeft) || 0,
+        st: Number(v.stage.scrollTop) || 0
+      };
+      v.panMoved = false;
+      if (v.stage.classList && v.stage.classList.add) v.stage.classList.add('is-panning');
+      if (e && e.preventDefault) e.preventDefault();
+    });
+    v.stage.addEventListener('pointermove', (e) => {
+      if (!v.pan) return;
+      const dx = (Number(e.clientX) || 0) - v.pan.x;
+      const dy = (Number(e.clientY) || 0) - v.pan.y;
+      if (Math.abs(dx) > 4 || Math.abs(dy) > 4) v.panMoved = true;
+      v.stage.scrollLeft = v.pan.sl - dx;
+      v.stage.scrollTop = v.pan.st - dy;
+      if (e && e.preventDefault) e.preventDefault();
+    });
+    const endPan = () => {
+      if (!v.pan) return;
+      v.pan = null;
+      if (v.stage.classList && v.stage.classList.remove) v.stage.classList.remove('is-panning');
+    };
+    v.stage.addEventListener('pointerup', endPan);
+    v.stage.addEventListener('pointercancel', endPan);
+    v.stage.addEventListener('pointerleave', endPan);
+    /* تكبير باللمس (إصبعان) داخل العارض */
+    let pinch = null;
+    v.stage.addEventListener('touchstart', (e) => {
+      if (!v.img || !e || !e.touches || e.touches.length !== 2) return;
+      const t0 = e.touches[0], t1 = e.touches[1];
+      pinch = {
+        dist: Math.sqrt(Math.pow(t1.clientX - t0.clientX, 2) + Math.pow(t1.clientY - t0.clientY, 2)),
+        factor: v.zoom === 'fit' ? 1 : Number(v.zoom) || 1
+      };
+    }, { passive: true });
+    v.stage.addEventListener('touchmove', (e) => {
+      if (!pinch || !e || !e.touches || e.touches.length !== 2) return;
+      if (e.cancelable && e.preventDefault) e.preventDefault();
+      const t0 = e.touches[0], t1 = e.touches[1];
+      const dist = Math.sqrt(Math.pow(t1.clientX - t0.clientX, 2) + Math.pow(t1.clientY - t0.clientY, 2));
+      if (!pinch.dist || !dist) return;
+      const next = Math.min(8, Math.max(0.25, pinch.factor * (dist / pinch.dist)));
+      applyViewerZoom(v, next);
+    }, { passive: false });
+    const endPinch = () => { pinch = null; };
+    v.stage.addEventListener('touchend', endPinch);
+    v.stage.addEventListener('touchcancel', endPinch);
     viewer = v;
     return v;
+  }
+
+  /** المقاس الفعلي (بكسل) للصورة عند معامل تكبير معيّن */
+  function zoomedSize(nw, nh, factor) {
+    return {
+      w: Math.max(1, Math.round(nw * factor)),
+      h: Math.max(1, Math.round(nh * factor))
+    };
+  }
+
+  /** يحدّث مؤشّر مستوى التكبير وأزراره */
+  function updateZoomUI(v) {
+    if (!v) return;
+    const isImg = !!v.img;
+    const label = v.zoom === 'fit' ? 'ملء' : Math.round(Number(v.zoom) * 100) + '%';
+    if (v.zoomLevel) {
+      v.zoomLevel.textContent = label;
+      v.zoomLevel.setAttribute('title', v.zoom === 'fit'
+        ? 'اضغط لعرض الصورة بحجمها الحقيقي 100%'
+        : 'اضغط للعودة إلى ملء الشاشة');
+      if (v.zoomLevel.disabled !== undefined) v.zoomLevel.disabled = !isImg;
+    }
+    if (v.zoomIn && v.zoomIn.disabled !== undefined) v.zoomIn.disabled = !isImg;
+    if (v.zoomOut && v.zoomOut.disabled !== undefined) v.zoomOut.disabled = !isImg;
+  }
+
+  /** يمرّر العرض ليبقى موضع النقطة (نسبة من الصورة) في منتصف الشاشة */
+  function centerViewerOn(v, img, focus) {
+    const stage = v && v.stage;
+    if (!stage || !focus) return;
+    const sw = Number(stage.clientWidth) || 0;
+    const sh = Number(stage.clientHeight) || 0;
+    if (!sw || !sh) return;
+    const iw = Number(img.offsetWidth) || Number(img.naturalWidth) || 0;
+    const ih = Number(img.offsetHeight) || Number(img.naturalHeight) || 0;
+    if (!iw || !ih) return;
+    stage.scrollLeft = Math.max(0, (iw * focus.px) - (sw / 2));
+    stage.scrollTop = Math.max(0, (ih * focus.py) - (sh / 2));
+  }
+
+  /**
+   * يطبّق حالة التكبير على صورة العارض.
+   * factor = 'fit' لملء الشاشة، أو رقم: 1 = الحجم الحقيقي 100%، 2 = الضِعف…
+   */
+  function applyViewerZoom(v, factor, focus) {
+    if (!v || !v.img) return;
+    const img = v.img;
+    if (factor === 'fit' || !factor) {
+      img.classList.remove('is-zoomed');
+      img.style.width = '';
+      img.style.height = '';
+      v.zoom = 'fit';
+      v.pendingZoom = null;
+      updateZoomUI(v);
+      if (v.stage) { v.stage.scrollLeft = 0; v.stage.scrollTop = 0; }
+      return;
+    }
+    const nw = Number(img.naturalWidth) || 0;
+    const nh = Number(img.naturalHeight) || 0;
+    img.classList.add('is-zoomed');
+    v.zoom = factor;
+    if (!nw || !nh) {
+      /* الحجم غير معروف بعد: تبقى الصورة بحجمها الطبيعي ونعيد الحساب عند التحميل */
+      img.style.width = '';
+      img.style.height = '';
+      v.pendingZoom = factor;
+    } else {
+      const size = zoomedSize(nw, nh, factor);
+      img.style.width = size.w + 'px';
+      img.style.height = size.h + 'px';
+      v.pendingZoom = null;
+    }
+    updateZoomUI(v);
+    if (focus) centerViewerOn(v, img, focus);
+  }
+
+  /** نقرة على الصورة: تبديل بين ملء الشاشة والحجم الحقيقي 100% */
+  function toggleViewerZoom(v, e) {
+    if (!v || !v.img) return;
+    if (v.zoom !== 'fit') { applyViewerZoom(v, 'fit'); return; }
+    /* نقطة النقر داخل الصورة تبقى في مكانها بعد التكبير */
+    let focus = null;
+    const rect = (v.img.getBoundingClientRect && v.img.getBoundingClientRect()) || null;
+    if (rect && rect.width && rect.height && e && typeof e.clientX === 'number') {
+      focus = {
+        px: Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width)),
+        py: Math.min(1, Math.max(0, (e.clientY - rect.top) / rect.height))
+      };
+    }
+    applyViewerZoom(v, 1, focus);
+  }
+
+  /** تكبير/تصغير متدرّج بالمستويات (اتجاه 1 للأكبر، -1 للأصغر) */
+  function stepViewerZoom(dir) {
+    const v = viewerRoot();
+    if (!v || !v.img) return;
+    const cur = v.zoom === 'fit' ? 0 : Number(v.zoom) || 0;
+    let next = 'fit';
+    if (dir > 0) {
+      const bigger = ZOOM_STEPS.filter(z => z > cur + 0.001);
+      next = bigger.length ? bigger[0] : ZOOM_STEPS[ZOOM_STEPS.length - 1];
+    } else {
+      const smaller = ZOOM_STEPS.filter(z => z < cur - 0.001);
+      next = smaller.length ? smaller[smaller.length - 1] : 'fit';
+    }
+    applyViewerZoom(v, next);
+  }
+
+  /** إعادة الضبط: العودة إلى ملء الشاشة */
+  function resetViewerZoom() {
+    const v = viewerRoot();
+    if (!v) return;
+    applyViewerZoom(v, 'fit');
   }
 
   /** يفتح العارض على عنصر ضمن قائمة */
@@ -781,6 +987,10 @@
     v.root.setAttribute('aria-hidden', 'true');
     global.document.body.classList.remove('media-lightbox-open');
     if (v.stage) v.stage.innerHTML = '';
+    v.img = null;
+    v.zoom = 'fit';
+    v.pendingZoom = null;
+    updateZoomUI(v);
   }
 
   function stepViewer(delta) {
@@ -794,15 +1004,19 @@
     const v = viewerRoot();
     if (!v) return;
     const item = v.items[v.index];
+    v.img = null;
+    v.zoom = 'fit';
+    v.pendingZoom = null;
     if (v.stage) {
       v.stage.innerHTML = '';
+      const canvas = make('div', 'media-lightbox__canvas');
       if (item && item.k === 'video') {
         const video = make('video', 'media-lightbox__video');
         video.src = item.u;
         video.setAttribute('controls', 'controls');
         video.setAttribute('autoplay', 'autoplay');
         video.setAttribute('playsinline', 'playsinline');
-        v.stage.appendChild(video);
+        canvas.appendChild(video);
       } else if (item) {
         const img = make('img', 'media-lightbox__img');
         img.alt = item.n || 'صورة';
@@ -810,11 +1024,21 @@
         img.setAttribute('referrerpolicy', 'no-referrer');
         img.addEventListener('click', (e) => {
           if (e && e.stopPropagation) e.stopPropagation();
-          img.classList.toggle('is-zoomed');
+          if (v.panMoved) { v.panMoved = false; return; }   /* كان سحباً لا نقرة */
+          toggleViewerZoom(v, e);
+        });
+        img.addEventListener('load', () => {
+          if (v.pendingZoom) {
+            const factor = v.pendingZoom;
+            v.pendingZoom = null;
+            applyViewerZoom(v, factor);
+          }
         });
         img.src = item.u;
-        v.stage.appendChild(img);
+        canvas.appendChild(img);
+        v.img = img;
       }
+      v.stage.appendChild(canvas);
     }
     if (v.counter) {
       const countPart = v.items.length > 1 ? (v.index + 1) + ' / ' + v.items.length : '';
@@ -826,6 +1050,7 @@
     const many = v.items.length > 1;
     if (v.prev) v.prev.hidden = !many;
     if (v.next) v.next.hidden = !many;
+    updateZoomUI(v);
   }
 
   /* =========================================================
@@ -836,6 +1061,7 @@
     orientationOf, previewBox,
     normalizeMedia, mediaList, packMedia, textBudget, label,
     renderCard, openViewer, closeViewer, stepViewer, providerOrder,
+    stepViewerZoom, applyViewerZoom, toggleViewerZoom, zoomedSize, resetViewerZoom,
     providers: PROVIDERS,
     MAX_PER_MESSAGE, MAX_ENVELOPE,
     IMAGE_TYPES, VIDEO_TYPES

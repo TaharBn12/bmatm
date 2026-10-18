@@ -73,6 +73,7 @@
     info: '<circle cx="12" cy="12" r="9"/><path d="M12 16.2v-4.6M12 8.1h.01" stroke-width="2.4" stroke-linecap="round"/>',
     alert: '<path d="M10.3 3.9 2.5 17.4A2 2 0 0 0 4.2 20.4h15.6a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/><path d="M12 9.2v4.1M12 16.8h.01" stroke-width="2.4" stroke-linecap="round"/>',
     plus: '<path d="M12 5v14M5 12h14"/>',
+    minus: '<path d="M5 12h14"/>',
     chevronDown: '<path d="m6 9.5 6 6 6-6"/>',
     chevronUp: '<path d="m6 14.5 6-6 6 6"/>',
     chevronLeft: '<path d="m14.5 6-6 6 6 6"/>',
