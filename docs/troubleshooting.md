@@ -67,25 +67,25 @@
 
 ---
 
-## 1) تأكد أنك رفعت من الفرع الصحيح ✅ (السبب الأكثر شيوعاً)
+## 1) تأكد أنك رفعت من الفرع والـ commit الصحيحين ✅ (السبب الأكثر شيوعاً)
 
-كل التعديلات كانت على فرع `arena/5b5d72b5-bmatm` داخل **Pull Request**.
-إن نزّلت أو سحبت من `main` قبل دمج الـ PR، فستحصل على الملفات القديمة.
+تأكد أن الاستضافة أو النسخة التي نزّلتها تحتوي على commit نقل ملفات الموقع إلى جذر المستودع،
+وليس نسخة أقدم من المشروع.
 
 **التحقق:**
 ```bash
 git fetch origin
-git log --oneline -1 origin/main          # يجب أن يحتوي Merge pull request #1
-git ls-tree -r origin/main --name-only | grep watch_together | head
+git log --oneline -1 origin/main
+git ls-tree -r origin/main --name-only | grep -E '^(index|room|auth)\.html$'
 ```
-يجب أن ترى `watch_together/index.html` و `watch_together/room.html` و `watch_together/auth.html`.
+يجب أن ترى `index.html` و `room.html` و `auth.html` مباشرة في جذر المستودع.
 
-**أو من المتصفح مباشرة** — افتح هذين الرابطين وتأكد أن الملف موجود:
-- `https://raw.githubusercontent.com/TaharBn12/bmatm/main/watch_together/auth.html`
-- `https://github.com/TaharBn12/bmatm/tree/main/watch_together`
+**أو من المتصفح مباشرة** — افتح هذه الروابط وتأكد أن الملفات موجودة:
+- `https://raw.githubusercontent.com/TaharBn12/bmatm/main/index.html`
+- `https://raw.githubusercontent.com/TaharBn12/bmatm/main/auth.html`
+- `https://github.com/TaharBn12/bmatm/tree/main`
 
-> ℹ️ **تم دمج PR #1 إلى `main`** — إذن التنزيل من `main` الآن يعطيك أحدث نسخة.
-> لتنزيلها كملف مضغوط:
+> لتنزيل أحدث نسخة كملف مضغوط:
 > `https://codeload.github.com/TaharBn12/bmatm/zip/refs/heads/main`
 
 ---
@@ -118,12 +118,12 @@ curl -s https://موقعك.com/room.html | grep -c 'data-icon='   # يجب أن 
 
 ---
 
-## 3) تأكد أنك رفعت **محتويات** المجلد لا المجلد نفسه
+## 3) تأكد أن الملفات موجودة في جذر الموقع ✅
 
-البنية الصحيحة داخل `public_html`:
+بعد ترتيب المستودع الحالي، ملفات الموقع موجودة مباشرة في جذر النشر:
 ```
 public_html/
-├── index.html          ← ✔ صحيح
+├── index.html
 ├── room.html
 ├── auth.html
 ├── .htaccess
@@ -133,18 +133,8 @@ public_html/
     └── vendor/*.js
 ```
 
-البنية **الخاطئة** الشائعة:
-```
-public_html/
-└── watch_together/     ← ✗ مجلد إضافي
-    ├── index.html
-    └── ...
-```
-عندها يصبح رابط الموقع `https://موقعك.com/watch_together/` وليس `https://موقعك.com/`.
-
-**كلا الحالتين تعمل** (كل الروابط نسبية) — لكن تأكد أي رابط تفتحه.
-
----
+لا ينبغي أن يوجد مجلد فرعي إضافي داخل مجلد النشر. عند فتح الموقع يجب أن يعمل الرابط:
+`https://موقعك.com/`، وتكون صفحة الغرفة على `https://موقعك.com/room.html`.
 
 ## 4) تأكد أن الملفات الجديدة موجودة فعلاً على الاستضافة
 
@@ -181,10 +171,10 @@ https://موقعك.com/.htaccess        (قد يخفيه الخادم — هذا
 
 | المنصة | الإعداد المطلوب |
 |--------|-----------------|
-| **GitHub Pages** | Settings → Pages → Branch: `main` → Folder: **`/watch_together`** (وليس `/root`) |
-| **Netlify** | Base directory: `watch_together` • Build command: **فارغ** • Publish directory: `.` |
-| **Vercel** | Root Directory: `watch_together` • Framework Preset: **Other** |
-| **Cloudflare Pages** | Root directory: `watch_together` • Build command: فارغ |
+| **GitHub Pages** | Settings → Pages → Branch: `main` → Folder: **`/`** (جذر المستودع) |
+| **Netlify** | Base directory: `.` • Build command: **فارغ** • Publish directory: `.` |
+| **Vercel** | Root Directory: `.` • Framework Preset: **Other** |
+| **Cloudflare Pages** | Root directory: `.` • Build command: فارغ |
 
 ثم **أعد النشر** (Deploy → Trigger deploy / Redeploy) — النشر لا يتحدّث تلقائياً دائماً.
 ولمحو كاش Cloudflare: **Caching → Configuration → Purge Everything**.
@@ -237,7 +227,7 @@ fetch(WT_CONFIG.supabase.url + '/rest/v1/rooms?select=room_id&limit=1', {
 ### ب) من الطرفية (أعمق)
 
 ```bash
-cd watch_together
+cd .
 node tools/sbctl.mjs doctor          # يفحص المشروع المهيّأ في config.js
 node tools/sbctl.mjs doctor --json   # نفس الفحص بمخرجات JSON
 ```

@@ -1,5 +1,5 @@
 # مخرجات بناء Java
-watch_together/java-server/out/
+java-server/out/
 *.class
 *.jar
 

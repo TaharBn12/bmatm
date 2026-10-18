@@ -36,7 +36,7 @@
 ### التفعيل على مشروع Supabase (مرة واحدة)
 
 ```bash
-# من مجلد watch_together
+# من جذر المستودع
 node tools/sbctl.mjs sql --media        # يطبع الملف 08-room-media.sql
 ```
 
@@ -97,7 +97,7 @@ media: {
 ## 🧪 الاختبارات
 
 ```bash
-cd watch_together
+cd .
 node docs/tests/room-media.mjs      # 69 فحصاً: الرفع، البدائل، العرض، الأمان
 npm test                            # كل الاختبارات (يتضمّن room-media)
 ```

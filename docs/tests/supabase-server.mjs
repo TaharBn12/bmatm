@@ -405,7 +405,7 @@ function testSbctl() {
 
   /* خطأ relation "public.messages_id_seq" does not exist:
      لا يجوز منح التسلسل منحاً غير محمي — الجداول القديمة قد لا تملك تسلسلاً أصلاً */
-  const sqlDir = path.join(ROOT, 'docs', 'sql');   /* ROOT = مجلد watch_together */
+  const sqlDir = path.join(ROOT, 'docs', 'sql');   /* ROOT = جذر المستودع */
   const sqlFiles = ['01-bootstrap.sql', '02-schema.sql', '03-migration.sql', '04-repair-messages.sql'];
   const rawGrant = 'grant usage, select on sequence public.messages_id_seq to anon, authenticated;';
   for (const f of sqlFiles) {

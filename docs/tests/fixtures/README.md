@@ -29,7 +29,7 @@ generated locally, with no third-party content. The browser test decodes it
 both through native HLS (when available) and through bundled hls.js, and
 checks that the card loops only a five-second window.
 
-Regenerate from `watch_together/docs/tests/fixtures` with FFmpeg:
+Regenerate from `docs/tests/fixtures` with FFmpeg:
 
 ```sh
 mkdir -p hls
