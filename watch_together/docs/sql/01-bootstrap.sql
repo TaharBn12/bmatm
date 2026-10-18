@@ -294,7 +294,7 @@ create policy wt_room_media_insert on storage.objects for insert to anon, authen
   bucket_id = 'wt-room-media'
   and (storage.foldername(name))[1] = 'rooms'
   and (storage.foldername(name))[2] ~ '^[A-Za-z0-9]{1,12}$'
-  and (storage.foldername(name))[3] ~ '^[0-9]{10,16}-[a-f0-9]{8,40}\.(jpg|jpeg|png|webp|gif|avif|bmp|mp4|webm|mov|m4v|mkv|ogv|3gp)$'
+  and (storage.foldername(name))[3] ~ '^[0-9]{10,16}-[a-f0-9]{8,64}\.(jpg|jpeg|png|webp|gif|avif|bmp|mp4|webm|mov|m4v|mkv|ogv|3gp)$'
 );
 
 drop policy if exists wt_room_media_read on storage.objects;

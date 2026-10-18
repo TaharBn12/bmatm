@@ -87,7 +87,7 @@ const run = async () => {
   t('طبقة الإفلات موجودة ومخفية', !!byId.get('mediaDrop') && byId.get('mediaDrop').hidden === true);
   t('العارض المكبّر موجود ومخفي', !!byId.get('mediaLightbox') && byId.get('mediaLightbox').hidden === true);
   t('وحدة الوسائط محمّلة', typeof sandbox.WTMedia === 'object' && typeof sandbox.WTMedia.upload === 'function');
-  t('سلسلة مزوّدي التخزين المجاني مرتّبة', sandbox.WTMedia.providerOrder().join(',') === 'supabase,catbox,pomf2,uguu',
+  t('سلسلة مزوّدي التخزين المجاني مرتّبة', sandbox.WTMedia.providerOrder().join(',') === 'supabase,catbox,litterbox,tmpfiles,uguu',
     sandbox.WTMedia.providerOrder().join(','));
 
   /* ---------- 2) الدخول إلى الغرفة ---------- */
@@ -117,6 +117,14 @@ const run = async () => {
   t('اسم المزوّد محفوظ', atts[0].media.provider === 'supabase', atts[0].media.provider);
   t('شريط المرفقات يظهر بطاقة الملف', byId.get('mediaTray').hidden === false && byId.get('mediaTray').children.length === 1);
   t('الطلب ذهب إلى واجهة التخزين', requests.length === 1 && /storage\/v1\/object/.test(requests[0].url), requests[0] && requests[0].url);
+
+  /* اسم الملف يجب أن يطابق سياسة دلو Supabase في docs/sql/08-room-media.sql
+     (وإلا ترفض السياسة الرفع ويُسقط الطلب إلى مواقع البدائل) */
+  const storedName = String((requests[0] && requests[0].url) || '').split('/').pop();
+  t('اسم ملف التخزين يطابق سياسة الدلو (وقت + hex حتى 40 + امتداد)',
+    /^[0-9]{10,16}-[a-f0-9]{8,40}\.(jpg|jpeg|png|webp|gif|avif|bmp|mp4|webm|mov|m4v|mkv|ogv|3gp)$/.test(storedName), storedName);
+  t('معرّف الملف hex فقط (أحرف a-f0-9)', /^[a-f0-9]+$/.test(storedName.split('-')[1].split('.')[0]),
+    storedName.split('-')[1]);
 
   /* ---------- 4) الإرسال: الرابط إلى قاعدة البيانات ---------- */
   byId.get('chatInput').value = 'صورة من الرحلة';
@@ -186,6 +194,22 @@ const run = async () => {
   t('الرابط من الموقع البديل', fallback && fallback.media.url === 'https://files.catbox.moe/abc123.png');
   t('جرّب مزوّدين قبل النجاح', requests.length === 4, String(requests.length));
   sandbox.WTRoom.media.clearAttachments();
+
+  /* ---------- 8b) مزوّدو البدائل الجدد: Litterbox و Tmpfiles ---------- */
+  plan = [{ status: 200, text: 'https://litter.catbox.moe/xyz789.png' }];
+  const litUrl = await sandbox.WTMedia.providers.litterbox.upload(image, {}, () => { });
+  t('Litterbox يعيد الرابط المباشر', litUrl === 'https://litter.catbox.moe/xyz789.png', litUrl);
+  t('Litterbox يُعلَّم مؤقّتاً (72 ساعة)', sandbox.WTMedia.providers.litterbox.temporary === true);
+
+  plan = [{ status: 200, text: '{"status":"success","data":{"url":"https://tmpfiles.org/1234567/holiday.png"}}' }];
+  const tmpUrl = await sandbox.WTMedia.providers.tmpfiles.upload(image, {}, () => { });
+  t('Tmpfiles يحوّل رابط الصفحة إلى رابط مباشر /dl/', tmpUrl === 'https://tmpfiles.org/dl/1234567/holiday.png', tmpUrl);
+
+  plan = [{ status: 200, text: 'Uploads paused, please wait!' }];
+  let catRefused = '';
+  try { await sandbox.WTMedia.providers.catbox.upload(image, {}, () => { }); }
+  catch (e) { catRefused = e.message; }
+  t('رفض Catbox (رسالة نصية بلا رابط) يُنتج خطأ ينتقل منه للبديل', /Catbox/.test(catRefused), catRefused);
 
   /* ---------- 9) الإفلات واللصق ---------- */
   byId.get('chat').dispatch('dragenter', { dataTransfer: { types: ['Files'], files: [image] } });

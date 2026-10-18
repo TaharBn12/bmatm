@@ -4,12 +4,13 @@
    • رفع الصور والفيديو إلى مواقع تخزين مجانية، ثم عرضها في
      الدردشة من الرابط الذي يعيده موقع الرفع، وتخزين الرابط
      في قاعدة البيانات مع الرسالة.
-   • سلسلة مزوّدين (سلسلة بدائل): إن فشل مزوّد ننتقل للذي يليه
-     تلقائياً، فلا يتعطّل الإرسال:
-        1) Supabase Storage  — مساحة مجانية دائمة داخل مشروعك
+   • الموقع المضمون هو Supabase Storage داخل مشروعك (دائم وسريع)،
+     وسلسلة البدائل العامة تُجرَّب بعده تلقائياً فلا يتعطّل الإرسال:
+        1) Supabase Storage  — الموقع المضمون: مساحة دائمة داخل مشروعك
         2) Catbox            — موقع مجاني دائم (ملف حتى 200 ميغا)
-        3) Pomf2            — موقع مجاني بديل
-        4) Uguu              — موقع مجاني مؤقّت (آخر حل)
+        3) Litterbox         — موقع موثوق (حتى 1 غ.ب، يُحذف بعد 72 ساعة)
+        4) Tmpfiles          — موقع مجاني (حتى 100 م.ب، يُحذف بعد 7 أيام)
+        5) Uguu              — موقع مجاني مؤقّت (آخر حل)
    • كل رابط يُنقّى قبل العرض (http/https فقط) فلا تُنفَّذ
      روابط خبيثة، والغلاف يُقصَّر حتى لا يتجاوز حد التخزين.
    • عارض مكبّر (Lightbox) للصور والفيديو مع تنقّل ولوحة أدوات.
@@ -82,9 +83,19 @@
     return (n / 1048576).toFixed(n < 10485760 ? 1 : 0) + ' م.ب';
   }
 
-  function randomId(n) {
-    try { return U.randomToken(n || 16); }
-    catch (e) { return Math.random().toString(36).slice(2, 2 + (n || 16)); }
+  /**
+   * معرّف عشوائي بأحرف hex فقط (a-f0-9) وبطول محدد.
+   * مهم: اسم ملف Supabase Storage يجب أن يطابق سياسة الدلو
+   * `^[0-9]{10,16}-[a-f0-9]{8,40}\.ext` — أي 8-40 محرفاً hex فقط؛
+   * أي معرّف أطول أو غير hex ترفضه السياسة فيفشل الرفع.
+   */
+  function randomId(hexLen) {
+    const len = Math.max(8, Math.min(40, Number(hexLen) || 32));
+    let s = '';
+    try { s = U.randomToken(Math.ceil(len / 2) + 8); } catch (e) { s = ''; }
+    s = String(s).toLowerCase().replace(/[^a-f0-9]/g, '');
+    while (s.length < len) s += Math.floor(Math.random() * 16).toString(16);
+    return s.slice(0, len);
   }
 
   /* =========================================================
@@ -148,7 +159,7 @@
      مزوّدو التخزين المجاني
      ========================================================= */
   const PROVIDERS = {
-    /* 1) Supabase Storage — مساحة مجانية دائمة في مشروعك */
+    /* 1) Supabase Storage — الموقع المضمون: مساحة مجانية دائمة داخل مشروعك */
     supabase: {
       id: 'supabase',
       label: 'Supabase',
@@ -180,7 +191,8 @@
       }
     },
 
-    /* 2) Catbox — موقع مجاني دائم، حدّه 200 ميغا */
+    /* 2) Catbox — موقع مجاني دائم (حتى 200 ميغا)؛ أحياناً يرفض الرفع
+          أو يتعطّل، عندها ينتقل العميل تلقائياً إلى Litterbox */
     catbox: {
       id: 'catbox',
       label: 'Catbox',
@@ -203,30 +215,59 @@
       }
     },
 
-    /* 3) Pomf2 — موقع مجاني بديل */
-    pomf2: {
-      id: 'pomf2',
-      label: 'Pomf2',
-      note: 'موقع مجاني بديل',
+    /* 3) Litterbox — موقع موثوق من فريق Catbox: يقبل بلا حساب، حتى 1 غ.ب،
+          يحفظ الملف 72 ساعة ثم يحذفه تلقائياً، والرابط يقدّم الملف مباشرة */
+    litterbox: {
+      id: 'litterbox',
+      label: 'Litterbox',
+      note: 'موقع موثوق — يحفظ الملف 72 ساعة',
+      temporary: true,
       available() { return typeof global.FormData === 'function'; },
       upload(file, ctx, onProgress) {
         const form = new global.FormData();
-        form.append('files[]', file, file.name || 'file');
+        form.append('reqtype', 'fileupload');
+        form.append('time', '72h');
+        form.append('fileToUpload', file, file.name || 'file');
         return request({
-          url: 'https://pomf2.lain.la/upload.php',
+          url: 'https://litterbox.catbox.moe/resources/internals/api.php',
           method: 'POST', body: form, onProgress, timeoutMs: 150000
         }).then((res) => {
-          if (res.status < 200 || res.status >= 300) throw new Error('Pomf2: HTTP ' + res.status);
-          let data = null;
-          try { data = JSON.parse(res.text); } catch (e) { data = null; }
-          const url = data && data.files && data.files[0] && data.files[0].url;
-          if (!url) throw new Error('Pomf2: استجابة غير مفهومة');
+          const url = String(res.text || '').trim();
+          if (res.status < 200 || res.status >= 300 || !/^https?:\/\//i.test(url)) {
+            throw new Error('Litterbox: ' + (url || ('HTTP ' + res.status)));
+          }
           return url;
         });
       }
     },
 
-    /* 4) Uguu — موقع مجاني مؤقّت (آخر حل في السلسلة) */
+    /* 4) Tmpfiles — موقع مجاني: حتى 100 م.ب، يحفظ الملف 7 أيام، والرابط
+          المباشر /dl/ يقدّم الملف مباشرة (مناسب للصور والفيديو) */
+    tmpfiles: {
+      id: 'tmpfiles',
+      label: 'Tmpfiles',
+      note: 'موقع مجاني — يحفظ الملف 7 أيام',
+      temporary: true,
+      available() { return typeof global.FormData === 'function'; },
+      upload(file, ctx, onProgress) {
+        const form = new global.FormData();
+        form.append('file', file, file.name || 'file');
+        return request({
+          url: 'https://tmpfiles.org/api/v1/upload',
+          method: 'POST', body: form, onProgress, timeoutMs: 150000
+        }).then((res) => {
+          if (res.status < 200 || res.status >= 300) throw new Error('Tmpfiles: HTTP ' + res.status);
+          let data = null;
+          try { data = JSON.parse(res.text); } catch (e) { data = null; }
+          const page = data && data.data && data.data.url;
+          if (!page || !/^https?:\/\//i.test(String(page))) throw new Error('Tmpfiles: استجابة غير مفهومة');
+          /* صفحة العرض tmpfiles.org/<id>/name → الرابط المباشر tmpfiles.org/dl/<id>/name */
+          return String(page).replace(/^https?:\/\/tmpfiles\.org\//i, 'https://tmpfiles.org/dl/');
+        });
+      }
+    },
+
+    /* 5) Uguu — موقع مجاني مؤقّت (آخر حل في السلسلة) */
     uguu: {
       id: 'uguu',
       label: 'Uguu',
@@ -253,7 +294,7 @@
 
   function providerOrder() {
     const list = mediaCfg().providers;
-    const ids = Array.isArray(list) && list.length ? list.slice() : ['supabase', 'catbox', 'pomf2', 'uguu'];
+    const ids = Array.isArray(list) && list.length ? list.slice() : ['supabase', 'catbox', 'litterbox', 'tmpfiles', 'uguu'];
     return ids.map((id) => String(id)).filter((id) => !!PROVIDERS[id]);
   }
 
@@ -329,8 +370,9 @@
     if (!check.ok) throw new Error(check.error);
     const kind = check.kind;
 
-    const roomId = String(opts.roomId || 'local').replace(/[^A-Za-z0-9_-]/g, '').slice(0, 12) || 'local';
-    const path = 'rooms/' + roomId + '/' + Date.now() + '-' + randomId(16) + '.' + extFor(file, kind);
+    /* الحروف والأرقام فقط: هذا هو النمط المسموح في سياسة دلو Supabase */
+    const roomId = String(opts.roomId || 'local').replace(/[^A-Za-z0-9]/g, '').slice(0, 12) || 'local';
+    const path = 'rooms/' + roomId + '/' + Date.now() + '-' + randomId(32) + '.' + extFor(file, kind);
     const token = opts.token || supabaseCfg().anonKey || '';
 
     const metaPromise = probe(file, kind);
