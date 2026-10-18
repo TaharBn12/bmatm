@@ -145,19 +145,49 @@ const run = async () => {
   /* ---------- 5) العرض داخل الدردشة ---------- */
   const card = chatBody.querySelector('.msg-media');
   t('بطاقة وسائط داخل الرسالة', !!card);
-  t('الصورة معروضة من رابط موقع الرفع', !!card.querySelector('.msg-media__img') && card.querySelector('.msg-media__img').src === atts[0].media.url,
-    card.querySelector('.msg-media__img') && card.querySelector('.msg-media__img').src);
+  t('بطاقة الصورة تحمل صنف msg-media--image', card.classList.contains('msg-media--image'));
+  const cardImg = card.querySelector('.msg-media__img');
+  t('الصورة معروضة من رابط موقع الرفع', !!cardImg && cardImg.src === atts[0].media.url,
+    cardImg && cardImg.src);
   t('أدوات البطاقة موجودة (تكبير · فتح · تنزيل)', card.querySelectorAll('.msg-media__tool').length >= 2);
   t('النص يظهر مع الوسائط', !!chatBody.querySelector('.msg__text'));
   t('الرسالة مُعلَّمة كرسالة وسائط', !!chatBody.querySelector('.msg--media'));
 
-  /* ---------- 6) العارض المكبّر ---------- */
+  /* معاينة حسب أبعاد الصورة (أفقية / عمودية / مربعة) ومصغّرة قليلاً */
+  t('حساب اتجاه الصورة الأفقية (landscape)', sandbox.WTMedia.orientationOf(1600, 900) === 'landscape');
+  t('حساب اتجاه الصورة العمودية (portrait)', sandbox.WTMedia.orientationOf(900, 1600) === 'portrait');
+  t('حساب اتجاه الصورة المربعة (square)', sandbox.WTMedia.orientationOf(1000, 1000) === 'square');
+  const boxLand = sandbox.WTMedia.previewBox(1600, 900, 200, 148);
+  t('تصغير المعاينة مع الحفاظ على نسبة العرض للارتفاع',
+    boxLand && boxLand.w === 200 && boxLand.h === 113 && boxLand.orient === 'landscape', JSON.stringify(boxLand));
+  cardImg.naturalWidth = 1280;
+  cardImg.naturalHeight = 720;
+  if (typeof cardImg.onload === 'function') cardImg.onload();
+  t('اكتمال تحميل الصورة يضبط is-loaded واتجاه المعاينة حسب الصورة',
+    card.classList.contains('is-loaded') && card.getAttribute('data-orient') === 'landscape' && card.getAttribute('data-dims') === '1280x720');
+
+  const mediaCss = fs.readFileSync(path.join(base, 'assets/css/media.css'), 'utf8');
+  t('تصميم المعاينة في الدردشة مصغّر ومتناسب مع الصورة (object-fit: contain)',
+    /\.msg-media__img[\s\S]*?max-width:\s*200px[\s\S]*?max-height:\s*148px[\s\S]*?object-fit:\s*contain/.test(mediaCss));
+  t('العارض المكبّر يعرض الصورة كاملة بلا قصّ (object-fit: contain)',
+    /\.media-lightbox__img[\s\S]*?object-fit:\s*contain/.test(mediaCss));
+
+  /* ---------- 6) العارض المكبّر: الضغط على الصورة أو زر التكبير يظهرها كاملة ---------- */
+  cardImg.dispatch('click', { target: cardImg });
+  await wait(40);
+  t('الضغط على صورة المعاينة مباشرة يفتح العارض الكامل', byId.get('mediaLightbox').hidden === false);
+  const fullImg = byId.get('mediaStage').querySelector('.media-lightbox__img');
+  t('العارض يعرض الصورة كاملة', !!fullImg && fullImg.src === atts[0].media.url);
+  fullImg.dispatch('click', { target: fullImg });
+  t('الضغط على الصورة الكاملة يبدّل التكبير الإضافي (is-zoomed)', fullImg.classList.contains('is-zoomed'));
+  byId.get('mediaLightbox').dispatch('click', { target: byId.get('mediaStage') });
+  t('الضغط حول الصورة في الخلفية يغلق العارض', byId.get('mediaLightbox').hidden === true);
+
   const zoom = card.querySelector('[data-act="expand"]');
   t('زر التكبير موجود', !!zoom);
   zoom.dispatch('click', { target: zoom });
   await wait(40);
-  t('العارض المكبّر يفتح', byId.get('mediaLightbox').hidden === false);
-  t('العارض يعرض الصورة', !!byId.get('mediaStage').querySelector('.media-lightbox__img'));
+  t('العارض المكبّر يفتح بزر التكبير أيضاً', byId.get('mediaLightbox').hidden === false);
   t('زر التنزيل يشير إلى الرابط', byId.get('mediaDownload').getAttribute('href') === atts[0].media.url);
   byId.get('mediaClose').dispatch('click', {});
   t('زر الإغلاق يغلق العارض', byId.get('mediaLightbox').hidden === true);

@@ -83,6 +83,63 @@
     return (n / 1048576).toFixed(n < 10485760 ? 1 : 0) + ' م.ب';
   }
 
+  function fmtDuration(sec) {
+    const s = Math.max(0, Math.round(Number(sec) || 0));
+    if (!s) return '';
+    const m = Math.floor(s / 60);
+    const r = s % 60;
+    return m + ':' + (r < 10 ? '0' : '') + r;
+  }
+
+  /** اتجاه الوسيط حسب أبعاده الحقيقية (أفقي / عمودي / مربع) */
+  function orientationOf(w, h) {
+    const nw = Number(w) || 0;
+    const nh = Number(h) || 0;
+    if (nw <= 0 || nh <= 0) return 'auto';
+    const ratio = nw / nh;
+    if (ratio > 1.15) return 'landscape';
+    if (ratio < 0.87) return 'portrait';
+    return 'square';
+  }
+
+  /**
+   * يحسب مقاس المعاينة المصغّرة داخل الدردشة حسب أبعاد الصورة الأصلية
+   * بحيث تبقى المعاينة ظاهرة متناسبة مع شكل الصورة ومصغّرة قليلاً.
+   */
+  function previewBox(w, h, maxW, maxH) {
+    const nw = Number(w) || 0;
+    const nh = Number(h) || 0;
+    const mw = Number(maxW) || 200;
+    const mh = Number(maxH) || 148;
+    if (nw <= 0 || nh <= 0) return null;
+    const scale = Math.min(1, mw / nw, mh / nh);
+    const pw = Math.max(88, Math.round(nw * scale));
+    const ph = Math.max(60, Math.round(nh * scale));
+    return {
+      w: pw,
+      h: ph,
+      orient: orientationOf(nw, nh),
+      ratio: Math.round((nw / nh) * 100) / 100
+    };
+  }
+
+  function applyMediaRatio(fig, frame, w, h) {
+    const box = previewBox(w, h, 200, 148);
+    if (!box) return;
+    try {
+      fig.setAttribute('data-orient', box.orient);
+      fig.setAttribute('data-dims', Math.round(w) + 'x' + Math.round(h));
+      if (fig.style && fig.style.setProperty) {
+        fig.style.setProperty('--media-ar', Math.round(w) + ' / ' + Math.round(h));
+        fig.style.setProperty('--media-w', box.w + 'px');
+        fig.style.setProperty('--media-h', box.h + 'px');
+      }
+      if (frame && frame.style && frame.style.setProperty) {
+        frame.style.setProperty('--media-ar', Math.round(w) + ' / ' + Math.round(h));
+      }
+    } catch (e) { }
+  }
+
   /**
    * معرّف عشوائي بأحرف hex فقط (a-f0-9) وبطول محدد.
    * مهم: اسم ملف Supabase Storage يجب أن يطابق سياسة الدلو
@@ -490,47 +547,120 @@
     return btn;
   }
 
+  /** يبحث عن أقرب عنصر يحمل data-act صعوداً حتى الجذر */
+  function findAction(node, stopAt) {
+    let cur = node;
+    while (cur && cur !== stopAt) {
+      if (cur.getAttribute) {
+        const act = cur.getAttribute('data-act');
+        if (act) return act;
+      }
+      cur = cur.parentNode;
+    }
+    if (stopAt && stopAt.getAttribute) return stopAt.getAttribute('data-act') || '';
+    return '';
+  }
+
   /**
-   * يبني عنصر بطاقة وسائط (صورة/فيديو).
+   * يبني عنصر بطاقة وسائط احترافية داخل الرسالة (صورة/فيديو)
+   * بمعاينة متناسبة مع الصورة ومصغّرة قليلاً، وعند الضغط تفتح كاملة.
    * @param {object} media  وسيط مُطبَّع
-   * @param {{onExpand?:Function}} opts
+   * @param {{onExpand?:Function, preview?:string}} opts
    */
   function renderCard(media, opts) {
     opts = opts || {};
-    const fig = make('figure', 'msg-media' + (media.k === 'video' ? ' msg-media--video' : ''));
+    const isVideo = media.k === 'video';
+    const fig = make('figure', 'msg-media ' + (isVideo ? 'msg-media--video' : 'msg-media--image'));
     fig.setAttribute('data-media-kind', media.k);
     fig.setAttribute('data-media-url', media.u);
 
     const frame = make('div', 'msg-media__frame');
-    frame.appendChild(make('div', 'msg-media__glow'));
+    if (media.w > 0 && media.h > 0) {
+      applyMediaRatio(fig, frame, media.w, media.h);
+    } else {
+      fig.setAttribute('data-orient', 'auto');
+    }
+
+    const glow = make('div', 'msg-media__glow');
+    glow.setAttribute('aria-hidden', 'true');
+    frame.appendChild(glow);
+
     let zoom = null;
     let imgEl = null;
+    let videoEl = null;
 
-    if (media.k === 'video') {
+    if (isVideo) {
       const video = make('video', 'msg-media__video');
-      video.src = media.u;
       video.setAttribute('controls', 'controls');
       video.setAttribute('preload', 'metadata');
       video.setAttribute('playsinline', 'playsinline');
       video.setAttribute('aria-label', media.n || 'فيديو في الدردشة');
+      video.onloadedmetadata = () => {
+        fig.classList.add('is-loaded');
+        const vw = video.videoWidth || media.w || 0;
+        const vh = video.videoHeight || media.h || 0;
+        if (vw && vh) {
+          media.w = media.w || vw;
+          media.h = media.h || vh;
+          applyMediaRatio(fig, frame, vw, vh);
+        }
+      };
+      video.onloadeddata = () => { fig.classList.add('is-loaded'); };
+      video.onerror = () => { fig.classList.add('is-error'); };
+      video.src = media.u;
       frame.appendChild(video);
-      const badge = make('span', 'msg-media__badge', { text: 'فيديو' });
+      videoEl = video;
+      const durText = fmtDuration(media.d);
+      const badge = make('span', 'msg-media__badge', {
+        text: durText ? ('فيديو · ' + durText) : 'فيديو'
+      });
       frame.appendChild(badge);
+      const zoomBtn = make('button', 'msg-media__zoom');
+      zoomBtn.type = 'button';
+      zoomBtn.setAttribute('data-act', 'expand');
+      zoomBtn.setAttribute('title', 'عرض الفيديو بالحجم الكامل');
+      zoomBtn.setAttribute('aria-label', 'عرض الفيديو بالحجم الكامل');
+      zoomBtn.innerHTML = (IC ? IC.html('maximize', 14) : '') +
+        '<span class="msg-media__zoom-label">عرض كامل</span>';
+      frame.appendChild(zoomBtn);
+      zoom = zoomBtn;
     } else {
       const img = make('img', 'msg-media__img');
-      img.src = media.u;
       img.alt = media.n || 'صورة في الدردشة';
-      img.setAttribute('loading', 'lazy');
       img.setAttribute('decoding', 'async');
-      img.onload = () => { fig.classList.add('is-loaded'); };
-      img.onerror = () => { fig.classList.add('is-error'); };
+      img.setAttribute('referrerpolicy', 'no-referrer');
+      img.onload = () => {
+        fig.classList.add('is-loaded');
+        fig.classList.remove('is-error');
+        const nw = img.naturalWidth || media.w || 0;
+        const nh = img.naturalHeight || media.h || 0;
+        if (nw && nh) {
+          media.w = media.w || nw;
+          media.h = media.h || nh;
+          applyMediaRatio(fig, frame, nw, nh);
+        }
+      };
+      img.onerror = () => {
+        if (opts.preview && img.src !== opts.preview) {
+          img.src = opts.preview;
+          return;
+        }
+        fig.classList.add('is-error');
+      };
+      img.src = media.u;
+      if (img.complete && img.naturalWidth > 0) {
+        fig.classList.add('is-loaded');
+        applyMediaRatio(fig, frame, img.naturalWidth, img.naturalHeight);
+      }
       frame.appendChild(img);
       imgEl = img;
       const zoomBtn = make('button', 'msg-media__zoom');
       zoomBtn.type = 'button';
       zoomBtn.setAttribute('data-act', 'expand');
+      zoomBtn.setAttribute('title', 'اضغط لعرض الصورة كاملة');
       zoomBtn.setAttribute('aria-label', 'تكبير الصورة');
-      zoomBtn.innerHTML = IC ? IC.html('maximize', 18) : '';
+      zoomBtn.innerHTML = (IC ? IC.html('maximize', 14) : '') +
+        '<span class="msg-media__zoom-label">عرض كاملة</span>';
       frame.appendChild(zoomBtn);
       zoom = zoomBtn;
     }
@@ -560,14 +690,19 @@
 
     if (media.n || media.s) {
       const cap = make('figcaption', 'msg-media__caption');
-      cap.textContent = media.n + (media.s ? ' · ' + fmtSize(media.s) : '');
+      cap.textContent = (media.n || (isVideo ? 'فيديو' : 'صورة')) + (media.s ? ' · ' + fmtSize(media.s) : '');
       fig.appendChild(cap);
     }
     if (opts.onExpand) {
-      /* الربط المباشر (لا نعتمد على فقاعة الحدث) ليعمل النقر على الزر دائماً */
+      /* الربط المباشر والاحتياطي ليعمل النقر على المعاينة أو أزرار التكبير دائماً */
       const expand = (e) => {
+        if (e && e._wtExpanded) return;
+        if (e) e._wtExpanded = true;
         if (e && e.preventDefault) e.preventDefault();
         if (e && e.stopPropagation) e.stopPropagation();
+        if (videoEl && typeof videoEl.pause === 'function') {
+          try { videoEl.pause(); } catch (err) { }
+        }
         opts.onExpand(media);
       };
       if (zoom) zoom.addEventListener('click', expand);
@@ -575,8 +710,11 @@
       expandTool.addEventListener('click', expand);
       fig.addEventListener('click', (e) => {
         const t = e && e.target;
-        const act = t && t.getAttribute ? t.getAttribute('data-act') : '';
-        if (act === 'expand') expand(e);
+        const act = findAction(t, fig);
+        if (act === 'open' || act === 'download') return;
+        if (act === 'expand') { expand(e); return; }
+        /* للصور: الضغط في أي مكان على بطاقة المعاينة يعرض الصورة كاملة */
+        if (!isVideo) expand(e);
       });
     }
     return fig;
@@ -611,7 +749,11 @@
     if (v.close) v.close.addEventListener('click', hide);
     root.addEventListener('click', (e) => {
       const t = e && e.target;
-      if (t && t.getAttribute && t.getAttribute('data-act') === 'close') { e.preventDefault(); hide(); }
+      const act = findAction(t, root);
+      if (act === 'close' || t === v.stage || (t && t.classList && t.classList.contains('media-lightbox__frame'))) {
+        if (e && e.preventDefault) e.preventDefault();
+        hide();
+      }
     });
     if (v.prev) v.prev.addEventListener('click', () => stepViewer(-1));
     if (v.next) v.next.addEventListener('click', () => stepViewer(1));
@@ -663,12 +805,22 @@
         v.stage.appendChild(video);
       } else if (item) {
         const img = make('img', 'media-lightbox__img');
-        img.src = item.u;
         img.alt = item.n || 'صورة';
+        img.setAttribute('decoding', 'async');
+        img.setAttribute('referrerpolicy', 'no-referrer');
+        img.addEventListener('click', (e) => {
+          if (e && e.stopPropagation) e.stopPropagation();
+          img.classList.toggle('is-zoomed');
+        });
+        img.src = item.u;
         v.stage.appendChild(img);
       }
     }
-    if (v.counter) v.counter.textContent = v.items.length > 1 ? (v.index + 1) + ' / ' + v.items.length : '';
+    if (v.counter) {
+      const countPart = v.items.length > 1 ? (v.index + 1) + ' / ' + v.items.length : '';
+      const metaPart = item ? [item.n || '', item.s ? fmtSize(item.s) : ''].filter(Boolean).join(' · ') : '';
+      v.counter.textContent = [countPart, metaPart].filter(Boolean).join('  —  ');
+    }
     if (v.open) { v.open.setAttribute('href', item ? item.u : '#'); }
     if (v.download) { v.download.setAttribute('href', item ? item.u : '#'); if (item && item.n) v.download.setAttribute('download', item.n); }
     const many = v.items.length > 1;
@@ -680,9 +832,10 @@
      الواجهة العامة
      ========================================================= */
   global.WTMedia = {
-    upload, validate, kindOf, safeURL, fmtSize, extFor,
+    upload, validate, kindOf, safeURL, fmtSize, fmtDuration, extFor,
+    orientationOf, previewBox,
     normalizeMedia, mediaList, packMedia, textBudget, label,
-    renderCard, openViewer, closeViewer, providerOrder,
+    renderCard, openViewer, closeViewer, stepViewer, providerOrder,
     providers: PROVIDERS,
     MAX_PER_MESSAGE, MAX_ENVELOPE,
     IMAGE_TYPES, VIDEO_TYPES
