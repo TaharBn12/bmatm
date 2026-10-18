@@ -13,25 +13,40 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800;900&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="assets/css/app.css?v=3.0.0">
-  <link rel="stylesheet" href="assets/css/home.css?v=3.0.0">
+  <link rel="stylesheet" href="assets/css/app.css?v=4.0.0">
+  <link rel="stylesheet" href="assets/css/home.css?v=4.0.0">
 </head>
 <body class="home-page">
-  <header class="home-nav">
-    <a class="brand" href="index.html" aria-label="الرئيسية">
-      <span class="brand__logo"><span class="ic" data-icon="logo" data-size="24"></span></span>
-      <span class="brand__name">WatchTogether</span>
-    </a>
-    <div id="navAuth"></div>
+  <header class="app-nav" aria-label="الشريط العلوي">
+    <div class="app-nav__inner">
+      <a class="brand" href="index.html" aria-label="الرئيسية">
+        <span class="brand__logo"><span class="ic" data-icon="logo" data-size="22"></span></span>
+        <span class="brand__text">
+          <span class="brand__name">WatchTogether</span>
+          <span class="brand__sub">WATCH • TOGETHER</span>
+        </span>
+      </a>
+      <nav class="app-nav__links" aria-label="التنقل الرئيسي">
+        <a class="app-nav__link is-active" href="index.html"><span class="ic" data-icon="home" data-size="16"></span><span>الغرف</span></a>
+        <a class="app-nav__link" href="friends.html"><span class="ic" data-icon="users" data-size="16"></span><span>الأصدقاء</span></a>
+        <a class="app-nav__link" href="messages.html"><span class="ic" data-icon="chat" data-size="16"></span><span>الرسائل</span></a>
+        <a class="app-nav__link" href="profile.html"><span class="ic" data-icon="user" data-size="16"></span><span>الملف</span></a>
+      </nav>
+      <div id="navAuth" class="app-nav__auth"></div>
+    </div>
   </header>
 
   <main class="home-main">
     <div class="home-heading">
-      <h1>الغرف <span id="roomsCount" class="home-count">0</span></h1>
+      <div class="home-heading__left">
+        <h1>غرف المشاهدة</h1>
+        <span id="roomsCount" class="home-count">0</span>
+      </div>
       <button class="btn btn--ghost btn--icon-sm" id="refreshRooms" type="button" aria-label="تحديث الغرف" title="تحديث الغرف">
         <span class="ic" data-icon="sync" data-size="18"></span>
       </button>
     </div>
+    <p class="home-sub">اختر غرفة للانضمام، أو أنشئ واحدة جديدة للسهرة</p>
     <p class="home-status" id="homeStatus" role="status" hidden></p>
     <div class="room-grid" id="roomsList" aria-label="الغرف" aria-busy="true"></div>
     <div class="home-empty" id="roomsEmpty" role="status">
