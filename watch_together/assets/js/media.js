@@ -1023,6 +1023,7 @@
     const v = viewerRoot();
     if (!v) return;
     const item = v.items[v.index];
+    let imageToLoad = null;
     v.img = null;
     v.zoom = 'fit';
     v.pendingZoom = null;
@@ -1041,23 +1042,87 @@
         img.alt = item.n || 'صورة';
         img.setAttribute('decoding', 'async');
         img.setAttribute('referrerpolicy', 'no-referrer');
+
+        /* لا نترك أيقونة الصورة المكسورة تظهر في Safari عند تعذّر الرابط. */
+        const errorBox = make('div', 'media-lightbox__error');
+        errorBox.hidden = true;
+        errorBox.setAttribute('role', 'status');
+        errorBox.setAttribute('aria-live', 'polite');
+        const errorIcon = make('span', 'media-lightbox__error-icon');
+        errorIcon.innerHTML = IC ? IC.html('image', 32) : '';
+        const errorTitle = make('strong', 'media-lightbox__error-title', {
+          text: 'تعذّر تحميل الصورة'
+        });
+        const errorText = make('span', 'media-lightbox__error-text', {
+          text: 'قد يكون رابط الملف منتهيًا أو غير متاح. جرّب فتح الرابط أو إعادة المحاولة.'
+        });
+        const retry = make('button', 'media-lightbox__error-retry', {
+          text: 'إعادة المحاولة'
+        });
+        retry.type = 'button';
+        errorBox.appendChild(errorIcon);
+        errorBox.appendChild(errorTitle);
+        errorBox.appendChild(errorText);
+        errorBox.appendChild(retry);
+
+        const localPreview = String(item.preview || '');
+        let usingPreview = false;
+        const resetImageState = () => {
+          img.classList.remove('is-zoomed');
+          img.style.width = '';
+          img.style.height = '';
+          v.zoom = 'fit';
+          v.pendingZoom = null;
+          updateZoomUI(v);
+        };
         img.addEventListener('click', (e) => {
           if (e && e.stopPropagation) e.stopPropagation();
           if (v.panMoved) { v.panMoved = false; return; }   /* كان سحباً لا نقرة */
           toggleViewerZoom(v, e);
         });
         img.addEventListener('load', () => {
+          if (v.img !== img) return;
+          img.hidden = false;
+          errorBox.hidden = true;
           if (v.pendingZoom) {
             const factor = v.pendingZoom;
             v.pendingZoom = null;
             applyViewerZoom(v, factor);
           }
         });
-        img.src = item.u;
+        img.addEventListener('error', () => {
+          if (v.img !== img) return;
+          if (!usingPreview && localPreview && localPreview !== item.u) {
+            usingPreview = true;
+            resetImageState();
+            img.src = localPreview;
+            return;
+          }
+          resetImageState();
+          img.hidden = true;
+          errorBox.hidden = false;
+          v.img = null;
+          updateZoomUI(v);
+        });
+        retry.addEventListener('click', (e) => {
+          if (e && e.preventDefault) e.preventDefault();
+          if (e && e.stopPropagation) e.stopPropagation();
+          usingPreview = false;
+          v.img = img;
+          resetImageState();
+          errorBox.hidden = true;
+          img.hidden = false;
+          img.removeAttribute('src');
+          img.src = item.u;
+        });
         canvas.appendChild(img);
+        canvas.appendChild(errorBox);
         v.img = img;
+        imageToLoad = img;
       }
       v.stage.appendChild(canvas);
+      /* أضف الصورة إلى DOM قبل بدء التحميل؛ هذا أوثق على Safari/iOS. */
+      if (imageToLoad) imageToLoad.src = item.u;
     }
     if (v.counter) {
       const countPart = v.items.length > 1 ? (v.index + 1) + ' / ' + v.items.length : '';

@@ -57,6 +57,10 @@ const env = createRoomEnv({
   globals: { FormData: FakeFormData, XMLHttpRequest: FakeXHR }
 });
 const { sandbox, documentStub, byId } = env;
+class PreviewURL extends URL {
+  static createObjectURL(file) { return 'blob:wt-preview-' + String((file && file.name) || 'image'); }
+}
+sandbox.URL = PreviewURL;
 env.sandbox.WT_CONFIG.javaServer.enabled = false;
 env.sandbox.WT_CONFIG.supabase.ready = false;
 
@@ -182,8 +186,13 @@ const run = async () => {
     /\.media-lightbox__frame[\s\S]*?grid-template-rows:\s*minmax\(0,\s*1fr\)/.test(mediaCss) &&
     /\.media-lightbox__stage[\s\S]*?align-self:\s*stretch/.test(mediaCss));
   t('نسخ الملفات محدّثة (تفادياً لنسخة المتصفح القديمة)',
-    /media\.css\?v=3\.1\.1/.test(fs.readFileSync(path.join(base, 'room.html'), 'utf8')) &&
-    /media\.js\?v=3\.1\.2/.test(fs.readFileSync(path.join(base, 'room.html'), 'utf8')));
+    /media\.css\?v=3\.1\.3/.test(fs.readFileSync(path.join(base, 'room.html'), 'utf8')) &&
+    /media\.js\?v=3\.1\.3/.test(fs.readFileSync(path.join(base, 'room.html'), 'utf8')) &&
+    /room\.js\?v=3\.1\.3/.test(fs.readFileSync(path.join(base, 'room.html'), 'utf8')));
+  t('تنسيق بديل واضح عند فشل تحميل الصورة بدلاً من أيقونة Safari المكسورة',
+    /\.media-lightbox__img\[hidden\][\s\S]*?display:\s*none\s*!important/.test(mediaCss) &&
+    /\.media-lightbox__error\[hidden\][\s\S]*?display:\s*none\s*!important/.test(mediaCss) &&
+    /\.media-lightbox__error-retry/.test(mediaCss));
 
   /* ---------- 6) العارض المكبّر: الضغط على الصورة أو زر التكبير يظهرها كاملة ---------- */
   cardImg.dispatch('click', { target: cardImg });
@@ -210,6 +219,21 @@ const run = async () => {
   sandbox.WTMedia.resetViewerZoom();
   t('إعادة الضبط تُعيد الصورة إلى ملء الشاشة',
     !fullImg.classList.contains('is-zoomed') && byId.get('mediaZoomLevel').textContent === 'ملء');
+
+  fullImg.dispatch('error', {});
+  t('فشل رابط التخزين ينتقل تلقائياً إلى المعاينة المحلية على الجهاز',
+    fullImg.src === atts[0].preview && !!atts[0].preview, String(fullImg.src));
+  fullImg.dispatch('error', {});
+  const imageError = byId.get('mediaStage').querySelector('.media-lightbox__error');
+  t('إذا فشل الرابط والمعاينة لا تظهر أيقونة صورة مكسورة',
+    !!imageError && imageError.hidden === false && fullImg.hidden === true &&
+    imageError.textContent.includes('تعذّر تحميل الصورة'));
+  t('عند فشل التحميل تُعطّل أدوات التكبير', byId.get('mediaZoomLevel').disabled === true);
+  const retryImage = imageError && imageError.querySelector('.media-lightbox__error-retry');
+  if (retryImage) retryImage.dispatch('click', {});
+  t('زر إعادة المحاولة يعيد الصورة والرابط الأصلي',
+    !!retryImage && imageError.hidden === true && fullImg.hidden === false &&
+    fullImg.src === atts[0].media.url && byId.get('mediaZoomLevel').disabled === false);
 
   byId.get('mediaLightbox').dispatch('click', { target: byId.get('mediaStage') });
   t('الضغط حول الصورة في الخلفية يغلق العارض', byId.get('mediaLightbox').hidden === true);
