@@ -626,3 +626,259 @@ body.media-lightbox-open { overflow: hidden; }
   .chat__attach:hover::after { animation: none; }
   .msg-media--image:not(.is-loaded):not(.is-error) .msg-media__frame::after { animation: none; }
 }
+
+/* =========================================================
+   WatchTogether — تحديث احترافي خاص (طلب المستخدم)
+   (يأتي في آخر الملف حتى يتغلب على قواعد الإصدارات السابقة)
+   • كل صورة على حدة بنسبة 16:4
+   • بلا أيقونات تحميل/تكبير في المعاينة — النقر يكبّر وحده
+   • العرض من رابط قاعدة البيانات مباشرة، بلا انتقال لموقع الرفع
+   • زر الحفظ يظهر فقط في العارض المكبّر
+   • تصميم أصلي لا يقلّد أحداً
+   ========================================================= */
+
+/* فقاعة الوسائط: عمودية، كل بطاقة سطر مستقل */
+.msg--media .msg__bubble {
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: stretch !important;
+  gap: 10px !important;
+  padding: 8px !important;
+  max-width: min(380px, 86%) !important;
+  width: fit-content !important;
+  background: rgba(255,255,255,.055) !important;
+  border: 1px solid rgba(255,255,255,.11) !important;
+  border-radius: 16px !important;
+}
+.msg--media.msg--media-only .msg__bubble {
+  padding: 8px !important;
+  gap: 8px !important;
+}
+.msg--media.msg--media-grid .msg__bubble {
+  flex-direction: column !important;
+  flex-wrap: nowrap !important;
+  gap: 10px !important;
+  max-width: min(380px, 86%) !important;
+}
+.msg--media .msg__text {
+  padding: 2px 4px 0 !important;
+}
+.msg--media .msg__meta {
+  padding: 0 2px !important;
+}
+
+/* بطاقة الصورة — نسبة 16:4 ثابتة، عرض كامل للسطر */
+.msg-media {
+  flex: 0 0 auto !important;
+  align-self: stretch !important;
+  width: 100% !important;
+  max-width: none !important;
+  min-width: 0 !important;
+  aspect-ratio: 16 / 4 !important;
+  min-height: 0 !important;
+  margin: 0 !important;
+  border-radius: 14px !important;
+  overflow: hidden !important;
+  background: #0e111a !important;
+  border: 1px solid rgba(218,228,244,.14) !important;
+  box-shadow: 0 8px 22px rgba(0,0,0,.32), inset 0 1px 0 rgba(255,255,255,.06) !important;
+  cursor: zoom-in !important;
+  transition: transform .18s cubic-bezier(.2,.8,.3,1), border-color .18s, box-shadow .18s, filter .18s !important;
+}
+.msg-media:hover {
+  transform: translateY(-1px);
+  border-color: rgba(124,92,255,.42) !important;
+  box-shadow: 0 12px 26px rgba(0,0,0,.38) !important;
+  filter: brightness(1.03);
+}
+.msg--me .msg-media {
+  border-color: rgba(124,92,255,.38) !important;
+}
+.msg-media__frame {
+  width: 100% !important;
+  height: 100% !important;
+  max-width: none !important;
+  max-height: none !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  aspect-ratio: 16 / 4 !important;
+  background: radial-gradient(120% 120% at 50% 50%, rgba(124,92,255,.10), rgba(6,8,16,.98)) !important;
+  overflow: hidden !important;
+  display: block !important;
+}
+.msg-media__frame::before { opacity: 0 !important; }
+.msg-media__img,
+.msg-media__video {
+  width: 100% !important;
+  height: 100% !important;
+  max-width: none !important;
+  max-height: none !important;
+  object-fit: cover !important;
+  object-position: center !important;
+  display: block !important;
+  background: transparent !important;
+}
+/* الفيديو يحتفظ بعناصر التحكم الأصلية فوق نسبة 16:4 */
+.msg-media--video {
+  aspect-ratio: 16 / 9 !important;
+  cursor: default !important;
+}
+.msg-media--video .msg-media__frame {
+  aspect-ratio: 16 / 9 !important;
+}
+.msg-media--video .msg-media__video {
+  object-fit: contain !important;
+  background: #000 !important;
+  cursor: default !important;
+}
+/* إخفاء كل أيقونات المعاينة السابقة نهائياً */
+.msg-media__tools,
+.msg-media__zoom,
+.msg-media__badge,
+.msg-media__caption {
+  display: none !important;
+}
+/* لا حاجة لتمييز اتجاه قديم — النسبة ثابتة 16:4 */
+.msg-media[data-orient] .msg-media__frame,
+.msg-media[data-orient] .msg-media__img,
+.msg-media[data-orient] .msg-media__video {
+  max-width: none !important;
+  max-height: none !important;
+}
+/* لا مؤشر تحميل ولا shimmer: الصورة نفسها هي المعاينة القابلة للنقر */
+.msg-media--image:not(.is-loaded):not(.is-error) .msg-media__frame::after {
+  display: none !important;
+  animation: none !important;
+}
+.msg-media__glow { display: none !important; }
+
+/* العارض المكبّر — تصميم أصلي احترافي */
+.media-lightbox {
+  background: rgba(5,8,15,.88) !important;
+  backdrop-filter: blur(18px) saturate(130%) !important;
+  -webkit-backdrop-filter: blur(18px) saturate(130%) !important;
+}
+.media-lightbox__backdrop {
+  background: rgba(5,8,15,.88) !important;
+  backdrop-filter: blur(18px) saturate(130%) !important;
+  -webkit-backdrop-filter: blur(18px) saturate(130%) !important;
+}
+.media-lightbox__frame {
+  padding: 28px 22px 18px !important;
+  gap: 14px !important;
+}
+.media-lightbox__stage {
+  background: rgba(14,17,26,.92) !important;
+  border: 1px solid rgba(255,255,255,.10) !important;
+  border-radius: 18px !important;
+  padding: 12px !important;
+  box-shadow: 0 28px 64px rgba(0,0,0,.55), inset 0 1px 0 rgba(255,255,255,.06) !important;
+  overflow: hidden !important;
+}
+.media-lightbox__img {
+  max-width: min(1080px, 92vw) !important;
+  max-height: calc(100dvh - 132px) !important;
+  width: auto !important;
+  height: auto !important;
+  object-fit: contain !important;
+  border-radius: 14px !important;
+  background: #070a11 !important;
+  box-shadow: none !important;
+  cursor: zoom-in !important;
+}
+.media-lightbox__img.is-zoomed {
+  transform: scale(1.55) !important;
+  cursor: zoom-out !important;
+}
+.media-lightbox__video {
+  max-width: min(1080px, 92vw) !important;
+  max-height: calc(100dvh - 132px) !important;
+  border-radius: 14px !important;
+  background: #000 !important;
+}
+.media-lightbox__bar {
+  margin: 0 auto !important;
+  width: min(720px, calc(100% - 24px)) !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 10px !important;
+  padding: 10px 12px calc(10px + env(safe-area-inset-bottom,0px)) !important;
+  background: rgba(18,24,38,.96) !important;
+  border: 1px solid rgba(218,228,244,.14) !important;
+  border-radius: 16px !important;
+  box-shadow: 0 16px 40px rgba(0,0,0,.45) !important;
+  backdrop-filter: blur(14px) !important;
+  -webkit-backdrop-filter: blur(14px) !important;
+}
+.media-lightbox__counter {
+  font-size: 12px !important;
+  font-weight: 700 !important;
+  color: #aab4c4 !important;
+}
+.media-lightbox__btn {
+  height: 38px !important;
+  padding: 0 14px !important;
+  border-radius: 11px !important;
+  font: 800 12.5px/1 var(--font) !important;
+  border: 1px solid rgba(255,255,255,.10) !important;
+  background: rgba(255,255,255,.06) !important;
+  color: #e6ebf3 !important;
+}
+.media-lightbox__btn:hover {
+  background: rgba(124,92,255,.18) !important;
+  border-color: rgba(124,92,255,.38) !important;
+}
+/* زر الحفظ — يظهر فقط في العارض المكبّر */
+#mediaSaveBtn,
+#mediaDownload {
+  background: linear-gradient(135deg, #8176df 0%, #6ee0ff 100%) !important;
+  border-color: transparent !important;
+  color: #0a0715 !important;
+  box-shadow: 0 8px 18px rgba(124,92,255,.35) !important;
+  font-weight: 900 !important;
+}
+#mediaSaveBtn:hover,
+#mediaDownload:hover {
+  box-shadow: 0 12px 24px rgba(124,92,255,.45) !important;
+  transform: translateY(-1px);
+}
+#mediaSaveBtn:active,
+#mediaDownload:active { transform: translateY(0) scale(.98); }
+.media-lightbox__btn--close {
+  background: rgba(255,92,114,.12) !important;
+  border-color: rgba(255,92,114,.28) !important;
+}
+.media-lightbox__nav {
+  width: 42px !important;
+  height: 42px !important;
+  background: rgba(18,24,38,.92) !important;
+  border-color: rgba(255,255,255,.12) !important;
+}
+
+/* الهاتف: تبقى النسبة 16:4 واضحة حتى على الشاشات الضيقة */
+@media (max-width: 640px) {
+  .msg--media .msg__bubble {
+    max-width: min(340px, 88%) !important;
+  }
+  .msg-media {
+    border-radius: 12px !important;
+  }
+}
+@media (max-width: 380px) {
+  .msg--media .msg__bubble {
+    max-width: min(300px, 92%) !important;
+  }
+}
+
+/* تثبيت نافذة المحادثة المضغوطة: الصور المتعددة لا تغيّر ارتفاع الصفحة */
+.room-main > #chat {
+  flex: 0 0 auto;
+  height: auto;
+  min-height: 0;
+}
+.room-main > #chat .chat__body {
+  flex: 0 0 auto;
+  height: 154px;
+  min-height: 0;
+  overflow-y: auto;
+}

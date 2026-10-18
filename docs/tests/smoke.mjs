@@ -10,7 +10,7 @@ import vm from 'vm';
 import path from 'path';
 import { fileURLToPath } from 'url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const base = path.resolve(__dirname, '../..');   /* مجلد watch_together */
+const base = path.resolve(__dirname, '../..');   /* جذر المستودع */
 
 /* ---------- بيئات وهمية ---------- */
 function makeEnv(store, channels, name) {

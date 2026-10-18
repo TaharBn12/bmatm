@@ -537,16 +537,6 @@
     return node;
   }
 
-  function iconButton(icon, title, act) {
-    const btn = make('button', 'msg-media__tool');
-    btn.type = 'button';
-    btn.setAttribute('data-act', act);
-    btn.setAttribute('title', title);
-    btn.setAttribute('aria-label', title);
-    btn.innerHTML = IC ? IC.html(icon, 15) : '';
-    return btn;
-  }
-
   /** يبحث عن أقرب عنصر يحمل data-act صعوداً حتى الجذر */
   function findAction(node, stopAt) {
     let cur = node;
@@ -585,8 +575,6 @@
     glow.setAttribute('aria-hidden', 'true');
     frame.appendChild(glow);
 
-    let zoom = null;
-    let imgEl = null;
     let videoEl = null;
 
     if (isVideo) {
@@ -595,50 +583,21 @@
       video.setAttribute('preload', 'metadata');
       video.setAttribute('playsinline', 'playsinline');
       video.setAttribute('aria-label', media.n || 'فيديو في الدردشة');
-      video.onloadedmetadata = () => {
-        fig.classList.add('is-loaded');
-        const vw = video.videoWidth || media.w || 0;
-        const vh = video.videoHeight || media.h || 0;
-        if (vw && vh) {
-          media.w = media.w || vw;
-          media.h = media.h || vh;
-          applyMediaRatio(fig, frame, vw, vh);
-        }
-      };
+      video.onloadedmetadata = () => { fig.classList.add('is-loaded'); };
       video.onloadeddata = () => { fig.classList.add('is-loaded'); };
       video.onerror = () => { fig.classList.add('is-error'); };
       video.src = media.u;
       frame.appendChild(video);
       videoEl = video;
-      const durText = fmtDuration(media.d);
-      const badge = make('span', 'msg-media__badge', {
-        text: durText ? ('فيديو · ' + durText) : 'فيديو'
-      });
-      frame.appendChild(badge);
-      const zoomBtn = make('button', 'msg-media__zoom');
-      zoomBtn.type = 'button';
-      zoomBtn.setAttribute('data-act', 'expand');
-      zoomBtn.setAttribute('title', 'عرض الفيديو بالحجم الكامل');
-      zoomBtn.setAttribute('aria-label', 'عرض الفيديو بالحجم الكامل');
-      zoomBtn.innerHTML = (IC ? IC.html('maximize', 14) : '') +
-        '<span class="msg-media__zoom-label">عرض كامل</span>';
-      frame.appendChild(zoomBtn);
-      zoom = zoomBtn;
     } else {
       const img = make('img', 'msg-media__img');
       img.alt = media.n || 'صورة في الدردشة';
       img.setAttribute('decoding', 'async');
       img.setAttribute('referrerpolicy', 'no-referrer');
+      img.setAttribute('loading', 'lazy');
       img.onload = () => {
         fig.classList.add('is-loaded');
         fig.classList.remove('is-error');
-        const nw = img.naturalWidth || media.w || 0;
-        const nh = img.naturalHeight || media.h || 0;
-        if (nw && nh) {
-          media.w = media.w || nw;
-          media.h = media.h || nh;
-          applyMediaRatio(fig, frame, nw, nh);
-        }
       };
       img.onerror = () => {
         if (opts.preview && img.src !== opts.preview) {
@@ -650,51 +609,17 @@
       img.src = media.u;
       if (img.complete && img.naturalWidth > 0) {
         fig.classList.add('is-loaded');
-        applyMediaRatio(fig, frame, img.naturalWidth, img.naturalHeight);
       }
       frame.appendChild(img);
-      imgEl = img;
-      const zoomBtn = make('button', 'msg-media__zoom');
-      zoomBtn.type = 'button';
-      zoomBtn.setAttribute('data-act', 'expand');
-      zoomBtn.setAttribute('title', 'اضغط لعرض الصورة كاملة');
-      zoomBtn.setAttribute('aria-label', 'تكبير الصورة');
-      zoomBtn.innerHTML = (IC ? IC.html('maximize', 14) : '') +
-        '<span class="msg-media__zoom-label">عرض كاملة</span>';
-      frame.appendChild(zoomBtn);
-      zoom = zoomBtn;
     }
 
-    const tools = make('div', 'msg-media__tools');
-    const expandTool = iconButton('maximize', 'عرض بالحجم الكامل', 'expand');
-    tools.appendChild(expandTool);
-    const open = make('a', 'msg-media__tool');
-    open.setAttribute('data-act', 'open');
-    open.setAttribute('href', media.u);
-    open.setAttribute('target', '_blank');
-    open.setAttribute('rel', 'noopener noreferrer');
-    open.setAttribute('title', 'فتح في تبويب جديد');
-    open.setAttribute('aria-label', 'فتح في تبويب جديد');
-    open.innerHTML = IC ? IC.html('link', 15) : '';
-    tools.appendChild(open);
-    const dl = make('a', 'msg-media__tool');
-    dl.setAttribute('data-act', 'download');
-    dl.setAttribute('href', media.u);
-    dl.setAttribute('download', media.n || '');
-    dl.setAttribute('title', 'تنزيل');
-    dl.setAttribute('aria-label', 'تنزيل');
-    dl.innerHTML = IC ? IC.html('download', 15) : '';
-    tools.appendChild(dl);
+    // نسبة ثابتة 16/4 للصور — تصميم احترافي خاص بدون تقليد
+    fig.setAttribute('data-orient', 'wt-16x4');
+
     fig.appendChild(frame);
-    fig.appendChild(tools);
 
-    if (media.n || media.s) {
-      const cap = make('figcaption', 'msg-media__caption');
-      cap.textContent = (media.n || (isVideo ? 'فيديو' : 'صورة')) + (media.s ? ' · ' + fmtSize(media.s) : '');
-      fig.appendChild(cap);
-    }
+    // لا أيقونات تحميل/تكبير في المعاينة — النقر على البطاقة يكبّرها وحدها
     if (opts.onExpand) {
-      /* الربط المباشر والاحتياطي ليعمل النقر على المعاينة أو أزرار التكبير دائماً */
       const expand = (e) => {
         if (e && e._wtExpanded) return;
         if (e) e._wtExpanded = true;
@@ -705,17 +630,26 @@
         }
         opts.onExpand(media);
       };
-      if (zoom) zoom.addEventListener('click', expand);
-      if (imgEl) imgEl.addEventListener('click', expand);
-      expandTool.addEventListener('click', expand);
-      fig.addEventListener('click', (e) => {
-        const t = e && e.target;
-        const act = findAction(t, fig);
-        if (act === 'open' || act === 'download') return;
-        if (act === 'expand') { expand(e); return; }
-        /* للصور: الضغط في أي مكان على بطاقة المعاينة يعرض الصورة كاملة */
-        if (!isVideo) expand(e);
-      });
+      // الصور: النقر في أي مكان يكبّر؛ الفيديو: النقر على الإطار (لا يتعارض مع التحكم)
+      if (!isVideo) {
+        fig.setAttribute('role', 'button');
+        fig.setAttribute('tabindex', '0');
+        fig.setAttribute('aria-label', 'عرض الصورة بالحجم الكامل');
+        fig.addEventListener('click', expand);
+        fig.addEventListener('keydown', (e) => {
+          if (e && (e.key === 'Enter' || e.key === ' ')) {
+            if (e.preventDefault) e.preventDefault();
+            expand(e);
+          }
+        });
+        fig.style.cursor = 'zoom-in';
+      } else {
+        frame.addEventListener('click', (e) => {
+          const t = e && e.target;
+          if (t && t.closest && t.closest('video')) return;
+          expand(e);
+        });
+      }
     }
     return fig;
   }
@@ -736,7 +670,7 @@
       root,
       stage: byId('mediaStage'),
       counter: byId('mediaCounter'),
-      open: byId('mediaOpen'),
+      save: byId('mediaSaveBtn') || byId('mediaDownload'),
       download: byId('mediaDownload'),
       prev: byId('mediaPrev'),
       next: byId('mediaNext'),
@@ -757,6 +691,44 @@
     });
     if (v.prev) v.prev.addEventListener('click', () => stepViewer(-1));
     if (v.next) v.next.addEventListener('click', () => stepViewer(1));
+    // زر الحفظ — يبقى داخل العارض، لا ينتقل لموقع الرفع
+    const saveBtn = v.save;
+    if (saveBtn && !saveBtn._wtBound) {
+      saveBtn._wtBound = true;
+      saveBtn.addEventListener('click', async (e) => {
+        if (e && e.preventDefault) e.preventDefault();
+        const cur = v.items && v.items[v.index];
+        if (!cur || !cur.u) return;
+        const url = cur.u;
+        const name = (cur.n && String(cur.n).trim()) || 'image';
+        // محاولة تنزيل مباشر دون فتح موقع الرفع
+        try {
+          const resp = await global.fetch(url, { mode: 'cors' });
+          if (!resp || !resp.ok) throw new Error('bad');
+          const blob = await resp.blob();
+          const blobUrl = global.URL.createObjectURL(blob);
+          const a = global.document.createElement('a');
+          a.href = blobUrl;
+          a.download = name;
+          a.rel = 'noopener';
+          global.document.body.appendChild(a);
+          a.click();
+          setTimeout(() => { try { a.remove(); global.URL.revokeObjectURL(blobUrl); } catch (err) {} }, 1200);
+          return;
+        } catch (err) {}
+        // بديل محافظ: استخدم رابط قاعدة البيانات نفسه مع download، من دون فتح تبويب أو صفحة الرفع.
+        // المتصفحات التي لا تسمح بـ CORS قد تتجاهل download، لكن التطبيق لا يغادره أبداً.
+        try {
+          const a = global.document.createElement('a');
+          a.href = url;
+          a.download = name;
+          a.rel = 'noopener';
+          global.document.body.appendChild(a);
+          a.click();
+          setTimeout(() => { try { a.remove(); } catch (e2) {} }, 800);
+        } catch (e2) {}
+      });
+    }
     viewer = v;
     return v;
   }
@@ -821,8 +793,16 @@
       const metaPart = item ? [item.n || '', item.s ? fmtSize(item.s) : ''].filter(Boolean).join(' · ') : '';
       v.counter.textContent = [countPart, metaPart].filter(Boolean).join('  —  ');
     }
-    if (v.open) { v.open.setAttribute('href', item ? item.u : '#'); }
-    if (v.download) { v.download.setAttribute('href', item ? item.u : '#'); if (item && item.n) v.download.setAttribute('download', item.n); }
+    // لا زر فتح لموقع الرفع — العرض من رابط قاعدة البيانات فقط
+    if (v.save) {
+      v.save.setAttribute('href', item ? item.u : '#');
+      if (item && item.n) v.save.setAttribute('download', item.n);
+      v.save.hidden = !item;
+    }
+    if (v.download && v.download !== v.save) {
+      v.download.setAttribute('href', item ? item.u : '#');
+      if (item && item.n) v.download.setAttribute('download', item.n);
+    }
     const many = v.items.length > 1;
     if (v.prev) v.prev.hidden = !many;
     if (v.next) v.next.hidden = !many;

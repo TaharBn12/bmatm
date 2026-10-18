@@ -22,12 +22,12 @@ import java.util.concurrent.TimeUnit;
  * WatchTogether — خادم Java موحّد (صفحات + مزامنة WebSocket)
  * ------------------------------------------------------------
  *  • لا يحتاج أي مكتبة خارجية: JDK 11+ فقط.
- *  • يقدّم index.html و room.html من المجلد الأب (watch_together/).
+ *  • يقدّم index.html و room.html من جذر الموقع (المجلد الأب لـ java-server).
  *  • نقطة WebSocket على المسار:  /ws
  *  • نقطة الحالة:                 /api/stats  و /healthz
  *
  *  التشغيل:
- *     cd watch_together/java-server
+ *     cd java-server
  *     javac -encoding UTF-8 -d out src/com/watchtogether/*.java
  *     java -cp out com.watchtogether.Main
  *     ثم افتح:  http://localhost:8080

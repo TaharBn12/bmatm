@@ -15,7 +15,7 @@
 ينشئ المشروع، ينفّذ المخطط، جلب المفتاح، وربطه بالموقع.
 
 ```bash
-cd watch_together
+cd .
 
 # 1) أنشئ رمز وصول:
 #    supabase.com → Account (أو Settings) → Access Tokens → Generate New Token
@@ -96,7 +96,7 @@ rooms | messages | presence | room_members | room_queue | realtime_tables | poli
 ### 5) اربطها بالموقع
 
 ```bash
-cd watch_together
+cd .
 node tools/sbctl.mjs set --url "https://xxxxxxxx.supabase.co" --key "eyJhbGci..."
 ```
 

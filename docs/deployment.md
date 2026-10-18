@@ -11,7 +11,7 @@
 
 ### cPanel (استضافة مشتركة)
 1. ادخل **File Manager** → `public_html`.
-2. ارفع **محتويات** مجلد `watch_together/` (وليس المجلد نفسه) حتى يصبح:
+2. ارفع ملفات جذر المشروع إلى `public_html` حتى يصبح:
    ```
    public_html/index.html
    public_html/room.html
@@ -25,11 +25,11 @@
 ### GitHub Pages / Netlify / Vercel / Cloudflare Pages
 ```bash
 # من جذر المستودع
-git push            # ثم فعّل Pages/Deploy واجعل جذر النشر: watch_together/
+git push            # ثم فعّل Pages/Deploy واجعل جذر النشر هو جذر المستودع
 ```
-- **GitHub Pages:** Settings → Pages → Branch `main` → مجلد `/watch_together`.
-- **Netlify:** Base directory = `watch_together`، Build command = (اتركه فارغاً).
-- **Vercel:** Root Directory = `watch_together`، Framework = Other.
+- **GitHub Pages:** Settings → Pages → Branch `main` → مجلد `/` (جذر المستودع).
+- **Netlify:** Base directory = `.`، Build command = (اتركه فارغاً)، Publish directory = `.`.
+- **Vercel:** Root Directory = `.`، Framework = Other.
 
 > ⚠️ **مهم:** هذه الاستضافات تعمل بـ **HTTPS** وهذا مطلوب لعمل `navigator.clipboard`
 > (نسخ رابط الغرفة) و WebSocket الخاص بـ Supabase Realtime.
@@ -40,7 +40,7 @@ git push            # ثم فعّل Pages/Deploy واجعل جذر النشر: w
 
 ### تشغيل مباشر على VPS
 ```bash
-cd watch_together/java-server
+cd java-server
 ./build.sh && ./run.sh                 # المنفذ الافتراضي 8080
 PORT=80 java -cp out com.watchtogether.Main
 ```
@@ -52,7 +52,7 @@ Description=WatchTogether
 After=network.target
 
 [Service]
-WorkingDirectory=/var/www/bmatm/watch_together/java-server
+WorkingDirectory=/var/www/bmatm/java-server
 ExecStart=/usr/bin/java -Dfile.encoding=UTF-8 -cp out com.watchtogether.Main
 Environment=PORT=8080
 Restart=always
@@ -100,7 +100,7 @@ server {
 ## الخيار ج) تجربة محلية / شبكة منزلية
 
 ```bash
-cd watch_together/java-server && ./run.sh
+cd java-server && ./run.sh
 ```
 الخادم يطبع عناوين الشبكة المحلية، مثال:
 ```
@@ -111,7 +111,7 @@ cd watch_together/java-server && ./run.sh
 
 ### بدون Java (وضع محلي)
 ```bash
-cd watch_together && python3 -m http.server 8080
+python3 -m http.server 8080
 ```
 يعمل الموقع في **الوضع المحلي**: المزامنة بين تبويبات نفس الجهاز فقط (للتجربة والتصميم).
 

@@ -15,7 +15,7 @@ import java.util.Map;
 
 /**
  * خادم ملفات ثابتة بسيط وآمن (بدون مكتبات خارجية).
- * يقدّم صفحات الموقع من المجلد الأب لمجلد java-server (أي مجلد watch_together نفسه)،
+ * يقدّم صفحات الموقع من المجلد الأب لمجلد java-server (أي جذر الموقع نفسه)،
  * فتعمل نفس الصفحات على أي استضافة تدعم Java: Tomcat / Jetty / VPS / معاينة Arena.
  */
 public final class StaticFileServer {
@@ -189,9 +189,8 @@ public final class StaticFileServer {
     public static File detectRoot(File here) {
         File[] candidates = {
                 here,                       // java-server (لو شُغّل من داخله)
-                here.getParentFile(),       // watch_together
-                new File("."),              // مجلد العمل الحالي
-                new File("watch_together")  // جذر المستودع
+                here.getParentFile(),       // جذر الموقع في المستودع
+                new File(".")               // مجلد العمل الحالي
         };
         for (File c : candidates) {
             if (c == null) continue;

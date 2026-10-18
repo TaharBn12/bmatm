@@ -17,7 +17,7 @@
 
 ```sh
 python3 -m pip install --upgrade yt-dlp
-cd watch_together/java-server
+cd java-server
 ./build.sh
 ./run.sh
 ```
