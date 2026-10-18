@@ -75,6 +75,7 @@ public final class Main {
                     return;
                 }
                 if (path.equals("/api/rooms")) { handleRooms(ex); return; }
+                if (path.equals("/api/rooms/report")) { handleRoomReport(ex); return; }
                 if (path.equals("/api/resolve")) { VideoResolver.handle(ex); return; }
                 if (path.equals("/api/stats")) { sendJson(ex, 200, stats()); return; }
                 files.handle(ex);
@@ -99,31 +100,98 @@ public final class Main {
 
     private static void handleRooms(HttpExchange ex) throws IOException {
         ex.getResponseHeaders().set("Access-Control-Allow-Origin", "*");
-        ex.getResponseHeaders().set("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+        ex.getResponseHeaders().set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
         ex.getResponseHeaders().set("Access-Control-Allow-Headers", "Content-Type");
         if ("OPTIONS".equals(ex.getRequestMethod())) { ex.sendResponseHeaders(204, -1); return; }
         if ("GET".equals(ex.getRequestMethod())) {
+            String roomId = queryParam(ex, "room");
+            if (roomId != null && !roomId.isEmpty()) {
+                try {
+                    Map<String, Object> room = roomStore.ownedRoom(roomId.toUpperCase(), queryParam(ex, "ownerToken"));
+                    sendJson(ex, 200, Json.map("room", room));
+                } catch (SecurityException error) { sendJson(ex, 403, Json.map("error", error.getMessage())); }
+                catch (IllegalStateException error) { sendJson(ex, 404, Json.map("error", error.getMessage())); }
+                return;
+            }
             sendJson(ex, 200, Json.map("rooms", roomStore.publicRooms()));
             return;
         }
-        if (!"POST".equals(ex.getRequestMethod())) {
-            ex.getResponseHeaders().set("Allow", "GET, POST, OPTIONS");
+        String method = ex.getRequestMethod();
+        if (!"POST".equals(method) && !"PUT".equals(method) && !"DELETE".equals(method)) {
+            ex.getResponseHeaders().set("Allow", "GET, POST, PUT, DELETE, OPTIONS");
             sendJson(ex, 405, Json.map("error", "طريقة الطلب غير مدعومة"));
             return;
         }
-        byte[] raw = ex.getRequestBody().readNBytes(8193);
-        if (raw.length > 8192) { sendJson(ex, 413, Json.map("error", "الطلب كبير جداً")); return; }
-        try {
-            Map<String, Object> data = Json.parseObject(new String(raw, StandardCharsets.UTF_8));
-            if (data == null) throw new IllegalArgumentException("طلب غير صالح");
-            Map<String, Object> room = roomStore.createRoom(Json.str(data, "id", ""), Json.str(data, "title", ""),
-                    Json.str(data, "videoUrl", ""), Json.str(data, "ownerToken", ""));
-            sendJson(ex, 201, Json.map("room", room));
-        } catch (IllegalArgumentException error) {
-            sendJson(ex, 400, Json.map("error", "بيانات الغرفة غير صالحة"));
-        } catch (IllegalStateException error) {
-            sendJson(ex, 409, Json.map("error", "كود الغرفة مستخدم بالفعل — أعد المحاولة"));
+        Map<String, Object> data;
+        try { data = readJsonBody(ex, 8192); }
+        catch (IllegalArgumentException error) {
+            sendJson(ex, 400, Json.map("error", error.getMessage()));
+            return;
         }
+        try {
+            if ("POST".equals(method)) {
+                Map<String, Object> room = roomStore.createRoom(Json.str(data, "id", ""), Json.str(data, "title", ""),
+                        Json.str(data, "videoUrl", ""), Json.str(data, "ownerToken", ""));
+                sendJson(ex, 201, Json.map("room", room));
+            } else if ("PUT".equals(method)) {
+                String id = Json.str(data, "roomId", "").toUpperCase();
+                Map<String, Object> room = roomStore.updateRoom(id, Json.str(data, "ownerToken", ""), data);
+                sendJson(ex, 200, Json.map("room", room));
+            } else {
+                String id = Json.str(data, "roomId", "").toUpperCase();
+                boolean deleted = roomStore.deleteRoom(id, Json.str(data, "ownerToken", ""));
+                sendJson(ex, 200, Json.map("ok", true, "deleted", deleted));
+            }
+        } catch (SecurityException error) {
+            sendJson(ex, 403, Json.map("error", error.getMessage()));
+        } catch (IllegalArgumentException error) {
+            sendJson(ex, 400, Json.map("error", error.getMessage()));
+        } catch (IllegalStateException error) {
+            sendJson(ex, 409, Json.map("error", error.getMessage()));
+        }
+    }
+
+    private static void handleRoomReport(HttpExchange ex) throws IOException {
+        ex.getResponseHeaders().set("Access-Control-Allow-Origin", "*");
+        ex.getResponseHeaders().set("Access-Control-Allow-Methods", "POST, OPTIONS");
+        ex.getResponseHeaders().set("Access-Control-Allow-Headers", "Content-Type");
+        if ("OPTIONS".equals(ex.getRequestMethod())) { ex.sendResponseHeaders(204, -1); return; }
+        if (!"POST".equals(ex.getRequestMethod())) {
+            ex.getResponseHeaders().set("Allow", "POST, OPTIONS");
+            sendJson(ex, 405, Json.map("error", "طريقة الطلب غير مدعومة"));
+            return;
+        }
+        try {
+            Map<String, Object> data = readJsonBody(ex, 8192);
+            String roomId = Json.str(data, "roomId", "").toUpperCase();
+            roomStore.reportRoom(roomId, Json.str(data, "reporterId", ""), Json.str(data, "reason", ""), Json.str(data, "details", ""));
+            sendJson(ex, 201, Json.map("ok", true));
+        } catch (IllegalArgumentException error) {
+            sendJson(ex, 400, Json.map("error", error.getMessage()));
+        } catch (IllegalStateException error) {
+            sendJson(ex, 404, Json.map("error", error.getMessage()));
+        }
+    }
+
+    private static Map<String, Object> readJsonBody(HttpExchange ex, int maxBytes) throws IOException {
+        byte[] raw = ex.getRequestBody().readNBytes(maxBytes + 1);
+        if (raw.length > maxBytes) throw new IllegalArgumentException("الطلب كبير جداً");
+        Map<String, Object> data = Json.parseObject(new String(raw, StandardCharsets.UTF_8));
+        if (data == null) throw new IllegalArgumentException("طلب غير صالح");
+        return data;
+    }
+
+    private static String queryParam(HttpExchange ex, String key) {
+        String query = ex.getRequestURI().getRawQuery();
+        if (query == null) return null;
+        for (String part : query.split("&")) {
+            int at = part.indexOf('=');
+            String name = at < 0 ? part : part.substring(0, at);
+            if (!java.net.URLDecoder.decode(name, StandardCharsets.UTF_8).equals(key)) continue;
+            String value = at < 0 ? "" : part.substring(at + 1);
+            return java.net.URLDecoder.decode(value, StandardCharsets.UTF_8);
+        }
+        return null;
     }
 
     private static Map<String, Object> stats() {

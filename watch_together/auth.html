@@ -14,7 +14,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800;900&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="assets/css/app.css?v=3.0.0">
+  <link rel="stylesheet" href="assets/css/app.css?v=4.0.1">
 </head>
 <body class="auth-page">
   <div class="bg-fx"></div>
@@ -35,14 +35,14 @@
 
       <h1 class="auth-aside__title">غرفة واحدة،<br><span class="grad-text">نفس اللحظة</span> تماماً.</h1>
       <p class="auth-aside__lead">
-        سجّل الدخول لإنشاء غرفتك والاحتفاظ بسجلّ مشاهداتك، أو ادخل كضيف في ثانية واحدة.
+        سجّل الدخول لإنشاء غرفتك والانضمام إلى غرف أصدقائك، مع حفظ هويتك وإعداداتك.
       </p>
 
       <ul class="auth-points">
         <li><span class="ic auth-points__ic" data-icon="zap" data-size="18"></span> مزامنة فورية للتشغيل والتقديم بين كل المشاركين</li>
         <li><span class="ic auth-points__ic" data-icon="users" data-size="18"></span> قائمة المنضمين الحقيقيين تتحدث لحظة بلحظة</li>
         <li><span class="ic auth-points__ic" data-icon="chat" data-size="18"></span> دردشة وتفاعلات أسفل المشغّل مباشرة</li>
-        <li><span class="ic auth-points__ic" data-icon="shield" data-size="18"></span> التحكم للمنشئ والمنظّمين فقط، والجميع يبقى متزامناً</li>
+        <li><span class="ic auth-points__ic" data-icon="shield" data-size="18"></span> إعدادات خصوصية وتحكم يحددها منشئ الغرفة</li>
       </ul>
 
       <div class="auth-aside__foot">
@@ -132,37 +132,16 @@
         </button>
       </form>
 
-      <!-- فاصل -->
-      <div class="divider"><span>أو</span></div>
-
-      <!-- دخول كضيف -->
-      <form id="guestForm" class="auth-form" autocomplete="off" novalidate>
-        <label class="label" for="guestName">ادخل كضيف باسم فقط</label>
-        <div class="guest-row">
-          <div class="field-wrap">
-            <span class="ic field-wrap__ic" data-icon="smile" data-size="18"></span>
-            <input class="input input--pad" id="guestName" type="text" maxlength="24" placeholder="اسمك">
-          </div>
-          <button class="btn btn--ok" type="submit" id="guestBtn">
-            <span class="ic" data-icon="arrowLeft" data-size="18"></span> دخول كضيف
-          </button>
-        </div>
-        <p class="auth-note">
-          <span class="ic" data-icon="info" data-size="15"></span>
-          الدخول كضيف لا يحتاج حساباً، ولا يحفظ سجلاً بين الأجهزة.
-        </p>
-      </form>
-
       <p class="auth-back">
         <a href="index.html"><span class="ic" data-icon="chevronRight" data-size="15"></span> العودة للصفحة الرئيسية</a>
       </p>
     </main>
   </div>
 
-  <script src="assets/js/config.js?v=3.1.1"></script>
+  <script src="assets/js/config.js?v=3.1.2"></script>
   <script src="assets/js/util.js?v=3.0.0"></script>
   <script src="assets/js/icons.js?v=3.1.0"></script>
-  <script src="assets/js/auth.js?v=3.0.0"></script>
-  <script src="assets/js/auth-page.js?v=3.0.0"></script>
+  <script src="assets/js/auth.js?v=3.2.0"></script>
+  <script src="assets/js/auth-page.js?v=3.1.1"></script>
 </body>
 </html>

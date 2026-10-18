@@ -9,7 +9,7 @@
      1) سيرفر Java (WebSocket وهمي يرقّم التحديثات مركزياً)
      2) Supabase (REST وهمي + استطلاع، وبدون Realtime إطلاقاً)
    ========================================================= */
-import { createRoomEnv, wait } from './harness.mjs';
+import { createRoomEnv, wait, setAccountName } from './harness.mjs';
 
 let pass = 0, fail = 0;
 const errors = [];
@@ -299,10 +299,9 @@ function findVideo(env) {
   return out;
 }
 
-/** أدخل العميل من بوابة الاسم ثم أنهِ تحميل المشغّل */
+/** يدخل الحساب المسجّل مباشرةً؛ لا توجد بوابة اسم أو دخول ضيف. */
 async function enter(env, name) {
-  env.byId.get('gateName').value = name;
-  env.byId.get('gateForm').dispatch('submit', {});
+  setAccountName(env, name);
   await wait(250);
   const v = findVideo(env);
   if (v) {
@@ -327,6 +326,7 @@ async function testWebSocket() {
     store: { ['wt:owner:' + ROOM]: JSON.stringify(ownerToken) }
   });
   const guest = createRoomEnv({ search: `?id=${ROOM}`, WebSocket: server.FakeWebSocket });
+  setAccountName(guest, 'طهّار');
 
   await enter(host, 'أمين');
   const hostVideo = findVideo(host);
@@ -414,6 +414,7 @@ async function testSupabase() {
     return env;
   };
   const guest = mk(`?id=SB001&v=${encodeURIComponent(VIDEO_A)}`);
+  setAccountName(guest, 'طهّار');
   const host = mk(`?id=SB001&host=1&v=${encodeURIComponent(VIDEO_A)}`, true);
 
   await enter(host, 'أمين');
@@ -560,8 +561,7 @@ async function testTransportChoice() {
   /* ولا سيرفر إطلاقاً → رسالة واضحة أن الغرفة غير موجودة */
   const alone = createRoomEnv({ search: '?id=GHOST1', fetch: makeSupabaseStub().fetchStub });
   alone.sandbox.WT_CONFIG.sync.pollMs = 150;
-  alone.byId.get('gateName').value = 'ضيف تائه';
-  alone.byId.get('gateForm').dispatch('submit', {});
+  setAccountName(alone, 'مشارك تائه');
   await wait(2600);
   t('غرفة غير موجودة → رسالة صريحة',
     chatText(alone).includes('لم يتم العثور على هذه الغرفة'), chatText(alone).slice(0, 120));

@@ -54,10 +54,11 @@
     return hlsPromise;
   }
 
-  function create(container) {
+  function create(container, options) {
+    options = options || {};
     const items = new Map();
     const motion = global.matchMedia ? global.matchMedia('(prefers-reduced-motion: reduce)') : { matches: false };
-    let disposed = false, frame = 0;
+    let disposed = false, frame = 0, openItem = null;
     const observer = global.IntersectionObserver ? new IntersectionObserver(entries => {
       entries.forEach(entry => {
         const item = items.get(entry.target.dataset.roomId);
@@ -237,17 +238,96 @@
       });
     }
     function schedule() { if (!disposed && !frame) frame = requestAnimationFrame(reconcile); }
+    const actionLabels = {
+      settings: ['الإعدادات', 'sliders'], edit: ['التعديل', 'pencil'],
+      delete: ['الحذف', 'trash'], report: ['الإبلاغ عن محتوى الغرفة', 'alert']
+    };
+    function closeMenu(item) {
+      if (!item) return;
+      item.node.classList.remove('is-actions-open');
+      item.menu.hidden = true;
+      item.toggle.setAttribute('aria-expanded', 'false');
+      if (openItem === item) openItem = null;
+    }
+    function openMenu(item) {
+      if (openItem && openItem !== item) closeMenu(openItem);
+      item.node.classList.add('is-actions-open');
+      item.menu.hidden = false;
+      item.toggle.setAttribute('aria-expanded', 'true');
+      openItem = item;
+    }
+    function toggleMenu(item) {
+      item.node.classList.contains('is-actions-open') ? closeMenu(item) : openMenu(item);
+    }
+    function renderActions(item, room) {
+      const signedIn = typeof options.isAuthenticated === 'function' ? !!options.isAuthenticated() : true;
+      const owner = !!room.isOwner && signedIn;
+      const actions = owner ? ['settings', 'edit', 'delete'] : ['report'];
+      item.menu.innerHTML = actions.map(action => {
+        const [label, icon] = actionLabels[action];
+        return '<button class="room-tile__action room-tile__action--' + action + '" type="button" role="menuitem" data-room-action="' + action + '"><span class="ic" data-icon="' + icon + '" data-size="17"></span><span>' + label + '</span></button>';
+      }).join('');
+      item.toggle.setAttribute('aria-label', 'إجراءات ' + room.title);
+      item.toggle.title = 'إجراءات الغرفة';
+      item.menu.setAttribute('aria-label', owner ? 'إدارة الغرفة' : 'الإبلاغ عن الغرفة');
+      IC.apply(item.menu);
+    }
     function make(room) {
-      const node = document.createElement('a'); node.className = 'room-tile'; node.dataset.roomId = room.id;
-      node.innerHTML = '<span class="room-tile__cover" aria-hidden="true"><span class="room-tile__fallback">' + IC.html('film', 26) + '</span><span class="room-tile__duration">0:05</span></span>' +
-        '<span class="room-tile__body"><strong class="room-tile__title"></strong><span class="room-tile__attendance"></span></span>';
-      const item = { node, cover: node.querySelector('.room-tile__cover'), title: node.querySelector('.room-tile__title'), people: node.querySelector('.room-tile__attendance'), visible: false, priority: false, source: null, spec: null, media: null, poster: null, failedAt: 0 };
+      const node = document.createElement('article');
+      node.className = 'room-tile'; node.dataset.roomId = room.id;
+      node.innerHTML = '<a class="room-tile__link"><span class="room-tile__cover" aria-hidden="true"><span class="room-tile__fallback">' + IC.html('film', 26) + '</span><span class="room-tile__duration">0:05</span></span>' +
+        '<span class="room-tile__body"><strong class="room-tile__title"></strong><span class="room-tile__attendance"></span></span></a>' +
+        '<button class="room-tile__menu-toggle" type="button" aria-haspopup="menu" aria-expanded="false"><span class="ic" data-icon="more" data-size="19"></span></button>' +
+        '<div class="room-tile__menu" role="menu" hidden></div>';
+      const item = { node, link: node.querySelector('.room-tile__link'), cover: node.querySelector('.room-tile__cover'),
+        title: node.querySelector('.room-tile__title'), people: node.querySelector('.room-tile__attendance'),
+        toggle: node.querySelector('.room-tile__menu-toggle'), menu: node.querySelector('.room-tile__menu'),
+        visible: false, priority: false, source: null, spec: null, media: null, poster: null, failedAt: 0,
+        pointer: null, suppressClick: false, actionSignature: '' };
+      item.toggle.addEventListener('click', event => {
+        event.preventDefault(); event.stopPropagation(); toggleMenu(item);
+      });
+      item.menu.addEventListener('click', event => {
+        const button = event.target.closest && event.target.closest('[data-room-action]');
+        if (!button) return;
+        event.preventDefault(); event.stopPropagation();
+        const action = button.dataset.roomAction;
+        closeMenu(item);
+        if (typeof options.onAction === 'function') options.onAction(item.room, action);
+      });
+      node.addEventListener('pointerdown', event => {
+        if (event.pointerType === 'mouse' && event.button !== 0) return;
+        if (event.target.closest && event.target.closest('button, video, iframe')) return;
+        item.pointer = { x: event.clientX, y: event.clientY, id: event.pointerId };
+      }, { passive: true });
+      node.addEventListener('pointerup', event => {
+        if (!item.pointer || item.pointer.id !== event.pointerId) return;
+        const dx = event.clientX - item.pointer.x, dy = event.clientY - item.pointer.y;
+        item.pointer = null;
+        if (Math.abs(dx) < 48 || Math.abs(dx) < Math.abs(dy) * 1.25) return;
+        toggleMenu(item);
+        item.suppressClick = true;
+        setTimeout(() => { item.suppressClick = false; }, 650);
+      }, { passive: true });
+      node.addEventListener('pointercancel', () => { item.pointer = null; }, { passive: true });
+      node.addEventListener('click', event => {
+        if (!item.suppressClick || (event.target.closest && event.target.closest('button, [data-room-action]'))) return;
+        event.preventDefault(); event.stopPropagation();
+      }, true);
       node.addEventListener('pointerenter', () => { item.priority = true; schedule(); });
       node.addEventListener('pointerleave', () => { item.priority = false; schedule(); });
-      node.addEventListener('focus', () => { item.priority = true; schedule(); });
-      node.addEventListener('blur', () => { item.priority = false; schedule(); });
+      node.addEventListener('focusin', () => { item.priority = true; schedule(); });
+      node.addEventListener('focusout', () => { item.priority = false; schedule(); });
       return item;
     }
+    function outsideClick(event) {
+      if (openItem && !openItem.node.contains(event.target)) closeMenu(openItem);
+    }
+    function escapeMenu(event) {
+      if (event.key === 'Escape' && openItem) { const item = openItem; closeMenu(item); item.toggle.focus({ preventScroll: true }); }
+    }
+    document.addEventListener('click', outsideClick, true);
+    document.addEventListener('keydown', escapeMenu);
     function update(rooms) {
       if (disposed) return;
       const keep = new Set(rooms.map(room => room.id));
@@ -255,9 +335,14 @@
       rooms.forEach((room, index) => {
         let item = items.get(room.id);
         if (!item) { item = make(room); items.set(room.id, item); if (observer) observer.observe(item.node); }
-        item.node.href = global.WTRooms.href(room);
-        item.node.setAttribute('aria-label', 'دخول ' + room.title + (room.presenceKnown ? ' — ' + room.participantCount + ' منضم الآن' : ''));
+        item.room = room;
+        item.link.href = global.WTRooms.href(room);
+        item.link.setAttribute('aria-label', 'دخول ' + room.title + (room.presenceKnown ? ' — ' + room.participantCount + ' منضم الآن' : ''));
         item.title.textContent = room.title;
+        const actionSignature = (room.isOwner ? 'owner' : 'viewer') + ':' + (typeof options.isAuthenticated === 'function' ? !!options.isAuthenticated() : true);
+        if (item.actionSignature !== actionSignature) { renderActions(item, room); item.actionSignature = actionSignature; }
+        item.node.classList.toggle('is-private-room', !!room.isPrivate);
+        item.node.setAttribute('data-control-mode', room.controlMode || 'owner');
         const people = peopleMarkup(room);
         if (people !== item.people.innerHTML) item.people.innerHTML = people;
         if (item.source !== room.videoUrl) {
@@ -274,6 +359,9 @@
     function dispose() {
       disposed = true; if (frame) cancelAnimationFrame(frame);
       if (observer) observer.disconnect();
+      if (openItem) closeMenu(openItem);
+      document.removeEventListener('click', outsideClick, true);
+      document.removeEventListener('keydown', escapeMenu);
       items.forEach(release); items.clear();
       document.removeEventListener('visibilitychange', schedule);
       global.removeEventListener('resize', schedule); global.removeEventListener('scroll', schedule);

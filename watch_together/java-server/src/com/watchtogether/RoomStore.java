@@ -60,6 +60,8 @@ public final class RoomStore implements WebSocketServer.Listener {
         final String id;
         volatile String title;
         volatile String videoUrl = "";
+        volatile boolean isPrivate = false;
+        volatile String controlMode = "owner";
         volatile long createdAt = System.currentTimeMillis();
         final Set<WsConnection> members = Collections.newSetFromMap(new ConcurrentHashMap<>());
         final List<Map<String, Object>> history = Collections.synchronizedList(new ArrayList<>());
@@ -86,6 +88,7 @@ public final class RoomStore implements WebSocketServer.Listener {
     }
 
     private final Map<String, Room> rooms = new ConcurrentHashMap<>();
+    private final List<Map<String, Object>> roomReports = Collections.synchronizedList(new ArrayList<>());
     private final ScheduledExecutorService janitor;
     /** ملف حفظ حالات الغرف حتى لا تضيع عند إعادة تشغيل الخادم */
     private final File storeFile;
@@ -114,6 +117,13 @@ public final class RoomStore implements WebSocketServer.Listener {
             String raw = new String(Files.readAllBytes(storeFile.toPath()), StandardCharsets.UTF_8);
             Map<String, Object> root = Json.parseObject(raw);
             if (root == null) return;
+            Object reportsObj = root.get("reports");
+            if (reportsObj instanceof List) {
+                for (Object item : (List<Object>) reportsObj) {
+                    Map<String, Object> report = Json.asMap(item);
+                    if (report != null) roomReports.add(report);
+                }
+            }
             Object roomsObj = root.get("rooms");
             if (!(roomsObj instanceof Map)) return;
             for (Map.Entry<String, Object> e : ((Map<String, Object>) roomsObj).entrySet()) {
@@ -123,6 +133,9 @@ public final class RoomStore implements WebSocketServer.Listener {
                 r.state = Json.asMap(rec.get("state"));
                 r.title = Json.str(rec, "title", "غرفة " + r.id);
                 r.videoUrl = Json.str(rec, "videoUrl", "");
+                r.isPrivate = Json.bool(rec, "isPrivate", false);
+                String savedControl = Json.str(rec, "controlMode", "owner");
+                r.controlMode = "everyone".equals(savedControl) ? "everyone" : "owner";
                 if (rec.get("createdAt") instanceof Number) r.createdAt = ((Number) rec.get("createdAt")).longValue();
                 Object ownerHash = rec.get("ownerTokenHash");
                 r.ownerTokenHash = ownerHash == null ? null : String.valueOf(ownerHash);
@@ -177,6 +190,8 @@ public final class RoomStore implements WebSocketServer.Listener {
                 rec.put("state", r.state);
                 rec.put("title", r.title);
                 rec.put("videoUrl", r.videoUrl);
+                rec.put("isPrivate", r.isPrivate);
+                rec.put("controlMode", r.controlMode);
                 rec.put("createdAt", r.createdAt);
                 rec.put("ownerTokenHash", r.ownerTokenHash);
                 rec.put("savedAt", System.currentTimeMillis());
@@ -195,6 +210,7 @@ public final class RoomStore implements WebSocketServer.Listener {
             root.put("version", 1);
             root.put("savedAt", System.currentTimeMillis());
             root.put("rooms", out);
+            synchronized (roomReports) { root.put("reports", new ArrayList<>(roomReports)); }
 
             File tmp = new File(storeFile.getAbsolutePath() + ".tmp");
             Files.write(tmp.toPath(), Json.stringify(root).getBytes(StandardCharsets.UTF_8));
@@ -246,13 +262,14 @@ public final class RoomStore implements WebSocketServer.Listener {
         int count = people.size();
         if (people.size() > 5) people = new ArrayList<>(people.subList(0, 5));
         return Json.map("id", r.id, "title", r.title == null ? "غرفة " + r.id : r.title,
-                "videoUrl", url, "createdAt", r.createdAt, "participants", people, "participantCount", count);
+                "videoUrl", url, "createdAt", r.createdAt, "participants", people, "participantCount", count,
+                "isPrivate", r.isPrivate, "controlMode", r.controlMode);
     }
 
     public List<Map<String, Object>> publicRooms() {
         List<Map<String, Object>> list = new ArrayList<>();
         for (Room r : rooms.values()) {
-            if (r.ownerTokenHash != null && !r.ownerTokenHash.isEmpty()) list.add(publicRoom(r));
+            if (!r.isPrivate && r.ownerTokenHash != null && !r.ownerTokenHash.isEmpty()) list.add(publicRoom(r));
         }
         list.sort((a, b) -> Long.compare(((Number) b.get("createdAt")).longValue(), ((Number) a.get("createdAt")).longValue()));
         return list.size() > 100 ? new ArrayList<>(list.subList(0, 100)) : list;
@@ -290,6 +307,104 @@ public final class RoomStore implements WebSocketServer.Listener {
         }
         persist();
         return publicRoom(r);
+    }
+
+    private Room requireOwner(String id, String ownerToken) {
+        if (id == null || !id.matches("[A-Z0-9]{4,12}") || ownerToken == null || ownerToken.length() < 48 || ownerToken.length() > 256) {
+            throw new SecurityException("مفتاح المنشئ غير صالح");
+        }
+        Room r = rooms.get(id);
+        if (r == null) throw new IllegalStateException("الغرفة غير موجودة");
+        String supplied = tokenHash(ownerToken);
+        synchronized (r) {
+            if (r.ownerTokenHash == null || r.ownerTokenHash.isEmpty() || !tokenMatches(r.ownerTokenHash, supplied)) {
+                throw new SecurityException("مفتاح المنشئ غير صالح");
+            }
+        }
+        return r;
+    }
+
+    public Map<String, Object> ownedRoom(String id, String ownerToken) {
+        Room r = requireOwner(id, ownerToken);
+        Map<String, Object> out = new LinkedHashMap<>(publicRoom(r));
+        synchronized (r.queue) { out.put("queueCount", r.queue.size()); }
+        return out;
+    }
+
+    public Map<String, Object> updateRoom(String id, String ownerToken, Map<String, Object> changes) {
+        Room r = requireOwner(id, ownerToken);
+        Object rawTitle = changes.get("title");
+        Object rawVideo = changes.get("videoUrl");
+        Object rawPrivate = changes.get("isPrivate");
+        Object rawControl = changes.get("controlMode");
+        String title = rawTitle == null ? null : String.valueOf(rawTitle).strip();
+        String videoUrl = rawVideo == null ? null : String.valueOf(rawVideo).strip();
+        String controlMode = rawControl == null ? null : String.valueOf(rawControl);
+        if (title != null && (title.isEmpty() || title.length() > 40)) throw new IllegalArgumentException("اسم الغرفة غير صالح");
+        if (videoUrl != null && !videoUrl.isEmpty()) {
+            try {
+                java.net.URI uri = java.net.URI.create(videoUrl);
+                if (videoUrl.length() > 2048 || !("https".equalsIgnoreCase(uri.getScheme()) || "http".equalsIgnoreCase(uri.getScheme()))
+                        || uri.getHost() == null || uri.getUserInfo() != null) throw new IllegalArgumentException();
+            } catch (IllegalArgumentException error) { throw new IllegalArgumentException("رابط المشاهدة غير صالح"); }
+        }
+        if (rawPrivate != null && !(rawPrivate instanceof Boolean)) throw new IllegalArgumentException("إعداد الخصوصية غير صالح");
+        if (controlMode != null && !"owner".equals(controlMode) && !"everyone".equals(controlMode)) throw new IllegalArgumentException("إعداد التحكم غير صالح");
+        synchronized (r) {
+            if (rawTitle != null) r.title = title;
+            if (rawPrivate != null) r.isPrivate = (Boolean) rawPrivate;
+            if (controlMode != null) r.controlMode = controlMode;
+            if (rawVideo != null) {
+                synchronized (r.queue) {
+                    if (!r.queue.isEmpty()) throw new IllegalStateException("أفرغ قائمة التشغيل قبل تغيير رابط المشاهدة");
+                }
+                r.videoUrl = videoUrl;
+                Map<String, Object> next = r.state == null ? new LinkedHashMap<>() : new LinkedHashMap<>(r.state);
+                next.put("url", videoUrl.isEmpty() ? null : videoUrl);
+                next.put("playing", false); next.put("pos", 0); next.put("t", System.currentTimeMillis());
+                next.put("rev", r.rev.incrementAndGet());
+                r.state = next;
+                r.lastSavedAt = System.currentTimeMillis();
+                broadcast(r, Json.map("type", "state", "state", next), null);
+            }
+        }
+        persist();
+        broadcast(r, Json.map("type", "settings", "controlMode", r.controlMode), null);
+        Map<String, Object> out = ownedRoom(id, ownerToken);
+        return out;
+    }
+
+    public boolean deleteRoom(String id, String ownerToken) {
+        Room r = requireOwner(id, ownerToken);
+        synchronized (r) {
+            if (!rooms.remove(id, r)) return false;
+            synchronized (roomReports) {
+                roomReports.removeIf(report -> id.equals(Json.str(report, "roomId", "")));
+            }
+            for (WsConnection connection : new ArrayList<>(r.members)) {
+                connection.send(Json.map("type", "system", "text", "حُذفت هذه الغرفة من قبل المنشئ"));
+                connection.close(1001, "room deleted");
+            }
+        }
+        persist();
+        return true;
+    }
+
+    public void reportRoom(String id, String reporterId, String reason, String details) {
+        if (reporterId == null || !reporterId.matches("(?i)[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}"))
+            throw new IllegalArgumentException("حساب المُبلّغ غير صالح");
+        if (!"spam".equals(reason) && !"inappropriate".equals(reason) && !"illegal".equals(reason) && !"other".equals(reason))
+            throw new IllegalArgumentException("سبب البلاغ غير صالح");
+        if (!rooms.containsKey(id)) throw new IllegalStateException("الغرفة غير موجودة");
+        String safeDetails = details == null ? "" : details.strip();
+        if (safeDetails.length() > 500) safeDetails = safeDetails.substring(0, 500);
+        synchronized (roomReports) {
+            roomReports.removeIf(item -> id.equals(item.get("roomId")) && reporterId.equals(item.get("reporterId")));
+            roomReports.add(Json.map("roomId", id, "reporterId", reporterId, "reason", reason,
+                    "details", safeDetails, "createdAt", System.currentTimeMillis()));
+            while (roomReports.size() > 5000) roomReports.remove(0);
+        }
+        persist();
     }
 
     public int getRoomCount() { return rooms.size(); }
@@ -424,6 +539,8 @@ public final class RoomStore implements WebSocketServer.Listener {
         welcome.put("members", memberList(r));
         synchronized (r.queue) { welcome.put("queue", new ArrayList<>(r.queue)); }
         welcome.put("role", role);
+        welcome.put("controlMode", r.controlMode);
+        welcome.put("roomInfo", Json.map("title", r.title, "videoUrl", r.videoUrl, "isPrivate", r.isPrivate, "controlMode", r.controlMode));
         welcome.put("lastSavedAt", r.lastSavedAt);
         conn.send(welcome);
 
@@ -442,7 +559,8 @@ public final class RoomStore implements WebSocketServer.Listener {
         Map<String, Object> stored;
         synchronized (r) {
             String role = Json.str(conn.attrs, "role", "viewer");
-            if (!"owner".equals(role) && !"organizer".equals(role)) {
+            if (!"owner".equals(role) && !"organizer".equals(role)
+                    && !("everyone".equals(r.controlMode) && "viewer".equals(role))) {
                 conn.send(Json.map("type", "error", "code", "permission", "action", "state", "message", "التحكم متاح لمنشئ الغرفة والمنظّمين فقط", "state", r.state));
                 return;
             }

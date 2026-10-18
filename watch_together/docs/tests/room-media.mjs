@@ -11,7 +11,7 @@
    ========================================================= */
 import fs from 'fs';
 import path from 'path';
-import { createRoomEnv, wait, base } from './harness.mjs';
+import { createRoomEnv, wait, base, setAccountName } from './harness.mjs';
 
 let pass = 0, fail = 0;
 const errors = [];
@@ -95,8 +95,7 @@ const run = async () => {
     sandbox.WTMedia.providerOrder().join(','));
 
   /* ---------- 2) الدخول إلى الغرفة ---------- */
-  byId.get('gateName').value = 'أمين';
-  byId.get('gateForm').dispatch('submit', {});
+  setAccountName(env, 'أمين');
   await wait(300);
   t('الغرفة جاهزة', sandbox.WTRoom.session.ready === true);
 
@@ -188,7 +187,7 @@ const run = async () => {
   t('نسخ الملفات محدّثة (تفادياً لنسخة المتصفح القديمة)',
     /media\.css\?v=3\.1\.5/.test(fs.readFileSync(path.join(base, 'room.html'), 'utf8')) &&
     /media\.js\?v=3\.1\.5/.test(fs.readFileSync(path.join(base, 'room.html'), 'utf8')) &&
-    /room\.js\?v=3\.1\.5/.test(fs.readFileSync(path.join(base, 'room.html'), 'utf8')));
+    /room\.js\?v=3\.2\.1/.test(fs.readFileSync(path.join(base, 'room.html'), 'utf8')));
   t('تنسيق بديل واضح عند فشل تحميل الصورة بدلاً من أيقونة Safari المكسورة',
     /\.media-lightbox__img\[hidden\][\s\S]*?display:\s*none\s*!important/.test(mediaCss) &&
     /\.media-lightbox__error\[hidden\][\s\S]*?display:\s*none\s*!important/.test(mediaCss) &&

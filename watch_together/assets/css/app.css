@@ -2508,3 +2508,12 @@ body.chat-focus .room-main > #chat {
   .room-body .chat__send { width: 44px; height: 44px; border-radius: 13px; }
   .room-body .chat__input { min-height: 44px; padding: 9px 12px; font-size: 16px; }
 }
+
+/* شاشة انتظار قصيرة قبل تحويل غير المسجل إلى صفحة الحساب؛ لا تحتوي على إدخال اسم. */
+.room-auth-status {
+  position: fixed; z-index: 80; inset: 0; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 13px; padding: 24px;
+  color: var(--muted); background: rgba(8,10,15,.94); font-size: 13px; font-weight: 700;
+}
+.room-auth-status[hidden] { display: none; }
+.room-auth-status .spinner { width: 30px; height: 30px; border-width: 3px; }

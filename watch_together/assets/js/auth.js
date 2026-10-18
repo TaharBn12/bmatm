@@ -124,10 +124,10 @@
     return s && s.user ? s.user : null;
   }
 
-  /** A named guest is not an authenticated account and must still confirm their room name. */
+  /** Only a real Supabase account is accepted in rooms; legacy guest sessions are rejected. */
   function accountUser() {
     const s = getSession();
-    return s && s.access_token && s.user && s.user.id && !s.user.guest ? s.user : null;
+    return s && s.access_token && s.user && s.user.id && !s.user.guest && (!s.expires_at || s.expires_at > Date.now()) ? s.user : null;
   }
 
   function validAvatarPath(path, id) {
@@ -185,10 +185,15 @@
   async function validSession() {
     try {
       const s = getSession();
-      if (!s || !s.user) return null;
-      if (!s.access_token) return s;                       // ضيف
+      if (!s || !s.user || !s.access_token || !s.user.id || s.user.guest) {
+        if (s && s.user && s.user.guest) clearSession();
+        return null;
+      }
       if (s.expires_at && s.expires_at - Date.now() < 60_000) {
-        try { return await refresh(); } catch (e) { return getSession(); }
+        try { return await refresh(); } catch (e) {
+          const current = getSession();
+          return current && (!current.expires_at || current.expires_at > Date.now()) ? current : null;
+        }
       }
       return s;
     } catch (e) { return null; }
@@ -243,28 +248,11 @@
     return session;
   }
 
-  /** دخول كضيف (بدون حساب) — يعمل حتى بدون Supabase */
-  function signInAsGuest(name) {
-    clearSession();
-    const guest = {
-      access_token: null, refresh_token: null, expires_at: 0,
-      user: { id: 'guest-' + U.randomCode(8), email: '', name: U.cleanName(name) || 'زائر', guest: true }
-    };
-    U.store.set('session', guest);
-    U.store.set('name', guest.user.name);
-    return guest;
-  }
-
-  /** حارس الصفحة: يعيد المستخدم أو يحوّل لصفحة الدخول */
+  /** حارس الصفحة: لا يسمح إلا بجلسة حساب حقيقية. */
   async function requireUser(opts) {
     opts = opts || {};
-    if (!enabled() || (global.WT_CONFIG.auth && global.WT_CONFIG.auth.required === false)) {
-      const s = getSession();
-      if (s && s.user) return s.user;
-      return null;                     /* وضع الضيف: الصفحة تتكفّل بطلب الاسم */
-    }
     const s = await validSession();
-    if (s && s.user && s.user.id) return s.user;
+    if (s && s.access_token && s.user && s.user.id && !s.user.guest && (!s.expires_at || s.expires_at > Date.now())) return s.user;
     if (!opts.noRedirect) {
       const back = encodeURIComponent(location.pathname + location.search);
       location.replace('auth.html?next=' + back);
@@ -281,7 +269,7 @@
   }
 
   global.WTAuth = {
-    enabled, signUp, signIn, signOut, updateName, signInAsGuest,
+    enabled, signUp, signIn, signOut, updateName,
     getSession, validSession, currentUser, accountUser, clearSession, requireUser, avatarURL, cacheProfile
   };
 })(typeof window !== 'undefined' ? window : globalThis);
