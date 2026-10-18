@@ -91,7 +91,7 @@ const run = async () => {
   t('طبقة الإفلات موجودة ومخفية', !!byId.get('mediaDrop') && byId.get('mediaDrop').hidden === true);
   t('العارض المكبّر موجود ومخفي', !!byId.get('mediaLightbox') && byId.get('mediaLightbox').hidden === true);
   t('وحدة الوسائط محمّلة', typeof sandbox.WTMedia === 'object' && typeof sandbox.WTMedia.upload === 'function');
-  t('سلسلة مزوّدي التخزين المجاني مرتّبة', sandbox.WTMedia.providerOrder().join(',') === 'supabase,catbox,litterbox,tmpfiles,uguu',
+  t('سلسلة مزوّدي التخزين المجاني مرتّبة', sandbox.WTMedia.providerOrder().join(',') === 'supabase,0x0,pixeldrain,catbox,gofile,oshi,litterbox,tmpfiles,fileio,uguu',
     sandbox.WTMedia.providerOrder().join(','));
 
   /* ---------- 2) الدخول إلى الغرفة ---------- */
@@ -186,9 +186,9 @@ const run = async () => {
     /\.media-lightbox__frame[\s\S]*?grid-template-rows:\s*minmax\(0,\s*1fr\)/.test(mediaCss) &&
     /\.media-lightbox__stage[\s\S]*?align-self:\s*stretch/.test(mediaCss));
   t('نسخ الملفات محدّثة (تفادياً لنسخة المتصفح القديمة)',
-    /media\.css\?v=3\.1\.3/.test(fs.readFileSync(path.join(base, 'room.html'), 'utf8')) &&
-    /media\.js\?v=3\.1\.3/.test(fs.readFileSync(path.join(base, 'room.html'), 'utf8')) &&
-    /room\.js\?v=3\.1\.3/.test(fs.readFileSync(path.join(base, 'room.html'), 'utf8')));
+    /media\.css\?v=3\.1\.4/.test(fs.readFileSync(path.join(base, 'room.html'), 'utf8')) &&
+    /media\.js\?v=3\.1\.4/.test(fs.readFileSync(path.join(base, 'room.html'), 'utf8')) &&
+    /room\.js\?v=3\.1\.4/.test(fs.readFileSync(path.join(base, 'room.html'), 'utf8')));
   t('تنسيق بديل واضح عند فشل تحميل الصورة بدلاً من أيقونة Safari المكسورة',
     /\.media-lightbox__img\[hidden\][\s\S]*?display:\s*none\s*!important/.test(mediaCss) &&
     /\.media-lightbox__error\[hidden\][\s\S]*?display:\s*none\s*!important/.test(mediaCss) &&
@@ -267,20 +267,41 @@ const run = async () => {
   /* ---------- 8) سلسلة البدائل: فشل المزوّد الأول ---------- */
   plan = [
     { fail: true },                                                       /* Supabase: فشل */
-    { status: 200, text: 'https://files.catbox.moe/abc123.png' }          /* Catbox: نجح */
+    { status: 200, text: 'https://0x0.st/abc123.png' }                      /* 0x0.st: نجح */
   ];
   byId.get('mediaInput').files = [image];
   byId.get('mediaInput').dispatch('change', {});
   await until(() => sandbox.WTRoom.media.attachments.length === 1 &&
     sandbox.WTRoom.media.attachments[0].status === 'done');
   const fallback = sandbox.WTRoom.media.attachments[0];
-  t('انتقل إلى المزوّد البديل تلقائياً', fallback && fallback.status === 'done' && fallback.media.provider === 'catbox',
+  t('انتقل إلى المزوّد البديل تلقائياً', fallback && fallback.status === 'done' && fallback.media.provider === '0x0',
     fallback && (fallback.media.provider + ' ' + fallback.status));
-  t('الرابط من الموقع البديل', fallback && fallback.media.url === 'https://files.catbox.moe/abc123.png');
+  t('الرابط من الموقع البديل', fallback && fallback.media.url === 'https://0x0.st/abc123.png');
   t('جرّب مزوّدين قبل النجاح', requests.length === 4, String(requests.length));
   sandbox.WTRoom.media.clearAttachments();
 
-  /* ---------- 8b) مزوّدو البدائل الجدد: Litterbox و Tmpfiles ---------- */
+  /* ---------- 8b) مزوّدو البدائل الجدد: 0x0.st و PixelDrain و Gofile و Oshi و Litterbox و Tmpfiles ---------- */
+  plan = [{ status: 200, text: 'https://0x0.st/xyz.png' }];
+  const zeroUrl = await sandbox.WTMedia.providers['0x0'].upload(image, {}, () => { });
+  t('0x0.st يعيد الرابط المباشر', zeroUrl === 'https://0x0.st/xyz.png', zeroUrl);
+  t('0x0.st غير مؤقّت (دائم)', sandbox.WTMedia.providers['0x0'].temporary !== true);
+
+  plan = [{ status: 200, text: '{"id":"abc123","url":"https://pixeldrain.com/u/abc123"}' }];
+  const pixUrl = await sandbox.WTMedia.providers.pixeldrain.upload(image, {}, () => { });
+  t('PixelDrain يبني رابطاً مباشراً من المعرّف', pixUrl === 'https://pixeldrain.com/api/file/abc123', pixUrl);
+
+  plan = [{ status: 200, text: '{"status":"success","data":{"servers":[{"name":"store1"}]}}' }, { status: 200, text: '{"status":"success","data":{"downloadPage":"https://gofile.io/d/xyz","directLink":"https://store1.gofile.io/download/xyz/file.png"}}' }];
+  const gofileUrl = await sandbox.WTMedia.providers.gofile.upload(image, {}, () => { });
+  t('Gofile يحصل على السيرفر ويرفع ويرجع رابطاً مباشراً', gofileUrl === 'https://store1.gofile.io/download/xyz/file.png', gofileUrl);
+
+  plan = [{ status: 200, text: 'https://oshi.at/ABC/holiday.png' }];
+  const oshiUrl = await sandbox.WTMedia.providers.oshi.upload(image, {}, () => { });
+  t('Oshi يعيد الرابط المباشر', oshiUrl === 'https://oshi.at/ABC/holiday.png', oshiUrl);
+
+  plan = [{ status: 200, text: '{"status":"success","link":"https://file.io/xyz123","key":"xyz123"}' }];
+  const fileioUrl = await sandbox.WTMedia.providers.fileio.upload(image, {}, () => { });
+  t('File.io يعيد الرابط المباشر من JSON', fileioUrl === 'https://file.io/xyz123', fileioUrl);
+
   plan = [{ status: 200, text: 'https://litter.catbox.moe/xyz789.png' }];
   const litUrl = await sandbox.WTMedia.providers.litterbox.upload(image, {}, () => { });
   t('Litterbox يعيد الرابط المباشر', litUrl === 'https://litter.catbox.moe/xyz789.png', litUrl);
