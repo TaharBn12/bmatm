@@ -17,7 +17,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800;900&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="assets/css/app.css?v=3.0.3">
+  <link rel="stylesheet" href="assets/css/app.css?v=4.0.1">
   <link rel="stylesheet" href="assets/css/media.css?v=3.1.5">
 </head>
 <body class="room-body">
@@ -25,42 +25,9 @@
   <div class="blob blob--a"></div>
   <div class="blob blob--b"></div>
 
-  <!-- =====================================================
-       بوابة الدخول بالاسم (لمن يفتح رابط الغرفة)
-       ===================================================== -->
-  <div class="gate" id="gate">
-    <div class="gate__card glass">
-      <div class="gate__logo"><span class="ic" data-icon="logo" data-size="32"></span></div>
-      <h1 class="gate__title">تمت دعوتك لمشاهدة جماعية</h1>
-
-      <div class="gate__room">
-        <span class="badge"><span class="ic" data-icon="film" data-size="14"></span> كود الغرفة</span>
-        <span class="gate__code" id="gateCode">------</span>
-      </div>
-
-      <p class="gate__text">أدخل اسمك للدخول — سيظهر اسمك في قائمة المنضمين وفي الرسائل.</p>
-
-      <div class="avatar-preview" id="avatarPreview">؟</div>
-
-      <form id="gateForm" autocomplete="off" novalidate>
-        <label class="label" for="gateName" style="text-align:right">اسمك</label>
-        <div class="field-wrap">
-          <span class="ic field-wrap__ic" data-icon="user" data-size="18"></span>
-          <input class="input input--pad" id="gateName" type="text" maxlength="24" placeholder="مثال: أمين" autofocus>
-        </div>
-        <p class="form-error" id="gateError" role="alert"></p>
-        <button class="btn btn--primary btn--lg btn--block" type="submit" id="gateSubmit">
-          <span class="ic" data-icon="login" data-size="18"></span> ادخل الغرفة
-        </button>
-      </form>
-
-      <div class="gate__links">
-        <a href="auth.html" id="gateAuthLink">
-          <span class="ic" data-icon="lock" data-size="15"></span> لديك حساب؟ سجّل الدخول
-        </a>
-        <a href="index.html"><span class="ic" data-icon="home" data-size="15"></span> الرئيسية</a>
-      </div>
-    </div>
+  <div class="room-auth-status" id="authStatus" role="status" aria-live="polite">
+    <span class="spinner" aria-hidden="true"></span>
+    <span>جارٍ التحقق من الحساب…</span>
   </div>
 
   <!-- =====================================================
@@ -390,13 +357,13 @@
   <!-- ===== سكربتات ===== -->
   <script src="assets/vendor/hls.min.js?v=3.0.0"></script>
   <script src="assets/vendor/qrcode.min.js?v=3.0.0"></script>
-  <script src="assets/js/config.js?v=3.1.1"></script>
+  <script src="assets/js/config.js?v=3.1.2"></script>
   <script src="assets/js/util.js?v=3.0.0"></script>
   <script src="assets/js/icons.js?v=3.1.1"></script>
-  <script src="assets/js/auth.js?v=3.0.0"></script>
-  <script src="assets/js/transport.js?v=3.1.0"></script>
+  <script src="assets/js/auth.js?v=3.2.0"></script>
+  <script src="assets/js/transport.js?v=3.2.0"></script>
   <script src="assets/js/player.js?v=3.0.0"></script>
   <script src="assets/js/media.js?v=3.1.5"></script>
-  <script src="assets/js/room.js?v=3.1.5"></script>
+  <script src="assets/js/room.js?v=3.2.1"></script>
 </body>
 </html>

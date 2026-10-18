@@ -36,7 +36,7 @@ assert.equal(emptyRoom.videoUrl, '');
 assert.match(emptyRoom.id, /^[A-Z0-9]{6}$/);
 const token = local.context.WTUtil.store.get('owner:' + emptyRoom.id);
 assert.match(token, /^[a-f0-9]{64}$/);
-assert.doesNotMatch(JSON.stringify(emptyRoom), /owner|token/i);
+assert.doesNotMatch(JSON.stringify(emptyRoom), /owner_token|member_token|ownerToken|memberToken|token/i);
 assert.doesNotMatch(local.rooms.href(emptyRoom), /auto=|host=|owner|token/i);
 assert.ok(local.rooms.href(emptyRoom).includes('local=1'));
 assert.equal((await local.rooms.list()).rooms.length, 1);
@@ -61,7 +61,31 @@ local.context.localStorage.removeItem('wt:local:presence:' + emptyRoom.id + ':cl
 assert.equal((await local.rooms.list()).rooms.find(r => r.id === emptyRoom.id).participantCount, 10);
 local.context.WTUtil.store.set('local:state:' + video.id, { url: 'https://media.example/queue.webm' });
 assert.equal((await local.rooms.list()).rooms.find(r => r.id === video.id).videoUrl, 'https://media.example/queue.webm', 'cover follows the current queued video');
-checks++;
+
+local.context.WTUtil.randomCode = () => 'MNG123';
+const managed = await local.rooms.create({ title: 'غرفة إدارة' });
+await local.rooms.update(managed.id, { title: 'غرفة معدّلة', isPrivate: true, controlMode: 'everyone' });
+const privateManaged = (await local.rooms.list()).rooms.find(room => room.id === managed.id);
+assert.equal(privateManaged.title, 'غرفة معدّلة');
+assert.equal(privateManaged.isPrivate, true, 'private local rooms remain visible to their owner');
+assert.equal(privateManaged.controlMode, 'everyone');
+local.context.WTUtil.store.set('local:queue:' + managed.id, [{ id: 'q1', url: 'https://media.example/queued.mp4' }]);
+assert.equal((await local.rooms.management(managed.id)).queueCount, 1);
+await assert.rejects(local.rooms.update(managed.id, { videoUrl: 'https://media.example/replacement.mp4' }), /قائمة التشغيل/);
+local.context.WTUtil.store.del('local:queue:' + managed.id);
+await local.rooms.update(managed.id, { videoUrl: 'https://media.example/replacement.mp4' });
+assert.equal(local.context.WTUtil.store.get('local:state:' + managed.id).url, 'https://media.example/replacement.mp4');
+const reporter = '11111111-1111-4111-8111-111111111111';
+await local.rooms.report(managed.id, reporter, 'spam', 'محتوى مزعج');
+assert.equal(local.context.WTUtil.store.get('local:reports')[0].reporterId, reporter);
+local.context.localStorage.setItem('wt:local:presence:' + managed.id + ':active', JSON.stringify({ name: 'مشارك', lastSeen: Date.now() }));
+await local.rooms.remove(managed.id);
+assert.equal((await local.rooms.list()).rooms.some(room => room.id === managed.id), false);
+assert.equal(local.context.WTUtil.store.get('owner:' + managed.id), undefined);
+assert.equal(local.context.WTUtil.store.get('local:state:' + managed.id), undefined);
+assert.equal(local.context.WTUtil.store.get('local:reports').length, 0, 'deleting a local room clears its reports');
+assert.equal(local.context.localStorage.getItem('wt:local:presence:' + managed.id + ':active'), null, 'permanent local deletion removes dependent records');
+checks += 5;
 
 /* Shared list and creation RPC: another browser, not shared localStorage, sees the room. */
 const serverRooms = [], serverPeople = [], writes = [], requests = [];
@@ -107,6 +131,48 @@ assert.equal(missingPresence.presenceKnown, false, 'attendance outage must not b
 assert.equal(missingPresence.participantCount, null);
 presenceDenied = false;
 checks++;
+
+/* Owner management RPCs use the signed-in identity and never expose the private key. */
+const managementStorage = storage();
+const managementToken = 'c'.repeat(64);
+managementStorage.setItem('wt:owner:SUP123', JSON.stringify(managementToken));
+const managementUser = { id: '22222222-2222-4222-8222-222222222222', name: 'صاحب الغرفة' };
+const managementSession = { access_token: 'signed-in-jwt', user: managementUser, expires_at: Date.now() + 3600000 };
+const managementCalls = [];
+const serverRoom = { room_id: 'SUP123', title: 'غرفة خاصة', video_url: 'https://media.example/private.mp4',
+  created_at: new Date().toISOString(), is_private: true, control_mode: 'everyone', queue_count: 2 };
+const managedSupabase = make({
+  config: { ...sbConfig, auth: { required: true } }, storage: managementStorage,
+  fetch: async (url, options = {}) => {
+    const name = String(url).split('/').pop();
+    const auth = options.headers && options.headers.Authorization;
+    managementCalls.push({ name, auth, body: options.body ? JSON.parse(options.body) : null });
+    if (name === 'wt_room_management') return response(serverRoom);
+    if (name === 'wt_update_room') {
+      Object.assign(serverRoom, { title: 'غرفة معدّلة', is_private: false, control_mode: 'owner' });
+      return response(serverRoom);
+    }
+    if (name === 'wt_report_room') return response({ ok: true });
+    if (name === 'wt_delete_room') return response({ ok: true, deleted: true });
+    return response({ message: 'unknown management RPC' }, 404);
+  }
+});
+managedSupabase.context.WTAuth = {
+  validSession: async () => managementSession,
+  getSession: () => managementSession
+};
+const managementDetails = await managedSupabase.rooms.management('SUP123');
+assert.equal(managementDetails.queueCount, 2);
+assert.equal(managementDetails.controlMode, 'everyone');
+await managedSupabase.rooms.update('SUP123', { title: 'غرفة معدّلة', isPrivate: false, controlMode: 'owner' });
+assert.equal(managementCalls.find(call => call.name === 'wt_update_room').auth, 'Bearer signed-in-jwt');
+assert.equal(managementCalls.find(call => call.name === 'wt_update_room').body.p_is_private, false);
+await managedSupabase.rooms.report('SUP123', managementUser.id, 'spam', 'تفاصيل');
+assert.equal(managementCalls.find(call => call.name === 'wt_report_room').auth, 'Bearer signed-in-jwt');
+await managedSupabase.rooms.remove('SUP123');
+assert.equal(managementCalls.find(call => call.name === 'wt_delete_room').body.p_owner_token, managementToken);
+assert.equal(managementStorage.getItem('wt:owner:SUP123'), null, 'successful permanent deletion destroys the local owner key');
+checks += 4;
 
 /* A failed backend write must not manufacture a successful card/local room. */
 const denied = make({ config: sbConfig, fetch: async () => response({ message: 'رفض الطلب' }, 403) });

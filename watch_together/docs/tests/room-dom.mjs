@@ -4,7 +4,7 @@
    ========================================================= */
 import fs from 'fs';
 import path from 'path';
-import { createRoomEnv, wait, base } from './harness.mjs';
+import { createRoomEnv, wait, base, setAccountName } from './harness.mjs';
 
 let pass = 0, fail = 0;
 const errors = [];
@@ -20,6 +20,7 @@ const env = createRoomEnv({
 const { sandbox, documentStub, byId, store, html } = env;
 env.sandbox.WT_CONFIG.javaServer.enabled = false;
 env.sandbox.WT_CONFIG.supabase.ready = false;
+setAccountName(env, 'أمين بن علي');
 
 env.loaded.forEach(l => t(`تحميل ${path.basename(l.file)}`, l.ok, l.ok ? '' : l.error.message));
 env.loaded.filter(l => !l.ok).forEach(l => console.log(l.error && l.error.stack));
@@ -27,9 +28,9 @@ env.loaded.filter(l => !l.ok).forEach(l => console.log(l.error && l.error.stack)
 const run = async () => {
   await wait(100);
 
+  setAccountName(env, 'أمين بن علي');
   const needed = [
-    'gate', 'gateCode', 'gateName', 'gateForm', 'gateError', 'gateSubmit', 'avatarPreview',
-    'room', 'roomSub', 'roomCodeText', 'copyCodeBtn', 'statusBadge', 'statusText',
+    'authStatus', 'room', 'roomSub', 'roomCodeText', 'copyCodeBtn', 'statusBadge', 'statusText',
     'copyLinkBtn', 'shareBtn', 'qrBtn', 'diagBtn', 'leaveBtn', 'drawerOpenBtn', 'drawerCloseBtn',
     'drawerScrim', 'roomDrawer', 'organizerList', 'organizerCount', 'membersList', 'membersCount',
     'sideMembersCount', 'stage', 'player', 'playerPlaceholder', 'ctrlbar', 'videoFullscreenBtn',
@@ -91,21 +92,13 @@ const run = async () => {
   t('مفتاح المنشئ ليس ضمن رابط الدعوة', !/ownerToken|owner_token/i.test(html));
   t('أيقونات SVG مستخدمة', (html.match(/data-icon="/g) || []).length >= 35);
 
-  t('بوابة الاسم ظاهرة أولاً', byId.get('gate').hidden === false);
-  t('الغرفة مخفية قبل الدخول', byId.get('room').hidden === true);
-  t('كود الغرفة ظاهر في البوابة والدرّاور', byId.get('gateCode').textContent === 'ABC123' && byId.get('roomCodeText').textContent === 'ABC123');
+  t('بوابة الاسم ونموذج الضيف محذوفان نهائياً', !byId.has('gate') && !byId.has('gateForm') && !/id="guestForm"/.test(html));
+  t('شاشة التحقق لا تطلب اسماً ولا تمنع الدخول بالحساب', !!byId.get('authStatus') && /جارٍ التحقق من الحساب/.test(html));
+  t('كود الغرفة ظاهر في الدرّاور', byId.get('roomCodeText').textContent === 'ABC123');
 
-  byId.get('gateName').value = 'أ';
-  byId.get('gateForm').dispatch('submit', {});
-  t('يرفض الاسم القصير', byId.get('gateError').textContent.length > 0);
-  byId.get('gateName').value = 'أمين بن علي';
-  byId.get('gateName').dispatch('input', {});
-  t('صورة الاسم تتحدث', byId.get('avatarPreview').textContent.length > 0);
-
-  byId.get('gateForm').dispatch('submit', {});
   await wait(450);
-  t('البوابة تختفي والغرفة تظهر', byId.get('gate').hidden && !byId.get('room').hidden);
-  t('الاسم حُفظ محلياً', store['wt:name'] === '"أمين بن علي"', String(store['wt:name']));
+  t('الحساب يدخل مباشرةً دون بوابة اسم', !byId.get('room').hidden && byId.get('authStatus').hidden);
+  t('الهوية تأتي من الحساب المسجّل', sandbox.WTRoom.session.name === 'أمين بن علي');
   t('مؤشر الاتصال المحلي ظاهر', byId.get('statusText').textContent === 'محلي فقط', byId.get('statusText').textContent);
   t('مؤشر اتصال صغير فقط في رأس الغرفة', !!byId.get('statusBadge').querySelector('.dot'));
   t('المستخدم الحالي منشئ ويملك التحكم', sandbox.WTRoom.session.role === 'owner' && !byId.get('centerPlayBtn').disabled, sandbox.WTRoom.session.role);
@@ -189,8 +182,7 @@ const run = async () => {
   const unsafe = createRoomEnv({ search: '?id=NOAUTH1&host=1' });
   unsafe.sandbox.WT_CONFIG.javaServer.enabled = false;
   unsafe.sandbox.WT_CONFIG.supabase.ready = false;
-  unsafe.byId.get('gateName').value = 'زائر';
-  unsafe.byId.get('gateForm').dispatch('submit', {});
+  setAccountName(unsafe, 'مشارك');
   await wait(250);
   t('host=1 لا ينشئ مفتاح مالك ولا يرفع دور الزائر', unsafe.sandbox.WTRoom.session.role === 'viewer');
 

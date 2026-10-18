@@ -223,7 +223,8 @@
           self.emit('roles', msg.members || []);
           self.emit('queue', msg.queue || []);
           resolve({ state: msg.state || null, messages: msg.messages || [], members: msg.members || [],
-            roles: msg.members || [], queue: msg.queue || [], role: self.role });
+            roles: msg.members || [], queue: msg.queue || [], role: self.role, controlMode: msg.controlMode || 'owner',
+            room: msg.roomInfo || (msg.room && typeof msg.room === 'object' ? msg.room : null) });
           return;
         }
         if (msg.type === 'state') {
@@ -241,6 +242,7 @@
         if (msg.type === 'members') return self.emit('members', msg.members || []);
         if (msg.type === 'roles') return self.emit('roles', msg.roles || []);
         if (msg.type === 'queue') return self.emit('queue', msg.items || []);
+        if (msg.type === 'settings') return self.emit('settings', msg);
         if (msg.type === 'system') return self.emit('system', msg);
         if (msg.type === 'error') return self.emit('error', Object.assign({ permission: msg.code === 'permission' }, msg));
       };
@@ -342,6 +344,17 @@
   }
   SupabaseTransport.prototype = Object.create(makeBase.prototype);
 
+  SupabaseTransport.prototype._accessToken = function () {
+    try {
+      const auth = global.WTAuth, session = auth && auth.getSession && auth.getSession();
+      if (session) {
+        return session.access_token && session.user && session.user.id && !session.user.guest
+          && (!session.expires_at || session.expires_at > Date.now()) ? session.access_token : this.cfg.anonKey;
+      }
+    } catch (_) { /* Fall back to the session captured at room entry. */ }
+    return (this.meta && this.meta.accessToken) || this.cfg.anonKey;
+  };
+
   SupabaseTransport.prototype._fetch = function (path, options) {
     options = options || {};
     const self = this;
@@ -349,9 +362,11 @@
 
     /* مهلة قصوى للطلب: يمنع تعليق الاتصال لو الشبكة اختنقت */
     let ctrl = null, timer = null;
+    const headers = Object.assign({}, this.headers, options.headers || {});
+    headers.Authorization = 'Bearer ' + this._accessToken();
     const init = {
       method: options.method || 'GET',
-      headers: Object.assign({}, this.headers, options.headers || {}),
+      headers,
       body: options.body ? JSON.stringify(options.body) : undefined,
       keepalive: !!options.keepalive
     };
@@ -394,6 +409,20 @@
     return this._fetch('/rest/v1/rpc/' + encodeURIComponent(name), Object.assign({ method: 'POST', body }, options || {}));
   };
 
+  SupabaseTransport.prototype._roomSnapshot = function () {
+    const self = this;
+    const args = { p_room_id: this.roomId, p_client_id: this.meta.clientId,
+      p_member_token: this.meta.memberToken || this.meta.ownerToken };
+    return this._rpc('wt_room_snapshot', args).catch(error => {
+      /* Compatibility with databases predating the invite-only snapshot RPC.
+         Private-room support requires docs/sql/04-room-management.sql. */
+      if (!error || (error.status !== 404 && error.code !== 'PGRST202')) throw error;
+      const query = `/rest/v1/rooms?room_id=eq.${encodeURIComponent(self.roomId)}&select=state,video_url,host_name,title,control_mode,is_private,updated_at&limit=1`;
+      return self._fetch(query).catch(() => self._fetch(`/rest/v1/rooms?room_id=eq.${encodeURIComponent(self.roomId)}&select=state,video_url,host_name&limit=1`))
+        .then(rows => (rows && rows[0]) || null);
+    });
+  };
+
   SupabaseTransport.prototype._loadRoom = function (initial) {
     const self = this;
     const meta = this.meta || {};
@@ -423,8 +452,7 @@
         return { state: null, messages: [], queue: [], roles: [], role: 'viewer', found: false, serverTime: join.serverTime, keepTransport: true };
       }
       return Promise.all([
-        this._fetch(`/rest/v1/rooms?room_id=eq.${encodeURIComponent(self.roomId)}&select=state,video_url,host_name&limit=1`)
-          .then(rows => (rows && rows[0]) || null),
+        this._roomSnapshot().then(row => row || null),
         this._fetch(`/rest/v1/messages?room_id=eq.${encodeURIComponent(self.roomId)}&select=*&order=id.desc&limit=100`)
           .then(rows => {
             const list = (rows || []).slice().reverse();
@@ -450,6 +478,7 @@
           .catch(() => [])
       ]).then(([row, messages, roles, queue]) => {
         const state = row && row.state ? row.state : null;
+        self._controlMode = row && row.control_mode === 'everyone' ? 'everyone' : 'owner';
         self._lastStateSig = state ? U.stateSig(state) : null;
         self._found = !!row;
         self._initialized = true;
@@ -463,7 +492,9 @@
         return {
           state, messages, queue: queue || [], roles: roles || join.members || [],
           role: join.role || 'viewer', found: !!row, serverTime: join.serverTime, keepTransport: true,
-          room: { videoUrl: row && row.video_url, hostName: row && row.host_name }
+          controlMode: row && row.control_mode,
+          room: row && { title: row.title, videoUrl: row.video_url, hostName: row.host_name,
+            isPrivate: !!row.is_private, controlMode: row.control_mode }
         };
       });
     });
@@ -472,6 +503,7 @@
   SupabaseTransport.prototype.connect = function (roomId, meta) {
     const self = this;
     this.roomId = roomId; this.meta = meta || {};
+    if (this.meta.accessToken) this.headers.Authorization = 'Bearer ' + this.meta.accessToken;
     this._setStatus('connecting');
     this._bindRecoveryEvents();
 
@@ -758,7 +790,7 @@
     try { if (global.document && global.document.hidden) return Promise.resolve(false); } catch (e) { }
     this._pollBusy = true;
 
-    const stateReq = this._fetch(`/rest/v1/rooms?room_id=eq.${encodeURIComponent(this.roomId)}&select=state,updated_at&limit=1`);
+    const stateReq = this._roomSnapshot();
     const msgReq = this._msgsReady
       ? this._fetch(`/rest/v1/messages?room_id=eq.${encodeURIComponent(this.roomId)}&select=*&order=id.asc&limit=50&id=gt.${this._lastMsgId || 0}`).catch(() => [])
       : Promise.resolve([]);
@@ -771,8 +803,10 @@
       self._restConnected = true;
       if (self.status !== 'online') self._setStatus('online', self._realtimeConnected ? 'متصل بـ Supabase Realtime' : 'متصل — المزامنة الاحتياطية تعمل');
       self.lastError = null;
-      const row = rows && rows[0];
+      const row = rows && !Array.isArray(rows) ? rows : rows && rows[0];
       if (row) {
+        const controlMode = row.control_mode === 'everyone' ? 'everyone' : 'owner';
+        if (controlMode !== self._controlMode) { self._controlMode = controlMode; self.emit('settings', { controlMode }); }
         self._found = true;
         if (row.state) {
           const sig = U.stateSig(row.state);
@@ -855,7 +889,7 @@
       if (ws.readyState === 1) ws.send(JSON.stringify({ topic, event, payload: payload || {}, ref: event === 'heartbeat' ? String(++self._seq) : null }));
     };
 
-    ws.onopen = () => send('phx_join', Object.assign({ access_token: self.cfg.anonKey }, cfgPayload));
+    ws.onopen = () => send('phx_join', Object.assign({ access_token: self._accessToken() }, cfgPayload));
     ws.onmessage = (ev) => {
       if (generation !== self._realtimeGeneration) return;
       let msg; try { msg = JSON.parse(ev.data); } catch (e) { return; }
@@ -883,8 +917,11 @@
           self.emit('chat', { id: String(rec.id), name: rec.name, text: msgText(rec),
             ts: Date.parse(rec.created_at) || Date.now(), kind: rec.kind || 'chat', client: rec.client_id || null,
             media: mediaFromRow(rec) });
-        } else if (c.table === 'rooms' && rec.state) {
+        } else if (c.table === 'rooms') {
+          const controlMode = rec.control_mode === 'everyone' ? 'everyone' : 'owner';
+          if (controlMode !== self._controlMode) { self._controlMode = controlMode; self.emit('settings', { controlMode }); }
           self._found = true;
+          if (!rec.state) return;
           const sig = U.stateSig(rec.state);
           if (sig !== self._lastStateSig) { self._lastStateSig = sig; self.emit('state', rec.state); }
         } else if (c.table === 'room_members') {
@@ -941,9 +978,8 @@
       const permission = err && (err.status === 401 || err.status === 403 || err.code === '42501');
       if (permission) {
         self._pendingState = null;
-        self._fetch(`/rest/v1/rooms?room_id=eq.${encodeURIComponent(self.roomId)}&select=state&limit=1`)
-          .then(rows => {
-            const canonical = rows && rows[0] && rows[0].state;
+        self._roomSnapshot().then(snapshot => {
+            const canonical = snapshot && snapshot.state;
             if (canonical) {
               self._lastStateSig = U.stateSig(canonical);
               self.emit('state', Object.assign({}, canonical, { authoritative: true }));

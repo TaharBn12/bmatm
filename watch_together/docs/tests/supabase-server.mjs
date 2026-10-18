@@ -14,7 +14,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import http from 'http';
-import { createRoomEnv, wait, base } from './harness.mjs';
+import { createRoomEnv, wait, base, setAccountName } from './harness.mjs';
 import { ROOT, readConfig, writeConfig, bumpVersion, pickAnonKey, doctorProject, bootstrapSql, repairSql } from '../../tools/sbctl.mjs';
 
 let pass = 0, fail = 0;
@@ -169,8 +169,7 @@ async function testPartialProject() {
   env.sandbox.WT_CONFIG.sync.pollMs = 120;
   env.sandbox.WT_CONFIG.sync.persistMs = 300;
 
-  env.byId.get('gateName').value = 'أمين';
-  env.byId.get('gateForm').dispatch('submit', {});
+  setAccountName(env, 'أمين');
   await wait(400);
 
   t('مشروع ناقص: ما زال متصلاً بـ Supabase (لم يسقط للوضع المحلي)',
@@ -298,8 +297,7 @@ async function testLegacyMessagesTable() {
   });
   env.sandbox.WT_CONFIG.sync.pollMs = 120;
 
-  env.byId.get('gateName').value = 'أمين';
-  env.byId.get('gateForm').dispatch('submit', {});
+  setAccountName(env, 'أمين');
   await wait(400);
 
   t('جدول قديم: الغرفة متصلة رغم شكل الجدول (لا سقوط للوضع المحلي)',
@@ -658,8 +656,7 @@ async function testRoomDiagnostics() {
   });
   env.sandbox.WT_CONFIG.sync.pollMs = 500;
 
-  env.byId.get('gateName').value = 'أمين';
-  env.byId.get('gateForm').dispatch('submit', {});
+  setAccountName(env, 'أمين');
   await wait(350);
 
   t('غرفة: زر التشخيص موجود', !!env.byId.get('diagBtn'));

@@ -10,11 +10,10 @@
 
   const el = {
     tabLogin: $('tabLogin'), tabSignup: $('tabSignup'),
-    loginForm: $('loginForm'), signupForm: $('signupForm'), guestForm: $('guestForm'),
+    loginForm: $('loginForm'), signupForm: $('signupForm'),
     loginEmail: $('loginEmail'), loginPass: $('loginPass'), loginError: $('loginError'), loginBtn: $('loginBtn'),
     signupName: $('signupName'), signupEmail: $('signupEmail'), signupPass: $('signupPass'),
     signupError: $('signupError'), signupBtn: $('signupBtn'),
-    guestName: $('guestName'), guestBtn: $('guestBtn'),
     meterFill: $('meterFill'), meterLabel: $('meterLabel')
   };
 
@@ -34,21 +33,17 @@
     return 'index.html';
   }
 
-  /* ---------- إن كان مسجلاً مسبقاً → حوّله مباشرة ---------- */
+  /* ---------- إن كان لديه حساب صالح → حوّله مباشرة ---------- */
   (async function autoForward() {
-    await Auth.validSession();
-    const u = Auth.currentUser(), session = Auth.getSession();
-    if (!params.has('reauth') && u && u.id && !u.guest && session.access_token && (!session.expires_at || session.expires_at > Date.now())) {
-      if (el.guestName) el.guestName.value = u.name || '';
+    const session = await Auth.validSession();
+    const user = session && session.user;
+    if (!params.has('reauth') && session && session.access_token && user && user.id && !user.guest) {
       U.toast('أنت مسجّل الدخول بالفعل — جارٍ التحويل…', 'success', 1500);
       setTimeout(() => location.replace(destination()), 700);
-    } else if (u && u.name && el.guestName) {
-      el.guestName.value = u.name;
-    } else {
-      const saved = U.store.get('name', '');
-      if (saved && el.guestName) el.guestName.value = saved;
-      if (saved && el.signupName) el.signupName.value = saved;
+      return;
     }
+    const saved = U.store.get('name', '');
+    if (saved && el.signupName) el.signupName.value = saved;
   })();
 
   /* ---------- تبديل التبويبات ---------- */
@@ -181,18 +176,6 @@
       fail(el.signupError, err);
       setLoading(el.signupBtn, false);
     }
-  });
-
-  /* ---------- دخول كضيف ---------- */
-  el.guestForm.addEventListener('submit', (e) => {
-    e.preventDefault();
-    let name = U.cleanName(el.guestName.value);
-    if (name.length < 2) {
-      name = 'ضيف-' + U.randomCode(4);
-      U.toast('لم تدخل اسماً — استخدمنا «' + name + '»', 'warn');
-    }
-    const g = Auth.signInAsGuest(name);
-    afterAuth(g.user, 'أهلاً ' + g.user.name + ' ✓');
   });
 
   /* ---------- Enter ينتقل بين الحقول ---------- */

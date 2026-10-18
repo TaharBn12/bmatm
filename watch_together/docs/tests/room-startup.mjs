@@ -1,6 +1,6 @@
 /* Regression: room controls must work before authentication/network/media finish. */
 import assert from 'node:assert/strict';
-import { createRoomEnv, wait } from './harness.mjs';
+import { createRoomEnv, wait, setAccountName } from './harness.mjs';
 
 const envs = [];
 const make = (options = {}) => {
@@ -9,10 +9,7 @@ const make = (options = {}) => {
   assert.deepEqual(env.loaded.filter(s => !s.ok), [], 'all room scripts load');
   return env;
 };
-const enter = env => {
-  env.byId.get('gateName').value = 'فاحص الغرفة';
-  env.byId.get('gateForm').dispatch('submit');
-};
+const enter = env => setAccountName(env, 'فاحص الغرفة');
 const click = (env, id) => env.byId.get(id).dispatch('click');
 const account = {
   access_token: 'expired-test-token', refresh_token: 'test-refresh', expires_at: 1,
@@ -42,7 +39,7 @@ try {
   click(pending, 'messagesBtn');
   await wait(110);
   assert.equal(pending.byId.get('chatInput')._focused, undefined, 'cancelled focus mode must not steal focus');
-  finishAuth({ ...account });
+  finishAuth({ ...account, expires_at: Date.now() + 3600000 });
   await wait(30);
   assert.equal(pending.sandbox.WTRoom.session.userId, 'account-1', 'use session.user, not session.id');
   assert.equal(pending.sandbox.WTRoom.session.isGuest, false);
@@ -53,7 +50,7 @@ try {
     () => new Promise(() => {}),
     async () => ({ ok: true, json: () => new Promise(() => {}) })
   ]) {
-    const env = make({ store: { 'wt:session': JSON.stringify(account) }, fetch });
+    const env = make({ store: { 'wt:session': JSON.stringify({ ...account, expires_at: Date.now() + 30000 }) }, fetch });
     env.sandbox.WT_CONFIG.auth.timeoutMs = 30;
     enter(env);
     click(env, 'qrBtn');
@@ -106,42 +103,36 @@ try {
 
   /* Signed-in accounts enter any invitation/card without ?auto=1 or a gate submit. */
   const signedIn = make({ store: { 'wt:session': JSON.stringify({ ...account, expires_at: Date.now() + 3600000 }) } });
-  assert.equal(signedIn.byId.get('gate').hidden, true);
+  assert.equal(signedIn.byId.has('gate'), false, 'the name gate is removed from room markup');
   await wait(35);
   assert.equal(signedIn.sandbox.WTRoom.session.ready, true);
   assert.equal(signedIn.sandbox.WTRoom.session.name, account.user.name);
   assert.equal(signedIn.sandbox.WTRoom.session.isGuest, false);
   checks++;
 
-  /* A saved guest and old creator/auto hints cannot bypass name confirmation. */
+  /* A legacy guest session is cleared and redirected to account auth; no name prompt exists. */
   const guest = make({
-    search: '?id=START1&local=1&auto=1',
+    search: '?id=START1&local=1&auto=1', noAuth: true,
     store: { 'wt:session': JSON.stringify({ user: { id: 'guest-test', name: 'اسم محفوظ', guest: true } }) },
     session: { 'wt:create:START1': JSON.stringify({ name: 'اسم المنشئ القديم', host: true, ownerToken: 'a'.repeat(64) }) }
   });
   await wait(35);
-  assert.equal(guest.byId.get('gate').hidden, false);
+  assert.equal(guest.byId.has('gate'), false);
   assert.equal(guest.sandbox.WTRoom.session.ready, false);
-  enter(guest);
-  await wait(35);
-  assert.equal(guest.sandbox.WTRoom.session.ready, true);
-  assert.equal(guest.sandbox.WTRoom.session.userId, null, 'guest IDs must not be written into a UUID user_id column');
-  assert.equal(guest.sandbox.WTRoom.session.isGuest, true);
+  assert.equal(guest.sandbox.location.href.startsWith('auth.html?next='), true, 'guest is redirected to sign-in');
+  assert.equal(guest.sandbox.WTAuth.getSession(), null, 'legacy guest identity is discarded');
   checks++;
 
-  /* An invalidated account returns to the name gate instead of entering under stale identity. */
+  /* An invalidated account returns to login instead of silently entering with an arbitrary name. */
   const invalid = make({
     store: { 'wt:session': JSON.stringify(account) },
     fetch: async () => ({ ok: false, status: 401, json: async () => ({ message: 'Invalid refresh token' }) })
   });
   await wait(40);
   assert.equal(invalid.sandbox.WTRoom.session.ready, false);
-  assert.equal(invalid.byId.get('gate').hidden, false);
+  assert.equal(invalid.byId.has('gate'), false);
   assert.equal(invalid.byId.get('room').hidden, true);
-  enter(invalid);
-  await wait(35);
-  assert.equal(invalid.sandbox.WTRoom.session.ready, true);
-  assert.equal(invalid.sandbox.WTRoom.session.isGuest, true);
+  assert.equal(invalid.sandbox.location.href.startsWith('auth.html?next='), true);
   checks++;
 
   /* A live card counts joined tabs, not historical roles; a tab switch is not leaving. */

@@ -248,6 +248,10 @@ export function createRoomEnv(o = {}) {
     clearInterval(id) { clearInterval(id); intervals.delete(id); }
   };
   const store = o.store || {};
+  if (!o.noAuth && !Object.prototype.hasOwnProperty.call(store, 'wt:session')) {
+    store['wt:session'] = JSON.stringify({ access_token: 'test-account-access-token', refresh_token: '', expires_at: Date.now() + 3600000,
+      user: { id: '11111111-1111-4111-8111-111111111111', name: 'مستخدم اختبار', email: 'test@example.com' } });
+  }
   const localStorageStub = {
     getItem: k => (k in store ? store[k] : null),
     setItem: (k, v) => { store[k] = String(v); },
@@ -352,3 +356,14 @@ export function createRoomEnv(o = {}) {
 }
 
 export const wait = (ms) => new Promise(r => setTimeout(r, ms));
+
+/** Update the authenticated profile identity in a test tab; room entry itself is automatic. */
+export function setAccountName(env, name) {
+  const auth = env && env.sandbox && env.sandbox.WTAuth;
+  const session = auth && auth.getSession && auth.getSession();
+  if (!session || !session.user) return false;
+  session.user.name = String(name || 'مستخدم اختبار');
+  env.sandbox.WTUtil.store.set('session', session);
+  if (env.sandbox.WTRoom && env.sandbox.WTRoom.session) env.sandbox.WTRoom.session.name = session.user.name;
+  return true;
+}

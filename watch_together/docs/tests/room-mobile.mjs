@@ -12,7 +12,7 @@
    ========================================================= */
 import fs from 'fs';
 import path from 'path';
-import { createRoomEnv, wait, base } from './harness.mjs';
+import { createRoomEnv, wait, base, setAccountName } from './harness.mjs';
 
 let pass = 0, fail = 0;
 const errors = [];
@@ -459,8 +459,8 @@ for (const v of VIEWPORTS) {
     evalLength(val(byIdProbe('chatInput'), 'font-size', ctx), ctx) === 16, val(byIdProbe('chatInput'), 'font-size', ctx));
   t('لوحة مفاتيح الهاتف لا تغطّي خانة الكتابة (interactive-widget=resizes-content)',
     /interactive-widget=resizes-content/.test(roomHtml + indexHtml + authHtml));
-  t('حقول النموذج 16px على اللمس (منع تكبير iOS في البوابة والإعدادات)',
-    evalLength(val(byIdProbe('gateName'), 'font-size', ctx), ctx) === 16, val(byIdProbe('gateName'), 'font-size', ctx));
+  t('حقول الغرفة 16px على اللمس (منع تكبير iOS)',
+    evalLength(val(byIdProbe('chatInput'), 'font-size', ctx), ctx) === 16, val(byIdProbe('chatInput'), 'font-size', ctx));
   const modalCard = byIdProbe('diagModal').children.find(c => c.classes.includes('modal__card')) || byIdProbe('diagModal');
   t('بطاقة النافذة على الهاتف محدودة الارتفاع وقابلة للتمرير',
     /dvh/.test(val(modalCard, 'max-height', ctx)) && ['auto', 'scroll'].includes(val(modalCard, 'overflow-y', ctx)),
@@ -482,21 +482,20 @@ for (const v of VIEWPORTS) {
     t(`[${view.name}] بطاقة المشغّل لا تتجاوز 100%`, /100%/.test(stageW), stageW);
   }
   const chatBodyEl = byIdProbe('chatBody');
-  t('نافذة الرسائل ثابتة لأربع رسائل قصيرة حتى قبل وصول الرسائل',
-    val(chatBodyEl, 'height', ctx) === '154px' && val(chatBodyEl, 'min-height', ctx) === '0',
-    `${val(chatBodyEl, 'height', ctx)} / ${val(chatBodyEl, 'min-height', ctx)}`);
-  t('حشو قائمة الرسائل في الغرفة يساوي صفراً',
-    val(chatBodyEl, 'padding', ctx) === '0', val(chatBodyEl, 'padding', ctx));
+  const chatFlex = val(chatEl, 'flex', ctx);
+  t('بطاقة الرسائل مرنة وتملأ المساحة المتبقية داخل الغرفة',
+    chatFlex === '1 1 0%' && val(chatEl, 'height', ctx) === 'auto' && val(chatEl, 'min-height', ctx) === '0',
+    `${chatFlex} / ${val(chatEl, 'height', ctx)} / ${val(chatEl, 'min-height', ctx)}`);
+  const bodyFlex = val(chatBodyEl, 'flex', ctx);
+  t('قائمة الرسائل تتمدد داخل البطاقة بدلاً من فرض ارتفاع ثابت',
+    bodyFlex === '1 1 0%' && val(chatBodyEl, 'height', ctx) === 'auto' && val(chatBodyEl, 'min-height', ctx) === '0',
+    `${bodyFlex} / ${val(chatBodyEl, 'height', ctx)} / ${val(chatBodyEl, 'min-height', ctx)}`);
   const messageRow = { tag: 'div', id: '', classes: ['msg'], attrs: {}, children: [], parent: chatBodyEl };
-  const rowHeight = evalLength(val(messageRow, 'min-height', ctx), ctx);
-  const rowGap = evalLength(val(chatBodyEl, 'gap', ctx), ctx);
-  t('أربع رسائل قصيرة بالضبط تملأ النافذة (لا خامسة)',
-    rowHeight > 0 && rowGap >= 0 && 4 * rowHeight + 3 * rowGap === evalLength(val(chatBodyEl, 'height', ctx), ctx),
-    `${rowHeight}px × 4 + ${rowGap}px × 3`);
+  t('صفوف الرسائل لا تنكمش داخل مساحة التمرير',
+    val(messageRow, 'flex-shrink', ctx) === '0' && evalLength(val(messageRow, 'min-height', ctx), ctx) === 34,
+    `${val(messageRow, 'flex-shrink', ctx)} / ${val(messageRow, 'min-height', ctx)}`);
   t('الرسائل القديمة والطويلة تبقى قابلة للتمرير داخل نافذة المحادثة',
     val(chatBodyEl, 'overflow-y', ctx) === 'auto', val(chatBodyEl, 'overflow-y', ctx));
-  t('بطاقة الرسائل لا تتمدد مع عدد الرسائل',
-    val(chatEl, 'flex', ctx) === '0 0 auto', val(chatEl, 'flex', ctx));
 
   /* القرب الفعلي: المسافة بين المشغّل والرسائل على الهاتف */
   for (const dev of [{ n: 'هاتف صغير', w: 360, h: 640 }, { n: 'هاتف مقلوب', w: 844, h: 390 }]) {
@@ -618,11 +617,9 @@ const env = createRoomEnv({
 });
 env.sandbox.WT_CONFIG.javaServer.enabled = false;
 env.sandbox.WT_CONFIG.supabase.ready = false;
-await wait(100);
-env.byId.get('gateName').value = 'أمين بن علي';
-env.byId.get('gateForm').dispatch('submit', {});
+setAccountName(env, 'أمين بن علي');
 await wait(500);
-t('الدخول من الهاتف يفتح الغرفة', !env.byId.get('room').hidden && env.byId.get('gate').hidden);
+t('دخول الحساب من الهاتف يفتح الغرفة مباشرةً دون بوابة اسم', !env.byId.get('room').hidden && env.byId.get('authStatus').hidden);
 
 const drawer = env.byId.get('roomDrawer');
 const body = env.documentStub.body;

@@ -44,6 +44,7 @@
   try { sessionStorage.setItem('wt:identity:' + roomId, JSON.stringify({ clientId, memberToken })); } catch (e) { }
 
   /* ============================== الجلسة ============================== */
+  let roomAccessToken = '';
   const session = {
     clientId,
     memberToken,
@@ -54,7 +55,8 @@
     roles: {},
     name: '',
     userId: null,
-    isGuest: true,
+    isGuest: false,
+    controlMode: 'owner',
     ready: false,
     transport: null,
     mode: '—',
@@ -102,9 +104,7 @@
 
   /* ============================== العناصر ============================== */
   const el = {
-    gate: $('gate'), gateCode: $('gateCode'), gateName: $('gateName'), gateForm: $('gateForm'),
-    gateError: $('gateError'), gateSubmit: $('gateSubmit'), avatarPreview: $('avatarPreview'), gateAuthLink: $('gateAuthLink'),
-    room: $('room'), roomSub: $('roomSub'),
+    authStatus: $('authStatus'), room: $('room'), roomSub: $('roomSub'),
     codeText: $('roomCodeText'), copyCodeBtn: $('copyCodeBtn'),
     statusBadge: $('statusBadge'), statusText: $('statusText'),
     copyLinkBtn: $('copyLinkBtn'), shareBtn: $('shareBtn'), qrBtn: $('qrBtn'), leaveBtn: $('leaveBtn'),
@@ -134,10 +134,8 @@
     diagReconnectBtn: $('diagReconnectBtn')
   };
 
-  el.gateCode.textContent = roomId;
   el.codeText.textContent = roomId;
   document.title = 'غرفة ' + roomId + ' — WatchTogether';
-  if (el.gateAuthLink) el.gateAuthLink.href = 'auth.html?room=' + encodeURIComponent(roomId);
 
   /* ============================== المشغّل ============================== */
   const player = new window.WTPlayer.UnifiedPlayer(el.player, {
@@ -170,49 +168,24 @@
     onTime: () => updateProgressUI()
   });
 
-  /* ============================== بوابة الاسم ============================== */
-  function initGate() {
-    const user = Auth.currentUser();
-    const saved = (user && user.name) || U.store.get('name', '') || '';
-    if (saved && !el.gateName.value) el.gateName.value = saved;
-    paintAvatar();
-    el.gateName.addEventListener('input', paintAvatar);
-
-    el.gateForm.addEventListener('submit', function (e) {
-      e.preventDefault();
-      const name = U.cleanName(el.gateName.value);
-      if (name.length < 2) {
-        el.gateError.textContent = 'أدخل اسماً من حرفين على الأقل';
-        el.gateError.classList.remove('is-shake'); void el.gateError.offsetWidth;
-        el.gateError.classList.add('is-shake');
-        el.gateName.focus();
-        return;
-      }
-      el.gateError.textContent = '';
-      el.gateSubmit.disabled = true;
-      el.gateSubmit.innerHTML = '<span class="spinner" style="width:18px;height:18px;border-width:2px"></span> جارٍ الدخول…';
-      session.name = name;
-      U.store.set('name', name);
-      enterRoom();
-    });
-
-    /* Real accounts enter any room directly, including cards and invitation links.
-       Guests always confirm a name, even with a saved guest session or ?auto=1. */
-    const account = Auth.accountUser();
-    if (account) {
-      session.name = U.cleanName(account.name) || 'مستخدم';
-      el.gate.hidden = true;
-      setTimeout(() => enterRoom({ accountOnly: true }), 0);
-    } else {
-      el.gate.hidden = false;
-      el.gateName.focus();
+  /* ============================== التحقق من الحساب ============================== */
+  async function initRoom() {
+    const authSession = await (Auth ? Auth.validSession().catch(() => null) : null);
+    const user = authSession && authSession.user;
+    const account = authSession && authSession.access_token && user && user.id && !user.guest
+      && (!authSession.expires_at || authSession.expires_at > Date.now()) ? user : null;
+    if (!account) {
+      if (Auth && Auth.currentUser && Auth.currentUser() && Auth.currentUser().guest) Auth.clearSession();
+      const returnTo = 'room.html?id=' + encodeURIComponent(roomId) + (params.get('local') === '1' ? '&local=1' : '');
+      location.replace('auth.html?next=' + encodeURIComponent(returnTo));
+      return;
     }
-  }
-
-  function paintAvatar() {
-    const n = U.cleanName(el.gateName.value) || '؟';
-    el.avatarPreview.textContent = U.initials(n);
-    el.avatarPreview.style.background = U.colorFor(n);
+    session.name = U.cleanName(account.name) || U.cleanName(account.email && account.email.split('@')[0]) || 'مستخدم';
+    session.userId = account.id;
+    session.isGuest = false;
+    if (el.authStatus) el.authStatus.hidden = true;
+    el.room.hidden = false;
+    await enterRoom(authSession);
   }
 
   /**
@@ -385,31 +358,27 @@
 
   /* ============================== الدخول ============================== */
   let enteringRoom = false;
-  async function enterRoom(options) {
-    options = options || {};
+  async function enterRoom(validatedSession) {
     if (enteringRoom || session.ready) return;
     enteringRoom = true;
-    el.gate.hidden = true;
     el.room.hidden = false;
-    setStatus('connecting', 'جارٍ التحقق من الجلسة…');
+    setStatus('connecting', 'جارٍ التحقق من الحساب…');
     try {
-      /* validSession يعيد الجلسة لا كائن المستخدم. الأزرار مربوطة مسبقاً،
-         وطلبات الحساب محدودة المهلة، فلا تبقى الغرفة متجمّدة عند تجديد token. */
-      const authSession = await (Auth ? Auth.validSession().catch(() => null) : null);
-      const user = authSession && authSession.user;
-      const account = authSession && authSession.access_token && user && user.id && !user.guest ? user : null;
-      if (options.accountOnly && !account) {
-        session.name = '';
+      /* Use the authenticated session verified during startup; an expired account never enters anonymously. */
+      const authSession = validatedSession || await (Auth ? Auth.validSession().catch(() => null) : null);
+      const account = authSession && authSession.access_token && authSession.user && authSession.user.id && !authSession.user.guest
+        && (!authSession.expires_at || authSession.expires_at > Date.now()) ? authSession.user : null;
+      if (!account) {
+        session.ready = false;
         el.room.hidden = true;
-        el.gate.hidden = false;
-        el.gateSubmit.disabled = false;
-        el.gateError.textContent = 'انتهت جلسة الحساب — أدخل اسمك كضيف أو سجّل الدخول';
-        el.gateName.focus();
+        const returnTo = 'room.html?id=' + encodeURIComponent(roomId) + (params.get('local') === '1' ? '&local=1' : '');
+        location.replace('auth.html?next=' + encodeURIComponent(returnTo));
         return;
       }
-      session.userId = account ? account.id : null;
-      session.isGuest = !account;
-      if (account) session.name = U.cleanName(account.name) || 'مستخدم';
+      session.userId = account.id;
+      roomAccessToken = authSession.access_token;
+      session.isGuest = false;
+      session.name = U.cleanName(account.name) || U.cleanName(account.email && account.email.split('@')[0]) || session.name || 'مستخدم';
 
       const startUrl = (createInfo && createInfo.videoUrl) || paramVideo || '';
       if (startUrl) {
@@ -444,7 +413,7 @@
       image.onerror = () => { image.remove(); }; el.meAvatar.appendChild(image);
     }
 
-    el.meMail.textContent = user && user.email ? user.email : 'دخول كضيف — بدون حساب';
+    el.meMail.textContent = user && user.email ? user.email : 'حساب مسجّل';
     el.meNameInput.value = session.name;
   }
 
@@ -455,6 +424,7 @@
         clientId: session.clientId,
         name: session.name,
         userId: session.userId,
+        accessToken: roomAccessToken,
         videoUrl: st.url || null,
         title: (createInfo && createInfo.title) || session.roomTitle || 'غرفة مشاهدة',
         /* من أنشأ الغرفة هو من يملك الحق في إنشاء صفّها في قاعدة البيانات؛
@@ -475,6 +445,7 @@
       session.mode = transport.label;
       session.role = (result && result.role) || (transport.kind === 'local' && ownerToken ? 'owner' : 'viewer');
       session.isOwner = session.role === 'owner';
+      session.controlMode = (result && (result.controlMode || (result.room && result.room.controlMode))) === 'everyone' ? 'everyone' : 'owner';
       session.queue = Array.isArray(result && result.queue) ? result.queue : [];
       if (Array.isArray(result && result.roles)) updateRoles(result.roles);
       if (Array.isArray(result && result.members)) mergeMembers(result.members);
@@ -583,6 +554,10 @@
     t.on('serverTime', (time) => { if (typeof time === 'number') session.clockOffset = time - Date.now(); });
     t.on('members', (list) => { if (Array.isArray(list)) mergeMembers(list); });
     t.on('roles', updateRoles);
+    t.on('settings', (settings) => {
+      const mode = settings && settings.controlMode === 'everyone' ? 'everyone' : 'owner';
+      if (session.controlMode !== mode) { session.controlMode = mode; updateControlAccess(); }
+    });
     t.on('queue', setQueue);
     t.on('presence', handlePresence);
     t.on('typing', handleTyping);
@@ -625,7 +600,9 @@
   }
 
   /* ============================== صلاحيات التحكم ============================== */
-  function canControl() { return session.role === 'owner' || session.role === 'organizer'; }
+  function canControl() {
+    return session.role === 'owner' || session.role === 'organizer' || (session.controlMode === 'everyone' && !!session.userId);
+  }
   function canManageRoles() { return session.role === 'owner'; }
 
   function updateControlAccess() {
@@ -634,7 +611,7 @@
     if (el.progressBar) {
       el.progressBar.setAttribute('aria-disabled', locked ? 'true' : 'false');
       el.progressBar.classList.toggle('is-locked', locked);
-      el.progressBar.title = locked ? 'التحكم بالمنشئ والمنظّمين فقط' : 'اسحب للتقديم أو الترجيع';
+      el.progressBar.title = locked ? 'التحكم متاح للمنشئ والمنظّمين فقط' : 'اسحب للتقديم أو الترجيع';
     }
     if (el.player) el.player.classList.toggle('player--view-only', locked);
     if (player && player._video) player._video.controls = false;
@@ -644,7 +621,7 @@
 
   function requireControl() {
     if (canControl()) return true;
-    U.toast('التحكم متاح لمنشئ الغرفة والمنظّمين فقط', 'warn', 2600);
+    U.toast(session.controlMode === 'everyone' ? 'يجب الانضمام إلى الغرفة للتحكم' : 'التحكم متاح لمنشئ الغرفة والمنظّمين فقط', 'warn', 2600);
     return false;
   }
 
@@ -2893,7 +2870,7 @@
   /* ربط الواجهة مرة واحدة، قبل أي طلب شبكة أو تجديد لجلسة الحساب. */
   wireUI();
   updateControlAccess();
-  initGate();
+  Promise.resolve().then(initRoom);
 
   /* رابط تصحيح: يفيد الاختبارات الآلية، ويفيدك في الكونسول (WTRoom.state) */
   window.WTRoom = {

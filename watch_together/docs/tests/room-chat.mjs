@@ -14,7 +14,7 @@
    ========================================================= */
 import fs from 'fs';
 import path from 'path';
-import { createRoomEnv, wait, base } from './harness.mjs';
+import { createRoomEnv, wait, base, setAccountName } from './harness.mjs';
 
 let pass = 0, fail = 0;
 const errors = [];
@@ -29,6 +29,7 @@ const env = createRoomEnv({
   store: { 'wt:owner:CHT123': JSON.stringify(ownerToken) }
 });
 const { sandbox, documentStub, byId } = env;
+setAccountName(env, 'أمين');
 env.sandbox.WT_CONFIG.javaServer.enabled = false;
 env.sandbox.WT_CONFIG.supabase.ready = false;
 
@@ -39,8 +40,6 @@ const run = async () => {
   await wait(100);
 
   /* ---------- الدخول إلى الغرفة ---------- */
-  byId.get('gateName').value = 'أمين';
-  byId.get('gateForm').dispatch('submit', {});
   await wait(300);
   t('الغرفة تعمل والقناة المحلية جاهزة', !!sandbox.WTRoom && sandbox.WTRoom.session.ready === true);
 
@@ -339,8 +338,7 @@ const run = async () => {
     const peer = createRoomEnv({ search: '?id=REACT123&local=1', store: sharedStore, channels: sharedChannels, session: previousSession });
     peer.sandbox.WT_CONFIG.javaServer.enabled = false;
     peer.sandbox.WT_CONFIG.supabase.ready = false;
-    peer.byId.get('gateName').value = name;
-    peer.byId.get('gateForm').dispatch('submit', {});
+    setAccountName(peer, name);
     await wait(40);
     return peer;
   };

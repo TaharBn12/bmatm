@@ -15,6 +15,7 @@ const fixture = await fs.readFile(new URL('./fixtures/playback.webm', import.met
 const errors = [];
 let flakyRequests = 0;
 const catalogue = new Map();
+const catalogueReports = [];
 let rejectCatalogueCreate = false;
 let cataloguePresence = [], cataloguePresenceStatus = 200;
 
@@ -44,6 +45,14 @@ const server = http.createServer(async (req, res) => {
         if (rejectCatalogueCreate) { res.writeHead(403); res.end(JSON.stringify({ message: 'تعذّرت إضافة الغرفة' })); return; }
         assert.match(data.p_owner_token, /^[a-f0-9]{64}$/);
         catalogue.set(data.p_room_id, { room_id: data.p_room_id, title: data.p_title, video_url: data.p_video_url, created_at: new Date().toISOString() });
+        res.end(JSON.stringify({ ok: true }));
+      } else if (url.pathname.endsWith('/rpc/wt_report_room') && req.method === 'POST') {
+        const chunks = [];
+        for await (const chunk of req) chunks.push(chunk);
+        const data = JSON.parse(Buffer.concat(chunks).toString());
+        assert.equal(req.headers.authorization, 'Bearer browser-test-access-token');
+        assert.equal(data.p_reason, 'spam');
+        catalogueReports.push(data);
         res.end(JSON.stringify({ ok: true }));
       } else if (url.pathname.endsWith('/presence') && req.method === 'GET') {
         if (cataloguePresenceStatus !== 200) { res.writeHead(cataloguePresenceStatus); res.end('{}'); return; }
@@ -120,9 +129,15 @@ async function makePage(device, init = {}, sharedContext = null) {
         JSON.stringify(base + '/lobby-api') + '; WT_CONFIG.supabase.ready = true; WT_CONFIG.supabase.auth = false;'
     }));
   }
-  await page.addInitScript(({ account, owner }) => {
+  const defaultAccount = {
+    access_token: 'browser-test-access-token', refresh_token: 'browser-test-refresh-token', expires_at: Date.now() + 3600000,
+    user: { id: '11111111-1111-4111-8111-111111111111', name: 'مستخدم الاختبار', email: 'test@example.com' }
+  };
+  const account = init.signedOut ? null : (init.account || defaultAccount);
+  await page.addInitScript(({ account, owner, signedOut }) => {
     if (!sessionStorage.getItem('test:initialized')) {
-      if (account) localStorage.setItem('wt:session', JSON.stringify(account));
+      if (signedOut) localStorage.removeItem('wt:session');
+      else if (account) localStorage.setItem('wt:session', JSON.stringify(account));
       if (owner) localStorage.setItem('wt:owner:BRTEST', JSON.stringify('b'.repeat(64)));
       sessionStorage.setItem('test:initialized', '1');
     }
@@ -130,7 +145,7 @@ async function makePage(device, init = {}, sharedContext = null) {
       writeText: async text => { window.testCopied = text; }, readText: async () => ''
     } });
     Object.defineProperty(navigator, 'share', { configurable: true, value: async data => { window.testShare = data; } });
-  }, init);
+  }, { ...init, account, signedOut: !!init.signedOut });
   return page;
 }
 const waitFor = (page, predicate, arg) => page.waitForFunction(predicate, arg, { polling: 50 });
@@ -147,9 +162,10 @@ const waitVideo = async page => {
   }
 };
 async function enter(page, query, name = 'اختبار الغرفة') {
+  await page.addInitScript(name => {
+    try { const s = JSON.parse(localStorage.getItem('wt:session') || 'null'); if (s && s.user) { s.user.name = name; localStorage.setItem('wt:session', JSON.stringify(s)); } } catch (_) { }
+  }, name);
   await page.goto(`${base}/room.html?local=1&id=BRTEST${query || ''}`);
-  await page.fill('#gateName', name);
-  await page.click('#gateSubmit');
   await waitReady(page);
 }
 async function addQueue(page, url, title) {
@@ -214,7 +230,7 @@ try {
     ['mobile', { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true }]
   ]) {
     const page = await makePage(device);
-    /* Minimal lobby: floating plus/X, persistent cards, and guest name confirmation. */
+    /* Minimal lobby: floating plus/X, persistent cards, account-only creation and direct account entry. */
     await page.goto(`${base}/index.html?local=1`);
     assert.equal(await page.locator('.hero, .features, .steps, .site-footer, [href="discover.html"]').count(), 0);
     assert.equal(await page.locator('#creator').isVisible(), false);
@@ -245,12 +261,32 @@ try {
     const cardBody = await page.locator('.room-tile__body').boundingBox();
     assert.ok(cardCover.x + cardCover.width <= cardBody.x + 1, 'the cover stays physically left, including in RTL');
     assert.equal(await page.locator('.room-tile__people').getAttribute('aria-label'), 'لا يوجد منضمون الآن');
-    assert.doesNotMatch(await page.locator('.room-tile').getAttribute('href'), /host=|auto=|owner|token/i);
-    await page.locator('.room-tile').click();
+    assert.doesNotMatch(await page.locator('.room-tile__link').getAttribute('href'), /host=|auto=|owner|token/i);
+    const ownerCard = page.locator('.room-tile').first();
+    const cardLink = ownerCard.locator('.room-tile__link');
+    await cardLink.dispatchEvent('pointerdown', { pointerId: 41, pointerType: 'touch', clientX: 220, clientY: 50 });
+    await cardLink.dispatchEvent('pointerup', { pointerId: 41, pointerType: 'touch', clientX: 150, clientY: 52 });
+    assert.equal(await ownerCard.locator('.room-tile__menu-toggle').getAttribute('aria-expanded'), 'true', 'a horizontal swipe reveals the actions');
+    await ownerCard.locator('.room-tile__menu-toggle').click();
+    assert.equal(await ownerCard.locator('.room-tile__menu-toggle').getAttribute('aria-expanded'), 'false');
+    await ownerCard.locator('.room-tile__menu-toggle').click();
+    assert.equal(await ownerCard.locator('.room-tile__menu-toggle').getAttribute('aria-expanded'), 'true');
+    assert.equal(await ownerCard.locator('[data-room-action]').count(), 3, 'owner sees only the three management actions');
+    assert.deepEqual(await ownerCard.locator('[data-room-action]').allTextContents(), ['الإعدادات', 'التعديل', 'الحذف']);
+    await ownerCard.locator('[data-room-action="settings"]').click();
+    assert.equal(await page.locator('#roomActionDialog').isVisible(), true);
+    await page.locator('[name="isPrivate"]').check();
+    await page.locator('[name="controlMode"][value="everyone"]').check();
+    await page.locator('[data-room-action-form="settings"] [type="submit"]').click();
+    await waitFor(page, () => document.querySelector('.room-tile')?.dataset.controlMode === 'everyone');
+    assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('wt:local:rooms'))[0].isPrivate), true, 'private owner room remains visible to its creator');
+    await ownerCard.locator('.room-tile__menu-toggle').click();
+    await ownerCard.locator('[data-room-action="edit"]').click();
+    await page.locator('#editRoomTitle').fill('سهرة الاختبار المعدّلة');
+    await page.locator('[data-room-action-form="edit"] [type="submit"]').click();
+    await waitFor(page, () => document.querySelector('.room-tile__title')?.textContent === 'سهرة الاختبار المعدّلة');
+    await ownerCard.locator('.room-tile__link').click();
     await page.waitForURL('**/room.html?**');
-    assert.equal(await page.locator('#gate').isVisible(), true, 'guest creator must enter a name too');
-    await page.fill('#gateName', 'فاحص الغرفة');
-    await page.click('#gateSubmit');
     await waitReady(page);
     await waitVideo(page);
     assert.equal(await page.evaluate(() => WTRoom.session.role), 'owner');
@@ -457,11 +493,24 @@ try {
     await embedded.click();
     assert.equal(await embedded.getAttribute('data-playing'), 'true');
     assert.equal(await page.locator('#unblockPlay').count(), 0, 'no fake autoplay prompt over an external iframe');
+    await addQueue(page, videoUrl + '?locked=1', 'عنصر محفوظ');
 
     await page.click('#drawerOpenBtn');
     await page.click('#leaveBtn');
     await page.waitForURL('**/index.html');
-    console.log(`Browser ${name}: create, playback, seek, fullscreen, room buttons, chat, queue, embed, leave passed`);
+    const ownedCard = page.locator('.room-tile').filter({ hasText: 'سهرة الاختبار' });
+    await ownedCard.locator('.room-tile__menu-toggle').click();
+    await ownedCard.locator('[data-room-action="edit"]').click();
+    await waitFor(page, () => document.querySelector('#editRoomUrl') !== null);
+    assert.equal(await page.locator('#editRoomUrl').isDisabled(), true, 'the viewing link cannot overwrite an active playlist');
+    await page.locator('#roomActionDialog [data-dialog-close]').click();
+    await ownedCard.locator('.room-tile__menu-toggle').click();
+    await ownedCard.locator('[data-room-action="delete"]').click();
+    await page.locator('[data-room-action-form="delete"] [type="submit"]').click();
+    await waitFor(page, () => document.querySelectorAll('.room-tile').length === 0);
+    assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('wt:local:rooms') || '[]').length), 0,
+      'permanent delete removes the room rather than only hiding the card');
+    console.log(`Browser ${name}: create, playback, seek, fullscreen, room buttons, chat, queue, edit lock, delete, embed and leave passed`);
     await page.context().browser().close();
   }
 
@@ -475,28 +524,26 @@ try {
   await lobbyAccount.fill('#roomTitle', 'غرفة بدون فيديو');
   await lobbyAccount.click('#createBtn');
   await waitFor(lobbyAccount, () => !!document.querySelector('.room-tile'));
-  await lobbyAccount.locator('.room-tile').click();
+  await lobbyAccount.locator('.room-tile__link').click();
   await waitReady(lobbyAccount);
-  assert.equal(await lobbyAccount.locator('#gate').isVisible(), false);
+  assert.equal(await lobbyAccount.locator('#gate, #gateForm, #guestForm').count(), 0);
   assert.equal(await lobbyAccount.evaluate(() => WTRoom.session.name), 'صاحب الحساب');
   assert.equal(await lobbyAccount.evaluate(() => WTRoom.session.isGuest), false);
   assert.equal(await lobbyAccount.evaluate(() => WTRoom.session.role), 'owner');
   assert.ok(await lobbyAccount.locator('#playerPlaceholder').isVisible());
-  await lobbyAccount.evaluate(() => { WTAuth.clearSession(); WTAuth.signInAsGuest('ضيف محفوظ'); });
+  await lobbyAccount.evaluate(() => WTAuth.clearSession());
   await lobbyAccount.goto(`${base}/index.html?local=1`);
-  await lobbyAccount.locator('.room-tile').click();
-  assert.equal(await lobbyAccount.locator('#gate').isVisible(), true, 'saved guest sessions still confirm a name');
-  await waitFor(lobbyAccount, () => !!window.WTRoom);
-  assert.equal(await lobbyAccount.locator('#gateName').inputValue(), 'ضيف محفوظ');
-  await lobbyAccount.fill('#gateName', 'ضيف جديد');
-  await lobbyAccount.click('#gateSubmit');
-  await waitReady(lobbyAccount);
-  assert.equal(await lobbyAccount.evaluate(() => WTRoom.session.userId), null);
+  await lobbyAccount.click('#createToggle');
+  await lobbyAccount.waitForURL('**/auth.html?**');
+  assert.equal(await lobbyAccount.locator('#guestForm, #guestName').count(), 0, 'guest sign-in controls are removed');
+  await lobbyAccount.goto(`${base}/room.html?local=1&id=${encodeURIComponent('ROOM1')}`);
+  await lobbyAccount.waitForURL('**/auth.html?**');
+  assert.equal(await lobbyAccount.locator('#gate, #gateForm, #guestForm').count(), 0, 'room links redirect to account auth instead of a name gate');
   await lobbyAccount.goto(`${base}/discover.html?local=1`);
   await lobbyAccount.waitForURL('**/index.html?local=1');
   assert.equal(await lobbyAccount.locator('#siteCards, #siteViewer').count(), 0);
   await lobbyAccount.context().browser().close();
-  console.log('Browser lobby: plus/X, persisted room cards, empty-room creation, account auto-entry and guest name gate passed');
+  console.log('Browser lobby: swipe actions, privacy/control settings, room editing, account-only creation/entry and public cards passed');
 
   /* Real HTTP catalogue contract, isolated browser storage: all visitors see created rooms. */
   const publicLobby = await makePage({ viewport: { width: 320, height: 568 }, isMobile: true, hasTouch: true }, { catalogue: true });
@@ -523,7 +570,17 @@ try {
   await waitFor(publicVisitor, () => !!document.querySelector('.room-tile'));
   assert.equal(await publicVisitor.locator('.room-tile__title').textContent(), 'غرفة للجميع');
   assert.equal(await publicVisitor.evaluate(id => localStorage.getItem('wt:owner:' + id), publicId), null, 'public card does not transfer owner credentials');
-  assert.equal(await publicVisitor.locator('.room-tile').getAttribute('href'), 'room.html?id=' + publicId);
+  assert.equal(await publicVisitor.locator('.room-tile__link').getAttribute('href'), 'room.html?id=' + publicId);
+  await publicVisitor.locator('.room-tile__menu-toggle').click();
+  assert.equal(await publicVisitor.locator('.room-tile [data-room-action]').count(), 1, 'non-owner gets a report action only');
+  assert.equal(await publicVisitor.locator('.room-tile [data-room-action]').textContent(), 'الإبلاغ عن محتوى الغرفة');
+  await publicVisitor.locator('.room-tile [data-room-action="report"]').click();
+  assert.equal(await publicVisitor.locator('#roomActionDialog').isVisible(), true);
+  await publicVisitor.selectOption('#reportReason', 'spam');
+  await publicVisitor.fill('#reportDetails', 'رابط مضلل');
+  await publicVisitor.locator('[data-room-action-form="report"] [type="submit"]').click();
+  await waitFor(publicVisitor, () => document.querySelector('#roomActionDialog')?.open === false);
+  assert.equal(catalogueReports.length, 1, 'a report is sent to the authenticated backend');
   await publicVisitor.reload();
   await waitFor(publicVisitor, () => !!document.querySelector('.room-tile'));
   catalogue.clear();
@@ -659,10 +716,10 @@ try {
   });
   await waitFor(previewLobby, () => !document.querySelector('video.room-tile__preview'));
   await previewLobby.evaluate(() => { delete navigator.connection; dispatchEvent(new Event('resize')); });
-  await previewCard.click({ position: { x: 30, y: 45 } });
+  await previewCard.locator('.room-tile__link').click({ position: { x: 30, y: 45 } });
   await previewLobby.waitForURL(/room\.html\?id=CLIP01/);
-  await waitFor(previewLobby, () => !!window.WTRoom);
-  assert.ok(await previewLobby.locator('#gate').isVisible(), 'clicking the left cover still opens the guest name gate');
+  await waitReady(previewLobby);
+  assert.equal(await previewLobby.locator('#gate, #gateForm').count(), 0, 'room entry has no name prompt');
   catalogue.clear(); cataloguePresence = [];
   await previewLobby.context().browser().close();
   console.log('Browser room cards: real 5s silent WebM/HLS loops, native/library HLS, left/right layout at 320px, five avatars/+6, live roster, stable refresh, media changes, fallbacks, YouTube contract, motion/data limits and cleanup passed');
@@ -696,8 +753,6 @@ try {
   await choose(second, '😂');
   await waitFor(first, () => Array.from(document.querySelectorAll('.msg__reaction')).map(b => b.textContent).join('|') === '❤️ 1|😂 1');
   await second.reload();
-  await second.fill('#gateName', 'سليم');
-  await second.click('#gateSubmit');
   await waitReady(second);
   assert.equal(await message(second).locator('.msg__reaction').count(), 2, 'history restores reactions, not extra messages');
   assert.equal(await message(second).locator('[data-emoji="😂"]').getAttribute('aria-pressed'), 'true');
@@ -735,25 +790,13 @@ try {
       user: { id: 'account-test', name: 'حساب قديم', email: 'test@example.com' } }
   });
   await expired.goto(`${base}/room.html?local=1&id=BRTEST`);
-  await expired.evaluate(() => { WT_CONFIG.auth.timeoutMs = 1800; });
-  assert.equal(await expired.locator('#gate').isVisible(), false, 'account entry is automatic even during a stalled refresh');
-  await expired.click('#drawerOpenBtn');
-  assert.equal(await expired.evaluate(() => WTRoom.session.ready), false, 'drawer works while refresh is still pending');
-  await expired.click('#drawerCloseBtn');
-  await expired.click('#addVideoBtn');
-  assert.ok(await expired.locator('#changeBar').isVisible());
-  await expired.click('#cancelUrlBtn');
-  await expired.click('#playlistBtn');
-  await expired.click('#playlistCloseBtn');
-  await waitReady(expired);
-  assert.equal(await expired.evaluate(() => WTRoom.session.userId), 'account-test');
-  await expired.evaluate(() => { WT_CONFIG.auth.timeoutMs = 100; });
-  await expired.click('#drawerOpenBtn');
-  await expired.click('#sbMeBtn');
-  await expired.click('#meSignout');
-  await expired.waitForURL('**/auth.html');
-  assert.equal(await expired.evaluate(() => localStorage.getItem('wt:session')), null);
-  console.log('Browser stalled auth: controls remain responsive, entry times out safely, sign-out works');
+  await expired.waitForURL('**/auth.html?**', { timeout: 9000 });
+  assert.equal(await expired.locator('#gate, #gateForm, #guestForm').count(), 0, 'expired accounts are redirected without a name gate');
+  assert.equal(await expired.locator('#loginForm').isVisible(), true, 'a revoked/expired token cannot enter the room anonymously');
+  assert.equal(await expired.evaluate(() => WTAuth.accountUser()), null, 'an expired stored token is never treated as an account');
+  assert.ok(await expired.evaluate(() => JSON.parse(localStorage.getItem('wt:session') || 'null')?.expires_at <= Date.now()),
+    'transient offline validation keeps the stale record but rejects it for room access');
+  console.log('Browser stalled auth: expired session is rejected and login remains available');
 
   const retry = await makePage({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true }, { owner: true });
   await enter(retry, '&host=1&v=' + encodeURIComponent(base + '/flaky.webm'));
