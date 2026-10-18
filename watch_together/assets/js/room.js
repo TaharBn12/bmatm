@@ -1933,15 +1933,19 @@
     if (!Media || typeof Media.openViewer !== 'function') return false;
     const items = [];
     let index = 0;
+    const appendItem = (item) => {
+      if (!item) return;
+      if (media && item.u === media.u) index = items.length;
+      /* احتفظ بمعاينة الملف محلياً إذا تعذّر فتح رابط التخزين في العارض. */
+      const preview = item.k === 'image' ? localMediaPreviews.get(item.u) : '';
+      items.push(preview ? Object.assign({}, item, { preview }) : item);
+    };
     Array.from(el.chatBody.children || []).forEach((row) => {
       const list = row && row._media;
       if (!list || !list.length) return;
-      list.forEach((item) => {
-        if (media && item.u === media.u) index = items.length;
-        items.push(item);
-      });
+      list.forEach(appendItem);
     });
-    if (!items.length && media) items.push(media);
+    if (!items.length && media) appendItem(media);
     return Media.openViewer(items, index);
   }
 
