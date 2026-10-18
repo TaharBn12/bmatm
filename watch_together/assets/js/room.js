@@ -1183,10 +1183,17 @@
     return { ok: false, text: s, cid: '', reply: null, next: '', media: [] };
   }
 
+  /* ربط المعاينة المحلية بالرابط المرفوع لنفس الجلسة (احتياط فوري للعرض) */
+  const localMediaPreviews = new Map();
+
   /** وسائط من عمود قاعدة البيانات (media_url) حين لا تحمل الرسالة غلافاً */
   function mediaFromMessage(m) {
     if (!m || !m.media || !m.media.url) return [];
     if (!Media || typeof Media.normalizeMedia !== 'function') return [];
+    if (m.media.meta && typeof Media.mediaList === 'function') {
+      const list = Media.mediaList(m.media.meta);
+      if (list && list.length) return list;
+    }
     const one = Media.normalizeMedia({ u: m.media.url, k: m.media.type || '' });
     return one ? [one] : [];
   }
@@ -1218,7 +1225,8 @@
       const media = (d.media && d.media.length) ? d.media : mediaFromMessage(m);
       const hasMedia = media.length > 0;
       const hasText = !!String(text || '').trim();
-      row.className = 'msg' + (mine ? ' msg--me' : '') + (hasMedia ? ' msg--media' : '');
+      row.className = 'msg' + (mine ? ' msg--me' : '') +
+        (hasMedia ? ' msg--media' + (!hasText ? ' msg--media-only' : '') + (media.length > 1 ? ' msg--media-grid' : '') : '');
       const color = U.colorFor(m.name || '?');
       row.innerHTML =
         '<span class="msg__avatar" style="background:' + color + '" title="' + U.esc(m.name || 'زائر') + '">' + U.esc(U.initials(m.name)) + '</span>' +
@@ -1241,13 +1249,17 @@
       if (hasMedia) {
         row._media = media;
         row.dataset.media = '1';
+        row.dataset.mediaCount = String(media.length);
         const bubble = row.querySelector('.msg__bubble');
         /* تُدرَج البطاقة قبل النص (أو قبل الوقت إن لم يكن نص) */
         const anchor = bubble && bubble.querySelector
           ? (bubble.querySelector('.msg__text') || bubble.querySelector('.msg__meta')) : null;
         media.forEach((item) => {
           if (!Media || typeof Media.renderCard !== 'function') return;
-          const card = Media.renderCard(item, { onExpand: () => openMediaViewer(item) });
+          const card = Media.renderCard(item, {
+            onExpand: () => openMediaViewer(item),
+            preview: localMediaPreviews.get(item.u) || ''
+          });
           if (!card) return;
           if (bubble && bubble.insertBefore) bubble.insertBefore(card, anchor);
           else row.appendChild(card);
@@ -1471,7 +1483,8 @@
           if (typeof t._learnMessageField === 'function') t._learnMessageField(r);
           addChatMessage({
             id: String(r.id), name: r.name, text: readText(r),
-            ts: Date.parse(r.created_at) || Date.now(), kind: r.kind || 'chat', client: r.client_id || null
+            ts: Date.parse(r.created_at) || Date.now(), kind: r.kind || 'chat', client: r.client_id || null,
+            media: r.media_url ? { url: r.media_url, type: r.media_type || '', meta: r.media_meta || null } : null
           }, { silent: true });
         });
         t._msgsReady = true;
@@ -1739,12 +1752,18 @@
         onProgress: (pct, provider) => {
           att.progress = Math.max(0, Math.min(100, Number(pct) || 0));
           if (provider) att.provider = provider;
-          renderTray();
+          updateTrayProgress(att);
         }
       });
       att.status = 'done';
       att.progress = 100;
       att.media = result;
+      if (att.preview && result && result.url) {
+        localMediaPreviews.set(result.url, att.preview);
+        while (localMediaPreviews.size > 40) {
+          localMediaPreviews.delete(localMediaPreviews.keys().next().value);
+        }
+      }
       renderTray();
     } catch (err) {
       att.status = 'error';
@@ -1759,7 +1778,21 @@
     renderTray();
   }
 
-  /** شريط المرفقات: بطاقات مصغّرة مع التقدّم */
+  /** تحديث شريط التقدّم للمرفق دون إعادة بناء البطاقة (لمنع وميض المعاينة) */
+  function updateTrayProgress(att) {
+    const tray = el.mediaTray;
+    if (!tray || !att) return;
+    const chip = Array.from(tray.children || []).find(
+      c => c && c.getAttribute && c.getAttribute('data-att') === att.id
+    );
+    if (!chip) { renderTray(); return; }
+    const fill = chip.querySelector ? chip.querySelector('.media-chip__fill') : null;
+    if (fill && fill.style) fill.style.width = att.progress + '%';
+    const pct = chip.querySelector ? chip.querySelector('.media-chip__pct') : null;
+    if (pct) pct.textContent = att.progress + '%';
+  }
+
+  /** شريط المرفقات: بطاقات مصغّرة مع معاينة وتقدّم */
   function renderTray() {
     const tray = el.mediaTray;
     if (!tray) return;
@@ -1773,16 +1806,31 @@
 
       const thumb = document.createElement('div');
       thumb.className = 'media-chip__thumb';
-      if (att.preview && att.kind === 'image') {
+      const thumbSrc = att.preview || (att.media && att.media.url) || '';
+      if (thumbSrc && att.kind === 'image') {
         const img = document.createElement('img');
-        img.src = att.preview;
+        img.src = thumbSrc;
         img.alt = att.name;
         thumb.appendChild(img);
+      } else if (thumbSrc && att.kind === 'video') {
+        const vid = document.createElement('video');
+        vid.src = thumbSrc;
+        vid.muted = true;
+        vid.setAttribute('muted', 'muted');
+        vid.setAttribute('playsinline', 'playsinline');
+        vid.setAttribute('preload', 'metadata');
+        thumb.appendChild(vid);
       } else {
         const icon = document.createElement('span');
         icon.className = 'ic media-chip__icon';
         icon.innerHTML = IC.html(att.kind === 'video' ? 'videoFull' : 'image', 24);
         thumb.appendChild(icon);
+      }
+      if (thumbSrc && Media && typeof Media.openViewer === 'function') {
+        thumb.setAttribute('title', 'اضغط للمعاينة الكاملة');
+        thumb.addEventListener('click', () => {
+          Media.openViewer([{ u: thumbSrc, k: att.kind, n: att.name, s: att.size }], 0);
+        });
       }
       chip.appendChild(thumb);
 
@@ -2049,7 +2097,13 @@
 
     el.chatBody.addEventListener('pointerdown', (e) => {
       const target = e && e.target;
-      if (target && target.closest && (target.closest('.msg__reaction') || target.closest('a'))) return;
+      if (target && target.closest && (
+        target.closest('.msg__reaction') ||
+        target.closest('.msg-media__tool') ||
+        target.closest('.msg-media__zoom')
+      )) return;
+      /* النقر على معاينة الوسائط لا يلتقط المؤشر حتى يعمل الفتح الكامل بسلاسة */
+      const inMedia = !!(target && target.closest && target.closest('.msg-media'));
       const row = rowOf(e);
       if (!actionable(row)) return;
       if (drag) { clearTimeout(drag.lpTimer); resetRow(drag.row); }
@@ -2063,7 +2117,9 @@
         }, 450)
       };
       const t = e && e.target;
-      if (e.pointerId != null && t && t.setPointerCapture) { try { t.setPointerCapture(e.pointerId); } catch (err) { } }
+      if (!inMedia && e.pointerId != null && t && t.setPointerCapture) {
+        try { t.setPointerCapture(e.pointerId); } catch (err) { }
+      }
     });
 
     el.chatBody.addEventListener('pointermove', (e) => {
@@ -2649,6 +2705,24 @@
         e.preventDefault();
         hideMsgMenu(true);
         return;
+      }
+      const lightboxOpen = !!(Media && document.getElementById('mediaLightbox') && !document.getElementById('mediaLightbox').hidden);
+      if (lightboxOpen) {
+        if (e.key === 'Escape' && typeof Media.closeViewer === 'function') {
+          e.preventDefault();
+          Media.closeViewer();
+          return;
+        }
+        if (e.key === 'ArrowLeft' && typeof Media.stepViewer === 'function') {
+          e.preventDefault();
+          Media.stepViewer(+1);
+          return;
+        }
+        if (e.key === 'ArrowRight' && typeof Media.stepViewer === 'function') {
+          e.preventDefault();
+          Media.stepViewer(-1);
+          return;
+        }
       }
       const tag = (e.target.tagName || '').toLowerCase();
       const interactive = ['input', 'textarea', 'select', 'button', 'a', 'summary'].includes(tag) || e.target.isContentEditable;
