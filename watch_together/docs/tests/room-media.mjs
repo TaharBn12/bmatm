@@ -178,6 +178,12 @@ const run = async () => {
     /max-width:\s*none/.test(zoomRule) && /max-height:\s*none/.test(zoomRule) &&
     !/transform:\s*scale/.test(zoomRule) &&
     /\.media-lightbox__stage[\s\S]*?overflow:\s*auto/.test(mediaCss));
+  t('مسرح العارض بارتفاع محدّد حتى لا تُقصّ الصورة المكبّرة',
+    /\.media-lightbox__frame[\s\S]*?grid-template-rows:\s*minmax\(0,\s*1fr\)/.test(mediaCss) &&
+    /\.media-lightbox__stage[\s\S]*?align-self:\s*stretch/.test(mediaCss));
+  t('نسخ الملفات محدّثة (تفادياً لنسخة المتصفح القديمة)',
+    /media\.css\?v=3\.1\.1/.test(fs.readFileSync(path.join(base, 'room.html'), 'utf8')) &&
+    /media\.js\?v=3\.1\.2/.test(fs.readFileSync(path.join(base, 'room.html'), 'utf8')));
 
   /* ---------- 6) العارض المكبّر: الضغط على الصورة أو زر التكبير يظهرها كاملة ---------- */
   cardImg.dispatch('click', { target: cardImg });
@@ -187,15 +193,13 @@ const run = async () => {
   t('العارض يعرض الصورة كاملة', !!fullImg && fullImg.src === atts[0].media.url);
   t('الصورة داخل لوحة عرض قابلة للتمرير عند التكبير',
     !!byId.get('mediaStage').querySelector('.media-lightbox__canvas'));
+  /* الصورة تأخذ حجمها الكامل بالبكسل (لا تحجيم مُموَّه) */
+  fullImg.naturalWidth = 1280;
+  fullImg.naturalHeight = 720;
   fullImg.dispatch('click', { target: fullImg });
   t('الضغط على الصورة الكاملة يبدّل التكبير الإضافي (is-zoomed)', fullImg.classList.contains('is-zoomed'));
   t('مؤشّر التكبير يعرض الحجم الحقيقي 100%', byId.get('mediaZoomLevel').textContent === '100%',
     byId.get('mediaZoomLevel').textContent);
-
-  /* الصورة تأخذ حجمها الكامل بالبكسل (لا تحجيم مُموَّه) */
-  fullImg.naturalWidth = 1280;
-  fullImg.naturalHeight = 720;
-  fullImg.dispatch('load', {});
   t('الصورة المكبّرة تُعرض بأبعادها الأصلية بالبكسل',
     fullImg.style.width === '1280px' && fullImg.style.height === '720px',
     fullImg.style.width + '×' + fullImg.style.height);

@@ -457,6 +457,8 @@ body.chat-focus .msg-media {
   position: relative;
   display: grid;
   grid-template-columns: auto 1fr auto;
+  /* سطر بارتفاع محدّد ⇒ المسرح يت_scroll داخلياً بدل أن يتمدّد ويُقصّ */
+  grid-template-rows: minmax(0, 1fr);
   align-items: center;
   gap: 10px;
   padding: 14px 16px;
@@ -466,6 +468,7 @@ body.chat-focus .msg-media {
 
 .media-lightbox__stage {
   grid-column: 2;
+  align-self: stretch;
   position: relative;
   min-height: 0; height: 100%;
   width: 100%;

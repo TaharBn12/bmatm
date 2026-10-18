@@ -928,7 +928,33 @@
     if (focus) centerViewerOn(v, img, focus);
   }
 
-  /** نقرة على الصورة: تبديل بين ملء الشاشة والحجم الحقيقي 100% */
+  /**
+   * المعامل الفعلي الحالي مقارنةً بالحجم الأصلي للصورة:
+   * 1 = الحجم الحقيقي 100% · أقل من 1 = الصورة مصغّرة لملء الشاشة.
+   */
+  function currentFactor(v, img) {
+    if (!v || !img) return 1;
+    if (v.zoom !== 'fit') return Number(v.zoom) || 1;
+    const nw = Number(img.naturalWidth) || 0;
+    if (!nw) return 1;
+    const rect = (img.getBoundingClientRect && img.getBoundingClientRect()) || null;
+    const w = Number(rect && rect.width) || 0;
+    if (!w) return 1;
+    return Math.max(0.01, Math.min(8, w / nw));
+  }
+
+  /** أقرب مستوى تكبير أكبر (dir=1) أو أصغر (dir=-1) من المعامل الحالي */
+  function zoomStepAround(factor, dir) {
+    const f = Number(factor) || 1;
+    if (dir > 0) {
+      const bigger = ZOOM_STEPS.filter(z => z > f + 0.001);
+      return bigger.length ? bigger[0] : ZOOM_STEPS[ZOOM_STEPS.length - 1];
+    }
+    const smaller = ZOOM_STEPS.filter(z => z < f - 0.001);
+    return smaller.length ? smaller[smaller.length - 1] : 'fit';
+  }
+
+  /** نقرة على الصورة: تكبير لأعلى مستوى (كي تظهر الصورة فعلياً) ثم العودة لملء الشاشة */
   function toggleViewerZoom(v, e) {
     if (!v || !v.img) return;
     if (v.zoom !== 'fit') { applyViewerZoom(v, 'fit'); return; }
@@ -941,22 +967,15 @@
         py: Math.min(1, Math.max(0, (e.clientY - rect.top) / rect.height))
       };
     }
-    applyViewerZoom(v, 1, focus);
+    const next = zoomStepAround(currentFactor(v, v.img), 1);
+    applyViewerZoom(v, next, focus);
   }
 
   /** تكبير/تصغير متدرّج بالمستويات (اتجاه 1 للأكبر، -1 للأصغر) */
   function stepViewerZoom(dir) {
     const v = viewerRoot();
     if (!v || !v.img) return;
-    const cur = v.zoom === 'fit' ? 0 : Number(v.zoom) || 0;
-    let next = 'fit';
-    if (dir > 0) {
-      const bigger = ZOOM_STEPS.filter(z => z > cur + 0.001);
-      next = bigger.length ? bigger[0] : ZOOM_STEPS[ZOOM_STEPS.length - 1];
-    } else {
-      const smaller = ZOOM_STEPS.filter(z => z < cur - 0.001);
-      next = smaller.length ? smaller[smaller.length - 1] : 'fit';
-    }
+    const next = zoomStepAround(currentFactor(v, v.img), dir);
     applyViewerZoom(v, next);
   }
 
