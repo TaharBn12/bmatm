@@ -1254,6 +1254,8 @@
         /* تُدرَج البطاقة قبل النص (أو قبل الوقت إن لم يكن نص) */
         const anchor = bubble && bubble.querySelector
           ? (bubble.querySelector('.msg__text') || bubble.querySelector('.msg__meta')) : null;
+        /* نُدرج كل بطاقة قبل النص/الوقت؛ وبذلك تبقى البطاقات مرتبة
+           كما وصلت في الغلاف الذي حفظته قاعدة البيانات. */
         media.forEach((item) => {
           if (!Media || typeof Media.renderCard !== 'function') return;
           const card = Media.renderCard(item, {
@@ -2097,11 +2099,7 @@
 
     el.chatBody.addEventListener('pointerdown', (e) => {
       const target = e && e.target;
-      if (target && target.closest && (
-        target.closest('.msg__reaction') ||
-        target.closest('.msg-media__tool') ||
-        target.closest('.msg-media__zoom')
-      )) return;
+      if (target && target.closest && target.closest('.msg__reaction')) return;
       /* النقر على معاينة الوسائط لا يلتقط المؤشر حتى يعمل الفتح الكامل بسلاسة */
       const inMedia = !!(target && target.closest && target.closest('.msg-media'));
       const row = rowOf(e);

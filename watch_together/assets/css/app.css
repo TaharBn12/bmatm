@@ -2508,3 +2508,16 @@ body.chat-focus .room-main > #chat {
   .room-body .chat__send { width: 44px; height: 44px; border-radius: 13px; }
   .room-body .chat__input { min-height: 44px; padding: 9px 12px; font-size: 16px; }
 }
+
+/* تثبيت نافذة المحادثة المضغوطة: المحتوى المتعدد يمرّر داخلها ولا يمدد الصفحة */
+.room-main > #chat {
+  flex: 0 0 auto;
+  height: auto;
+  min-height: 0;
+}
+.room-main > #chat .chat__body {
+  flex: 0 0 auto;
+  height: 154px;
+  min-height: 0;
+  overflow-y: auto;
+}
