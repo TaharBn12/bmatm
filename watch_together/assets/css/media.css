@@ -5,9 +5,12 @@
      • زر إرفاق بحلقة تدرّج متوهّجة
      • شريط مرفقات (Tray) ببطاقات مصغّرة ومعاينة حيّة وتقدّم سلس
      • طبقة إفلات بحدود متحركة
-     • بطاقة معاينة داخل الرسالة: مصغّرة قليلاً ومتناسبة مع أبعاد
-       الصورة الحقيقية (أفقية/عمودية/مربعة) بلا قصّ مخلّ
+     • بطاقة معاينة داخل الرسالة: تملأ عرض صندوق الرسالة (6/6)
+       مع الحفاظ على نسبة الصورة الحقيقية (أفقية/عمودية/مربعة)
+       بلا قصّ مخلّ
      • عند الضغط على المعاينة تفتح كاملة في العارض المكبّر (Lightbox)
+       الذي يعرضها بالحجم الحقيقي 100% (بلا تشويش) مع تكبير
+       تدريجي وسحب/تمرير داخل الصورة الكبيرة
    ========================================================= */
 
 /* ============================== زر الإرفاق ============================== */
@@ -179,6 +182,7 @@
 .media-drop__hint { font-size: 12px; color: var(--muted); margin: 0; }
 
 /* ============================== فقاعة وبطاقة الوسائط في الدردشة ============================== */
+/* المعاينة تملأ عرض صندوق الرسالة (6/6) بلا تصغير مفرط */
 .msg--media .msg__bubble {
   display: inline-flex;
   flex-direction: column;
@@ -187,7 +191,7 @@
   padding: 5px 6px 5px;
   border-radius: 16px;
   width: fit-content;
-  max-width: min(236px, 76%);
+  max-width: min(440px, 94%);
 }
 .msg--media.msg--media-only .msg__bubble {
   padding: 4px 5px 4px;
@@ -197,7 +201,7 @@
   flex-direction: row;
   flex-wrap: wrap;
   gap: 5px;
-  max-width: min(272px, 82%);
+  max-width: min(440px, 94%);
 }
 .msg--media .msg__text {
   width: 100%;
@@ -212,7 +216,7 @@
 .msg-media {
   flex: 0 1 auto;
   align-self: center;
-  width: fit-content;
+  width: 100%;
   max-width: 100%;
   min-width: 96px;
   margin: 0;
@@ -240,12 +244,16 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  width: 100%;
+  /* لا يتجاوز الارتفاع الأقصى، ويضيق العرض تلقائياً للصور الطويلة (نسبة 6/6 محفوظة) */
+  max-width: min(100%, calc(var(--media-max-h, 52vh) * var(--media-ar-n, 1.4)));
+  aspect-ratio: var(--media-ar, 4 / 3);
+  max-height: var(--media-max-h, 52vh);
+  margin-inline: auto;
   background: radial-gradient(circle at 50% 42%, rgba(124, 92, 255, .15), rgba(5, 7, 15, .82));
   overflow: hidden;
-  min-width: 96px;
-  min-height: 56px;
-  max-width: 200px;
-  max-height: 148px;
+  min-width: 72px;
+  min-height: 48px;
 }
 
 /* طبقة تظليل علوية وسفلية ناعمة لإبراز أزرار المعاينة بوضوح */
@@ -269,61 +277,38 @@
   opacity: 1;
 }
 
-/* المعاينة ظاهرة حسب أبعاد الصورة الأصلية ومصغّرة قليلاً داخل الدردشة */
+/* المعاينة تملأ صندوق الرسالة بالكامل (6/6) مع الحفاظ على نسبة الصورة الأصلية */
 .msg-media__img,
 .msg-media__video {
   display: block;
-  width: auto;
-  height: auto;
-  max-width: 200px;
-  max-height: 148px;
+  width: 100%;
+  height: 100%;
+  max-width: 100%;
+  max-height: 100%;
   object-fit: contain;
   background: transparent;
   transition: transform .35s cubic-bezier(.2, .8, .3, 1), filter .25s;
 }
 .msg-media__video {
-  width: 100%;
   background: #000;
 }
 .msg-media__img { cursor: zoom-in; }
 
-/* تكيّف ذكي مع اتجاه الصورة (أفقية · عمودية · مربعة) */
-.msg-media[data-orient="landscape"] .msg-media__frame,
-.msg-media[data-orient="landscape"] .msg-media__img,
-.msg-media[data-orient="landscape"] .msg-media__video {
-  max-width: 206px;
-  max-height: 132px;
-}
-.msg-media[data-orient="portrait"] .msg-media__frame,
-.msg-media[data-orient="portrait"] .msg-media__img,
-.msg-media[data-orient="portrait"] .msg-media__video {
-  max-width: 142px;
-  max-height: 156px;
-}
-.msg-media[data-orient="square"] .msg-media__frame,
-.msg-media[data-orient="square"] .msg-media__img,
-.msg-media[data-orient="square"] .msg-media__video {
-  max-width: 146px;
-  max-height: 146px;
-}
+/* اتجاه الصورة (أفقية · عمودية · مربعة) يُستعمل لضبط نسبة الصندوق تلقائياً عبر --media-ar */
 
 /* عند وجود عدة صور في رسالة واحدة تصطفّ في شبكة مصغّرة متناسقة */
-.msg--media-grid .msg-media__frame,
-.msg--media-grid .msg-media__img,
-.msg--media-grid .msg-media__video {
-  max-width: 122px;
-  max-height: 102px;
+.msg--media-grid .msg-media {
+  --media-max-h: 30vh;
+  width: calc(50% - 3px);
+  min-width: 0;
 }
 
 /* في وضع التركيز على الدردشة (إخفاء الفيديو) تتسع المعاينة قليلاً */
 body.chat-focus .msg--media .msg__bubble {
-  max-width: min(268px, 78%);
+  max-width: min(560px, 94%);
 }
-body.chat-focus .msg-media__frame,
-body.chat-focus .msg-media__img,
-body.chat-focus .msg-media__video {
-  max-width: 232px;
-  max-height: 176px;
+body.chat-focus .msg-media {
+  --media-max-h: 62vh;
 }
 
 /* توهّج خلفي يتدرّج خلف الصورة */
@@ -430,7 +415,7 @@ body.chat-focus .msg-media__video {
   color: var(--muted-2);
   background: rgba(0, 0, 0, .26);
   border-top: 1px solid rgba(255, 255, 255, .05);
-  max-width: 200px;
+  max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -472,6 +457,8 @@ body.chat-focus .msg-media__video {
   position: relative;
   display: grid;
   grid-template-columns: auto 1fr auto;
+  /* سطر بارتفاع محدّد ⇒ المسرح يت_scroll داخلياً بدل أن يتمدّد ويُقصّ */
+  grid-template-rows: minmax(0, 1fr);
   align-items: center;
   gap: 10px;
   padding: 14px 16px;
@@ -481,11 +468,25 @@ body.chat-focus .msg-media__video {
 
 .media-lightbox__stage {
   grid-column: 2;
-  display: grid; place-items: center;
+  align-self: stretch;
+  position: relative;
   min-height: 0; height: 100%;
   width: 100%;
   overflow: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
   animation: pop .26s cubic-bezier(.2, .9, .3, 1.18) both;
+  touch-action: pan-x pan-y;
+}
+/* لوحة العرض: تجعل الصورة في المنتصف وتسمح بالتمرير عند التكبير الحقيقي */
+.media-lightbox__canvas {
+  width: max-content;
+  min-width: 100%;
+  min-height: 100%;
+  display: grid;
+  place-items: center;
+  padding: 12px;
+  box-sizing: border-box;
 }
 .media-lightbox__img {
   display: block;
@@ -498,12 +499,19 @@ body.chat-focus .msg-media__video {
   box-shadow: 0 36px 90px rgba(0, 0, 0, .72), 0 0 0 1px rgba(255, 255, 255, .10);
   background: rgba(0, 0, 0, .35);
   cursor: zoom-in;
-  transition: transform .25s cubic-bezier(.2, .9, .3, 1.15);
+  transition: box-shadow .2s ease;
+  -webkit-user-drag: none;
+  user-select: none;
 }
+/* التكبير الحقيقي: يُعرض الصورة بكسلاتها الأصلية (بلا تحجيم مُموَّه) مع قابلية التمرير */
 .media-lightbox__img.is-zoomed {
-  transform: scale(1.65);
+  max-width: none;
+  max-height: none;
+  border-radius: 6px;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, .16);
   cursor: zoom-out;
 }
+.media-lightbox__stage.is-panning { cursor: grabbing; }
 .media-lightbox__video {
   display: block;
   width: auto;
@@ -514,6 +522,47 @@ body.chat-focus .msg-media__video {
   box-shadow: 0 36px 90px rgba(0, 0, 0, .72), 0 0 0 1px rgba(255, 255, 255, .10);
   background: #000;
 }
+
+/* أدوات التكبير أسفل العارض */
+.media-lightbox__zoom {
+  position: relative;
+  z-index: 3;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  height: 34px;
+  padding: 0 3px;
+  border-radius: 11px;
+  background: rgba(255, 255, 255, .07);
+  border: 1px solid var(--border);
+}
+.media-lightbox__zbtn {
+  width: 28px; height: 28px;
+  border-radius: 8px;
+  display: grid; place-items: center;
+  cursor: pointer;
+  color: var(--text);
+  background: transparent;
+  border: 0;
+  transition: .16s;
+}
+.media-lightbox__zbtn:hover { background: var(--grad); color: #0a0715; }
+.media-lightbox__zbtn svg { width: 15px; height: 15px; }
+.media-lightbox__zlevel {
+  min-width: 54px;
+  height: 28px;
+  padding: 0 6px;
+  border-radius: 8px;
+  cursor: pointer;
+  color: var(--text);
+  background: rgba(255, 255, 255, .06);
+  border: 1px solid var(--border);
+  font: 800 11px/1 var(--font);
+  transition: .16s;
+}
+.media-lightbox__zlevel:hover { background: rgba(124, 92, 255, .22); border-color: rgba(124, 92, 255, .5); }
+.media-lightbox__zlevel:disabled { opacity: .45; cursor: default; }
 
 .media-lightbox__nav {
   position: relative;
@@ -544,6 +593,7 @@ body.chat-focus .msg-media__video {
   font-size: 12px; font-weight: 800; color: var(--muted);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   max-width: 48vw;
+  min-width: 0;
 }
 .media-lightbox__spacer { flex: 1; }
 .media-lightbox__btn {
@@ -570,32 +620,11 @@ body.media-lightbox-open { overflow: hidden; }
   .chat__attach svg { width: 17px; height: 17px; }
   .media-chip { width: 108px; padding: 5px; }
   .media-chip__thumb { height: 54px; }
-  .msg--media .msg__bubble { max-width: min(206px, 78%); }
-  .msg-media__frame,
-  .msg-media__img,
-  .msg-media__video {
-    max-width: 172px;
-    max-height: 128px;
-  }
-  .msg-media[data-orient="landscape"] .msg-media__frame,
-  .msg-media[data-orient="landscape"] .msg-media__img,
-  .msg-media[data-orient="landscape"] .msg-media__video {
-    max-width: 178px;
-    max-height: 114px;
-  }
-  .msg-media[data-orient="portrait"] .msg-media__frame,
-  .msg-media[data-orient="portrait"] .msg-media__img,
-  .msg-media[data-orient="portrait"] .msg-media__video {
-    max-width: 124px;
-    max-height: 136px;
-  }
-  .msg-media[data-orient="square"] .msg-media__frame,
-  .msg-media[data-orient="square"] .msg-media__img,
-  .msg-media[data-orient="square"] .msg-media__video {
-    max-width: 128px;
-    max-height: 128px;
-  }
-  .msg-media__caption { max-width: 172px; }
+  .msg--media .msg__bubble { max-width: 100%; }
+  .msg--media.msg--media-grid .msg__bubble { max-width: 100%; }
+  .msg-media { --media-max-h: 44vh; }
+  .msg--media-grid .msg-media { --media-max-h: 22vh; }
+  .msg-media__caption { max-width: 100%; }
   .msg-media__zoom { opacity: .94; transform: none; height: 22px; padding: 0 7px; font-size: 9px; }
   .media-lightbox__frame { grid-template-columns: 1fr; padding: 8px; }
   .media-lightbox__stage { grid-column: 1; }
@@ -607,18 +636,17 @@ body.media-lightbox-open { overflow: hidden; }
     max-width: 96vw;
     max-height: calc(100dvh - 96px);
   }
+  .media-lightbox__canvas { padding: 6px; }
   .media-lightbox__btn { height: 34px; padding: 0 11px; font-size: 11.5px; }
+  .media-lightbox__zoom { height: 30px; }
+  .media-lightbox__zbtn { width: 26px; height: 26px; }
+  .media-lightbox__zlevel { min-width: 46px; height: 26px; font-size: 10px; }
 }
 
 @media (max-width: 380px) {
-  .msg--media .msg__bubble { max-width: min(186px, 80%); }
-  .msg-media__frame,
-  .msg-media__img,
-  .msg-media__video {
-    max-width: 154px;
-    max-height: 116px;
-  }
-  .msg-media__caption { max-width: 154px; }
+  .msg--media .msg__bubble { max-width: 100%; }
+  .msg-media { --media-max-h: 40vh; }
+  .msg-media__caption { max-width: 100%; }
 }
 
 @media (prefers-reduced-motion: reduce) {
