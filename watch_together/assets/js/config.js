@@ -68,12 +68,17 @@ window.WT_CONFIG = {
     maxVideoMB: 80,          /* أقصى حجم للفيديو */
     maxPerMessage: 4,        /* أقصى عدد ملفات في رسالة واحدة */
     supabaseBucket: 'wt-room-media',   /* دلو التخزين في Supabase (ينشئه 08-room-media.sql) */
-    providers: ['supabase', 'catbox', 'litterbox', 'tmpfiles', 'uguu'],
+    providers: ['supabase', '0x0', 'pixeldrain', 'catbox', 'gofile', 'oshi', 'litterbox', 'tmpfiles', 'fileio', 'uguu'],
     /* مزوّدون مدعومون (الترتيب = أولوية المحاولة):
          supabase  → Supabase Storage — الموقع المضمون: مساحة دائمة داخل مشروعك
+         0x0       → 0x0.st (مجاني دائم — حتى 512 م.ب، مفتوح المصدر)
+         pixeldrain→ pixeldrain.com (مجاني دائم — حتى 20 غ.ب)
          catbox    → catbox.moe (مجاني دائم — أحياناً يتعطّل فيُجرَّب التالي)
+         gofile    → gofile.io (مجاني دائم — ملفات كبيرة، بلا حساب)
+         oshi      → oshi.at (مجاني — حتى 5 غ.ب، 14 يوماً)
          litterbox → litterbox.catbox.moe (موثوق — يحفظ الملف 72 ساعة)
          tmpfiles  → tmpfiles.org (مجاني — يحفظ الملف 7 أيام)
+         fileio    → file.io (مؤقّت 14 يوماً — آخر البدائل السريعة)
          uguu      → uguu.se (مؤقّت 3 ساعات — آخر حل في السلسلة) */
   }
 };

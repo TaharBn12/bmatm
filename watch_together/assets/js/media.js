@@ -7,10 +7,15 @@
    • الموقع المضمون هو Supabase Storage داخل مشروعك (دائم وسريع)،
      وسلسلة البدائل العامة تُجرَّب بعده تلقائياً فلا يتعطّل الإرسال:
         1) Supabase Storage  — الموقع المضمون: مساحة دائمة داخل مشروعك
-        2) Catbox            — موقع مجاني دائم (ملف حتى 200 ميغا)
-        3) Litterbox         — موقع موثوق (حتى 1 غ.ب، يُحذف بعد 72 ساعة)
-        4) Tmpfiles          — موقع مجاني (حتى 100 م.ب، يُحذف بعد 7 أيام)
-        5) Uguu              — موقع مجاني مؤقّت (آخر حل)
+        2) 0x0.st             — موقع مجاني دائم ومفتوح المصدر (حتى 512 م.ب)
+        3) PixelDrain        — موقع مجاني دائم وسريع (حتى 20 غ.ب)
+        4) Catbox            — موقع مجاني دائم (ملف حتى 200 ميغا)
+        5) Gofile            — موقع مجاني دائم (لا يحتاج حساب)
+        6) Oshi              — موقع مجاني (حتى 5 غ.ب، 14 يوماً)
+        7) Litterbox         — موقع موثوق (حتى 1 غ.ب، يُحذف بعد 72 ساعة)
+        8) Tmpfiles          — موقع مجاني (حتى 100 م.ب، يُحذف بعد 7 أيام)
+        9) File.io           — موقع مجاني مؤقّت (14 يوماً)
+       10) Uguu              — موقع مجاني مؤقّت (آخر حل)
    • كل رابط يُنقّى قبل العرض (http/https فقط) فلا تُنفَّذ
      روابط خبيثة، والغلاف يُقصَّر حتى لا يتجاوز حد التخزين.
    • عارض مكبّر (Lightbox) للصور والفيديو مع تنقّل ولوحة أدوات.
@@ -301,6 +306,114 @@
       }
     },
 
+    /* 2b) 0x0.st — موقع مجاني دائم ومفتوح المصدر: حتى 512 م.ب، بلا حساب،
+          والرابط يقدّم الملف مباشرة ويدعم CORS */
+    '0x0': {
+      id: '0x0',
+      label: '0x0.st',
+      note: 'موقع مجاني دائم — حتى 512 م.ب',
+      available() { return typeof global.FormData === 'function'; },
+      upload(file, ctx, onProgress) {
+        const form = new global.FormData();
+        form.append('file', file, file.name || 'file');
+        return request({
+          url: 'https://0x0.st',
+          method: 'POST', body: form, onProgress, timeoutMs: 150000
+        }).then((res) => {
+          const url = String(res.text || '').trim();
+          if (res.status < 200 || res.status >= 300 || !/^https?:\/\//i.test(url)) {
+            throw new Error('0x0.st: ' + (url || ('HTTP ' + res.status)));
+          }
+          return url;
+        });
+      }
+    },
+
+    /* 2c) PixelDrain — موقع مجاني دائم وسريع: حتى 20 غ.ب، بلا حساب، والرابط مباشر */
+    pixeldrain: {
+      id: 'pixeldrain',
+      label: 'PixelDrain',
+      note: 'موقع مجاني دائم — حتى 20 غ.ب',
+      available() { return typeof global.FormData === 'function'; },
+      upload(file, ctx, onProgress) {
+        const form = new global.FormData();
+        form.append('file', file, file.name || 'file');
+        return request({
+          url: 'https://pixeldrain.com/api/file',
+          method: 'POST', body: form, onProgress, timeoutMs: 150000
+        }).then((res) => {
+          if (res.status < 200 || res.status >= 300) throw new Error('PixelDrain: HTTP ' + res.status);
+          let data = null;
+          try { data = JSON.parse(res.text); } catch (e) { data = null; }
+          const id = data && data.id;
+          if (!id || !/^[A-Za-z0-9_-]+$/.test(String(id))) throw new Error('PixelDrain: استجابة غير مفهومة');
+          return 'https://pixeldrain.com/api/file/' + id;
+        });
+      }
+    },
+
+    /* 2d) Gofile — موقع مجاني دائم: بلا حساب، ويدعم ملفات كبيرة، مع الحصول على السيرفر أولاً */
+    gofile: {
+      id: 'gofile',
+      label: 'Gofile',
+      note: 'موقع مجاني دائم — ملفات كبيرة',
+      available() { return typeof global.FormData === 'function'; },
+      upload(file, ctx, onProgress) {
+        return request({
+          url: 'https://api.gofile.io/servers',
+          method: 'GET', timeoutMs: 30000
+        }).then((res) => {
+          let data = null;
+          try { data = JSON.parse(res.text); } catch (e) { data = null; }
+          const server = data && data.data && data.data.servers && data.data.servers[0] && data.data.servers[0].name;
+          if (!server) throw new Error('Gofile: تعذّر الحصول على السيرفر');
+          const form = new global.FormData();
+          form.append('file', file, file.name || 'file');
+          return request({
+            url: 'https://' + server + '.gofile.io/uploadFile',
+            method: 'POST', body: form, onProgress, timeoutMs: 180000
+          });
+        }).then((res) => {
+          if (res.status < 200 || res.status >= 300) throw new Error('Gofile: HTTP ' + res.status);
+          let data = null;
+          try { data = JSON.parse(res.text); } catch (e) { data = null; }
+          const url = data && data.data && data.data.downloadPage;
+          const direct = data && data.data && data.data.directLink;
+          const out = direct || url;
+          if (!out || !/^https?:\/\//i.test(String(out))) throw new Error('Gofile: استجابة غير مفهومة');
+          return String(out);
+        });
+      }
+    },
+
+    /* 2e) Oshi.at — موقع مجاني: حتى 5 غ.ب، 14 يوماً، بلا حساب، يدعم CORS */
+    oshi: {
+      id: 'oshi',
+      label: 'Oshi',
+      note: 'موقع مجاني — حتى 5 غ.ب، 14 يوماً',
+      temporary: true,
+      available() { return typeof global.FormData === 'function'; },
+      upload(file, ctx, onProgress) {
+        const form = new global.FormData();
+        form.append('f', file, file.name || 'file');
+        return request({
+          url: 'https://oshi.at',
+          method: 'POST', body: form, onProgress, timeoutMs: 150000
+        }).then((res) => {
+          if (res.status < 200 || res.status >= 300) throw new Error('Oshi: HTTP ' + res.status);
+          const raw = String(res.text || '').trim();
+          let url = raw;
+          try {
+            const j = JSON.parse(raw);
+            url = j.url || j.link || j.download || raw;
+          } catch (e) { }
+          url = String(url).trim().split(/\s+/)[0];
+          if (!/^https?:\/\//i.test(url)) throw new Error('Oshi: استجابة غير مفهومة');
+          return url;
+        });
+      }
+    },
+
     /* 4) Tmpfiles — موقع مجاني: حتى 100 م.ب، يحفظ الملف 7 أيام، والرابط
           المباشر /dl/ يقدّم الملف مباشرة (مناسب للصور والفيديو) */
     tmpfiles: {
@@ -327,7 +440,31 @@
       }
     },
 
-    /* 5) Uguu — موقع مجاني مؤقّت (آخر حل في السلسلة) */
+    /* 5) File.io — موقع مجاني مؤقّت: 14 يوماً، بلا حساب (بديل سريع) */
+    fileio: {
+      id: 'fileio',
+      label: 'File.io',
+      note: 'موقع مجاني مؤقّت — 14 يوماً',
+      temporary: true,
+      available() { return typeof global.FormData === 'function'; },
+      upload(file, ctx, onProgress) {
+        const form = new global.FormData();
+        form.append('file', file, file.name || 'file');
+        return request({
+          url: 'https://file.io',
+          method: 'POST', body: form, onProgress, timeoutMs: 120000
+        }).then((res) => {
+          if (res.status < 200 || res.status >= 300) throw new Error('File.io: HTTP ' + res.status);
+          let data = null;
+          try { data = JSON.parse(res.text); } catch (e) { data = null; }
+          const url = data && (data.link || data.url);
+          if (!url || !/^https?:\/\//i.test(String(url))) throw new Error('File.io: استجابة غير مفهومة');
+          return String(url);
+        });
+      }
+    },
+
+    /* 6) Uguu — موقع مجاني مؤقّت (آخر حل في السلسلة) */
     uguu: {
       id: 'uguu',
       label: 'Uguu',
@@ -354,7 +491,7 @@
 
   function providerOrder() {
     const list = mediaCfg().providers;
-    const ids = Array.isArray(list) && list.length ? list.slice() : ['supabase', 'catbox', 'litterbox', 'tmpfiles', 'uguu'];
+    const ids = Array.isArray(list) && list.length ? list.slice() : ['supabase', '0x0', 'pixeldrain', 'catbox', 'gofile', 'oshi', 'litterbox', 'tmpfiles', 'fileio', 'uguu'];
     return ids.map((id) => String(id)).filter((id) => !!PROVIDERS[id]);
   }
 
