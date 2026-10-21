@@ -177,6 +177,8 @@ watch_together/
     │   ├── 05-health-check.sql        ← ✅ فحص للقراءة فقط بعد أي تنفيذ
     │   ├── 06-cleanup-cron.sql        ← 🕒 تنظيف دوري اختياري (pg_cron)
     │   ├── 08-room-media.sql         ← 📸 رابط الوسائط (media_url) + دلو تخزين مجاني
+    │   ├── 09-calls.sql              ← 📞 المكالمات الصوتية (حالة + إشارات WebRTC مغلقة)
+    │   ├── 10-dm-realtime.sql        ← ⚡ البثّ الحيّ للمحادثات (قناة خاصة بلا نصوص)
     │   └── README.md                  ← ترتيب التنفيذ ووصفات جاهزة لكل حالة
     ├── media.md                ← 📸 وسائط الغرفة: المزوّدون والتخصيص والأمان
     ├── supabase-setup.md       ← دليل Supabase + تفعيل Auth

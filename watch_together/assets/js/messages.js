@@ -280,6 +280,84 @@
       }
     } finally { state.ticking = false; if (!state.stopped) state.timer = setTimeout(tick,4000); }
   }
+  /* ============================== البثّ الحيّ (Realtime) ==============================
+     شبكة أولى للتحديث الفوري، والاستطلاع الدوري (tick) يبقى شبكة أمان.
+     نستقبل «إشارة تغيير» فقط ثم نقرأ عبر RPC المحمي — فلا نعتمد على RLS الجداول. */
+  let realtime = null, liveChatTimer = null, liveListTimer = null;
+
+  function liveChat(ctx) {
+    if (!ctx || !ownsContext(ctx)) return;
+    if (liveChatTimer) window.clearTimeout(liveChatTimer);
+    liveChatTimer = setTimeout(() => {
+      liveChatTimer = null;
+      if (state.stopped || !ctx || ctx !== state.active || !ownsContext(ctx)) return;
+      loadMessages(ctx, false);
+    }, 220);
+  }
+  function liveList() {
+    if (liveListTimer || state.stopped) return;
+    liveListTimer = setTimeout(() => {
+      liveListTimer = null;
+      if (!state.stopped) loadThreads(false, true);
+    }, 400);
+  }
+  function liveTyping(ctx, payload) {
+    if (!ctx || String(payload.user) === state.uid) return;
+    const active = payload.active !== false;
+    ctx.typing = active;
+    if (ctx.typingTimer) { window.clearTimeout(ctx.typingTimer); ctx.typingTimer = null; }
+    if (active) {
+      const until = Date.parse(payload.until);
+      const wait = Number.isFinite(until) ? Math.max(1200, Math.min(8000, until - Date.now())) : 5000;
+      /* المؤشّر ينتهي وحده كما ينتهي سجلّ wt_dm_typing — لا «يكتب الآن» أبدية */
+      ctx.typingTimer = window.setTimeout(() => {
+        ctx.typingTimer = null;
+        if (!ctx.typing) return;
+        ctx.typing = false;
+        if (ctx === state.active) header(ctx);
+      }, wait);
+    }
+    if (ctx === state.active) header(ctx);
+  }
+  function startRealtime() {
+    if (realtime || state.stopped || !window.WTDMRealtime || !state.uid) return;
+    realtime = window.WTDMRealtime.create({
+      uid: state.uid,
+      getToken: async () => {
+        try { const session = await A.validSession(); return (session && session.access_token) || ''; }
+        catch (_) { return ''; }
+      }
+    });
+    realtime.on('message', (payload) => {
+      const thread = String((payload && payload.thread) || '').toLowerCase();
+      if (!S.UUID.test(thread)) return;
+      const ctx = state.contexts.get(thread);
+      if (ctx && ctx === state.active) liveChat(ctx);
+      liveList();
+    });
+    realtime.on('read', (payload) => {
+      const thread = String((payload && payload.thread) || '').toLowerCase();
+      if (!S.UUID.test(thread) || String(payload.user) === state.uid) return;
+      const ctx = state.contexts.get(thread);
+      if (!ctx || !numeric(payload.last_read)) return;
+      if (newer(payload.last_read, ctx.peerRead || '0')) {
+        ctx.peerRead = String(payload.last_read);
+        if (ctx === state.active) render(ctx, '', false);
+      }
+    });
+    realtime.on('typing', (payload) => {
+      const thread = String((payload && payload.thread) || '').toLowerCase();
+      if (!S.UUID.test(thread)) return;
+      const ctx = state.contexts.get(thread);
+      if (ctx) liveTyping(ctx, payload);
+    });
+  }
+  function stopRealtime() {
+    if (liveChatTimer) { window.clearTimeout(liveChatTimer); liveChatTimer = null; }
+    if (liveListTimer) { window.clearTimeout(liveListTimer); liveListTimer = null; }
+    if (realtime) { try { realtime.close(); } catch (_) { /* تجاهل */ } realtime = null; }
+  }
+
   async function newFriends(append) {
     if (state.friendBusy) return; state.friendBusy = true; $('newChatMore').disabled = true;
     C.error('newChatError',null);
@@ -376,14 +454,22 @@
   window.addEventListener('online',tick);
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') { if (state.active) stopTyping(state.active); } else { tick(); if (state.active) maybeRead(state.active); } });
   window.addEventListener('pagehide', () => { state.stopped = true; clearTimeout(state.timer); if (state.active) { persistDraft(state.active); state.active.controller.abort(); } if (state.listController) state.listController.abort(); });
-  window.addEventListener('pageshow', event => { if (event.persisted) { state.stopped = false; if (state.active) state.active.controller = new AbortController(); tick(); } });
+  window.addEventListener('pageshow', event => {
+    if (!event.persisted) return;
+    state.stopped = false;
+    if (state.active) state.active.controller = new AbortController();
+    if (realtime) realtime.retryNow(); else startRealtime();
+    tick();
+  });
   window.addEventListener('beforeunload', event => { if (!storageAvailable && [...state.contexts.values()].some(ctx => ctx.draft.text || ctx.outbox.size)) { event.preventDefault(); event.returnValue = ''; } });
+  window.addEventListener('pagehide', event => { if (!event.persisted) stopRealtime(); });
   C.boot(async data => {
     if (state.uid && state.uid !== data.profile.user_id) { state.stopped=true; clearTimeout(state.timer); state.contexts.forEach(ctx=>ctx.controller.abort()); if(state.listController) state.listController.abort(); location.reload(); throw new Error('تغيّر الحساب؛ نعيد فتح مساحته الخاصة.'); }
     state.uid = data.profile.user_id; state.stopped = false; C.setCounts(data.counts);
     /* استعادة مكالمة قائمة (رنين/جارية) بعد تحديث الصفحة — كي لا تبقى بلا زرّ إنهاء */
     if (window.WTCalls && window.WTCalls.reconcile) window.WTCalls.reconcile();
     await loadThreads(false,false);
+    startRealtime();
     const params = new URLSearchParams(location.search), peer = params.get('with'), id = params.get('thread');
     try {
       if (peer) { if (!S.UUID.test(peer)) throw new Error('رابط الصديق غير صالح.'); const thread = await S.call('open_thread',{p_user:peer}); await selectThread(thread.id,thread); loadThreads(false,true); }
