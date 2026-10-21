@@ -44,3 +44,16 @@ DirectoryIndex index.html
 
 # 8) إن أردت منع سرد محتويات المجلدات
 Options -Indexes
+
+# 9) تطبيق الويب (PWA): النوع الصحيح + عدم تخزين الخدمة العاملة
+<IfModule mod_mime.c>
+  AddType application/manifest+json .webmanifest
+</IfModule>
+<FilesMatch "(sw\.js|manifest\.webmanifest)$">
+  <IfModule mod_headers.c>
+    Header set Cache-Control "no-cache, no-store, must-revalidate"
+  </IfModule>
+</FilesMatch>
+
+# 10) إن أردت أن يفتح الموقع دون اتصال من أي مسار عند 404
+# ErrorDocument 404 /index.html

@@ -1,0 +1,264 @@
+/* =========================================================
+   WatchTogether — المكالمات الصوتية (call.css v1.0.0)
+   شاشة رنين، شريط مكالمة جارية، أزرار قبول/رفض/كتم.
+   Midnight Gold · RTL · وصولية · بلا حركة إلزامية.
+   ========================================================= */
+
+.call-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 8800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px 16px calc(20px + env(safe-area-inset-bottom));
+  background:
+    radial-gradient(700px 420px at 50% 8%, rgba(197, 165, 114, .16), transparent 68%),
+    rgba(5, 8, 13, .82);
+  backdrop-filter: blur(10px) saturate(120%);
+  -webkit-backdrop-filter: blur(10px) saturate(120%);
+  animation: callFade .2s ease both;
+}
+@keyframes callFade { from { opacity: 0; } to { opacity: 1; } }
+
+.call-card {
+  position: relative;
+  width: min(400px, 100%);
+  padding: 26px 22px 20px;
+  text-align: center;
+  border-radius: 26px;
+  border: 1px solid rgba(232, 220, 198, .16);
+  background:
+    radial-gradient(420px 220px at 50% -10%, rgba(197, 165, 114, .2), transparent 70%),
+    linear-gradient(180deg, #141d2a, #0c1219);
+  box-shadow: 0 34px 90px rgba(0, 0, 0, .7), 0 0 0 1px rgba(197, 165, 114, .08) inset;
+  color: #e8dcc6;
+  font-family: "Cairo", "Segoe UI", system-ui, sans-serif;
+  animation: callRise .28s cubic-bezier(.2, .8, .25, 1) both;
+}
+@keyframes callRise { from { opacity: 0; transform: translateY(14px) scale(.97); } to { opacity: 1; transform: none; } }
+
+.call-card__glow {
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  pointer-events: none;
+  box-shadow: 0 0 0 1px rgba(197, 165, 114, .22), 0 0 34px rgba(197, 165, 114, .12);
+}
+
+.call-eyebrow {
+  margin: 0 0 16px;
+  font-size: 9.5px;
+  font-weight: 800;
+  letter-spacing: 2.4px;
+  color: #c5a572;
+  text-transform: uppercase;
+}
+
+.call-avatar { display: grid; place-items: center; margin-bottom: 14px; }
+.call-avatar .s-avatar {
+  width: 88px; height: 88px;
+  font-size: 26px;
+  box-shadow: 0 0 0 3px rgba(197, 165, 114, .28), 0 0 0 10px rgba(197, 165, 114, .06);
+  animation: callPulse 2.4s ease-in-out infinite;
+}
+@keyframes callPulse {
+  0%, 100% { box-shadow: 0 0 0 3px rgba(197, 165, 114, .28), 0 0 0 10px rgba(197, 165, 114, .06); }
+  50% { box-shadow: 0 0 0 3px rgba(197, 165, 114, .44), 0 0 0 18px rgba(197, 165, 114, .04); }
+}
+
+.call-title {
+  margin: 0;
+  font-size: 21px;
+  font-weight: 800;
+  line-height: 1.35;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.call-status {
+  margin: 7px 0 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: #9aa8b8;
+  min-height: 20px;
+}
+
+.call-actions {
+  display: flex;
+  justify-content: center;
+  gap: 14px;
+  margin-top: 22px;
+}
+
+.call-btn {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 84px;
+  min-height: 78px;
+  padding: 10px 16px;
+  border-radius: 18px;
+  border: 1px solid rgba(232, 220, 198, .16);
+  background: rgba(232, 220, 198, .07);
+  color: inherit;
+  font: 700 12px/1.2 "Cairo", "Segoe UI", system-ui, sans-serif;
+  cursor: pointer;
+  transition: transform .16s, background .16s, border-color .16s, box-shadow .2s;
+}
+.call-btn svg { width: 24px; height: 24px; }
+.call-btn:hover { transform: translateY(-2px); }
+.call-btn:focus-visible { outline: 2px solid #f3d9a4; outline-offset: 3px; }
+.call-btn:disabled { opacity: .5; cursor: not-allowed; transform: none; }
+
+.call-btn--accept {
+  border-color: transparent;
+  background: linear-gradient(135deg, #63b58c, #8fd6b1);
+  color: #07231a;
+  box-shadow: 0 14px 30px rgba(99, 181, 140, .28);
+}
+.call-btn--reject {
+  border-color: transparent;
+  background: linear-gradient(135deg, #c9605f, #e08d8c);
+  color: #2b0b0b;
+  box-shadow: 0 14px 30px rgba(201, 96, 95, .26);
+}
+
+.call-note {
+  margin: 14px 0 0;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: #e8b86a;
+  line-height: 1.7;
+}
+
+.call-privacy {
+  margin: 16px 0 0;
+  padding-top: 13px;
+  border-top: 1px solid rgba(232, 220, 198, .1);
+  font-size: 10.5px;
+  font-weight: 600;
+  line-height: 1.7;
+  color: #6b7a8a;
+}
+
+/* ---------------- شريط المكالمة الجارية ---------------- */
+.call-bar {
+  position: fixed;
+  inset-inline: 12px;
+  inset-block-start: calc(10px + env(safe-area-inset-top));
+  z-index: 8700;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: 520px;
+  margin-inline: auto;
+  padding: 8px 10px 8px 14px;
+  border-radius: 16px;
+  border: 1px solid rgba(122, 184, 154, .4);
+  background: linear-gradient(180deg, rgba(16, 34, 29, .96), rgba(10, 22, 19, .96));
+  box-shadow: 0 18px 44px rgba(0, 0, 0, .55);
+  color: #e8dcc6;
+  font-family: "Cairo", "Segoe UI", system-ui, sans-serif;
+  animation: callRise .26s cubic-bezier(.2, .8, .25, 1) both;
+}
+.call-bar__dot {
+  width: 9px; height: 9px; flex: none; border-radius: 50%;
+  background: #7ab89a;
+  box-shadow: 0 0 0 0 rgba(122, 184, 154, .55);
+  animation: callDot 2s ease-out infinite;
+}
+@keyframes callDot {
+  0% { box-shadow: 0 0 0 0 rgba(122, 184, 154, .5); }
+  70% { box-shadow: 0 0 0 8px rgba(122, 184, 154, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(122, 184, 154, 0); }
+}
+.call-bar__text { flex: 1 1 auto; min-width: 0; display: flex; align-items: baseline; gap: 8px; }
+.call-bar__text strong {
+  font-size: 13px; font-weight: 800;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+#wtCallBarTime { font-size: 12px; font-weight: 700; color: #9aa8b8; flex: none; }
+#wtCallBarTime.is-time { color: #a9d8c1; font-variant-numeric: tabular-nums; }
+
+.call-bar__btn {
+  flex: none;
+  width: 38px; height: 38px;
+  display: grid; place-items: center;
+  border-radius: 11px;
+  border: 1px solid rgba(232, 220, 198, .16);
+  background: rgba(232, 220, 198, .08);
+  color: #e8dcc6;
+  cursor: pointer;
+}
+.call-bar__btn:hover { background: rgba(232, 220, 198, .14); }
+.call-bar__btn[aria-pressed="true"] { border-color: rgba(232, 184, 106, .5); color: #e8b86a; }
+.call-bar__btn:disabled { opacity: .45; cursor: not-allowed; }
+.call-bar__btn--end { border-color: transparent; background: #c9605f; color: #fff; }
+.call-bar__btn--end:hover { background: #d66d6c; }
+
+.call-audio { position: fixed; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+
+/* زر المكالمة في رأس المحادثة */
+.chat-head #chatCall.is-live { color: #7ab89a; border-color: rgba(122, 184, 154, .45); }
+.chat-head #chatCall:disabled { opacity: .4; }
+
+/* ---------------- الجوال ---------------- */
+@media (max-width: 600px) {
+  .call-layer { align-items: flex-end; padding: 0; }
+  .call-card {
+    width: 100%;
+    border-radius: 24px 24px 0 0;
+    padding: 22px 18px calc(20px + env(safe-area-inset-bottom));
+  }
+  .call-avatar .s-avatar { width: 76px; height: 76px; }
+  .call-title { font-size: 19px; }
+  .call-btn { min-width: 92px; min-height: 82px; }
+  .call-bar { inset-block-start: calc(6px + env(safe-area-inset-top)); inset-inline: 8px; }
+}
+
+@media (pointer: coarse) {
+  .call-bar__btn { width: 44px; height: 44px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .call-layer, .call-card, .call-bar, .call-avatar .s-avatar, .call-bar__dot {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+/* احترام تقليل الحركة المختار من مركز التحكم */
+:root[data-wt-motion="reduce"] .call-layer,
+:root[data-wt-motion="reduce"] .call-card,
+:root[data-wt-motion="reduce"] .call-bar,
+:root[data-wt-motion="reduce"] .call-avatar .s-avatar,
+:root[data-wt-motion="reduce"] .call-bar__dot {
+  animation: none !important;
+  transition: none !important;
+}
+
+/* سطر سجل المكالمة داخل المحادثة (kind='call') */
+.dm-call-log {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 2px;
+  color: var(--s-text, #e8dcc6);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.6;
+}
+.dm-call-log__ic {
+  width: 26px; height: 26px;
+  flex: none;
+  display: grid; place-items: center;
+  border-radius: 9px;
+  border: 1px solid rgba(122, 184, 154, .35);
+  background: rgba(122, 184, 154, .12);
+  color: #7ab89a;
+}
+.dm-call-log__ic svg { width: 15px; height: 15px; }

@@ -58,7 +58,32 @@ window.WT_CONFIG = {
     presenceTimeoutMs: 12000 /* اعتبار المشارك منقطعاً بعد هذه المدة */
   },
 
-  /* ---------- 7) الوسائط (صور وفيديو في دردشة الغرفة) ----------
+  /* ---------- 7) المكالمات الصوتية (WebRTC) ----------
+     الصوت ينتقل مباشرة بين الجهازين ولا يُخزَّن. الإشارات فقط عبر Supabase.
+     ⚠️ مطلوب لنجاح المكالمات على شبكات الجوال: TURN (خدمة مُدارة أو coturn).
+     لا تضع مفاتيح سرية هنا؛ استخدم رابطاً على خادمك يعيد بيانات مؤقتة:
+       turnFetchUrl: 'https://your-endpoint.example/turn'
+     يقبل ثلاث صيغ: {urls,username,credential} · [{urls,...},...] · {iceServers:[...]}
+     أو بيانات ثابتة لمزوّد يسمح بذلك:
+       turn: { urls: ['turn:turn.example.com:3478'], username: '...', credential: '...' }
+     التفصيل خطوة بخطوة: docs/turn-setup.md
+     نفّذ docs/sql/09-calls.sql أولاً. */
+  calls: {
+    enabled: true,
+    ringTimeoutMs: 45000,        /* مهلة الرنين قبل اعتبارها فائتة */
+    signalPollMs: 900,           /* سرعة تبادل الإشارات أثناء الرنين والاتصال */
+    signalPollActiveMs: 2600,    /* أثناء المكالمة: نكتفي بفحص الانتهاء */
+    maxCallMs: 7200000,          /* سقف أمان للمكالمة (ساعتان) */
+    iceServers: [
+      { urls: 'stun:stun.l.google.com:19302' },
+      { urls: 'stun:stun1.l.google.com:19302' }
+    ],
+    turn: null,                  /* { urls, username, credential } */
+    turnFetchUrl: null,          /* نقطة نهاية تعيد بيانات TURN مؤقتة */
+    turnFetchTimeoutMs: 5000     /* لا نُبطئ بدء المكالمة إن تعطّل الخادم */
+  },
+
+  /* ---------- 8) الوسائط (صور وفيديو في دردشة الغرفة) ----------
      الموقع المضمون هو Supabase Storage داخل مشروعك (دائم وسريع)،
      وإن فشل ينتقل العميل تلقائياً عبر البدائل المجانية بالترتيب. */
   media: {

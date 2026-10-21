@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#080c14">
+  <meta name="robots" content="noindex">
+  <title>غير متصل — WatchTogether</title>
+  <link rel="icon" href="assets/icons/icon-192.png">
+  <link rel="stylesheet" href="assets/css/site.css?v=1.0.0">
+  <style>
+    .offline-body {
+      margin: 0; min-height: 100vh; min-height: 100dvh;
+      display: grid; place-items: center; padding: 28px 18px calc(28px + env(safe-area-inset-bottom));
+      background:
+        radial-gradient(900px 520px at 82% -10%, rgba(197,165,114,.14), transparent 62%),
+        radial-gradient(700px 460px at 4% 18%, rgba(182,122,59,.08), transparent 62%),
+        #080c14;
+      color: #e8dcc6; font-family: "Cairo", "Segoe UI", system-ui, sans-serif;
+      direction: rtl;
+    }
+    .offline-card {
+      width: min(520px, 100%); text-align: center;
+      padding: 34px 26px; border-radius: 24px;
+      border: 1px solid rgba(232,220,198,.12);
+      background: rgba(232,220,198,.055);
+      backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px);
+      box-shadow: 0 30px 80px rgba(0,0,0,.62);
+    }
+    .offline-mark {
+      width: 66px; height: 66px; margin: 0 auto 18px;
+      display: grid; place-items: center; border-radius: 20px;
+      background: linear-gradient(135deg, #e8dcc6, #c5a572 55%, #9a7b46);
+      color: #141006; box-shadow: 0 16px 34px rgba(197,165,114,.28);
+    }
+    .offline-mark svg { width: 32px; height: 32px; }
+    .offline-eyebrow { margin: 0 0 6px; font-size: 10px; font-weight: 800; letter-spacing: 2px; color: #c5a572; }
+    h1 { margin: 0; font-size: clamp(21px, 5vw, 26px); font-weight: 800; line-height: 1.35; }
+    .offline-lead { margin: 10px auto 0; max-width: 40ch; color: #9aa8b8; font-size: 13.5px; line-height: 1.9; font-weight: 600; }
+    .offline-status {
+      display: inline-flex; align-items: center; gap: 8px; margin-top: 18px;
+      padding: 8px 14px; border-radius: 999px; font-size: 12px; font-weight: 700;
+      border: 1px solid rgba(212,122,122,.4); background: rgba(38,20,22,.9); color: #f3d7d7;
+    }
+    .offline-status.is-back { border-color: rgba(122,184,154,.5); background: rgba(16,34,27,.95); color: #d6f1e4; }
+    .offline-dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+    .offline-actions { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; margin-top: 22px; }
+    .offline-btn {
+      display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 10px 20px;
+      border-radius: 13px; border: 1px solid rgba(232,220,198,.18);
+      background: rgba(232,220,198,.08); color: #e8dcc6;
+      font: 800 13.5px/1 "Cairo", system-ui, sans-serif; text-decoration: none; cursor: pointer;
+    }
+    .offline-btn--primary { border-color: transparent; background: linear-gradient(135deg, #c5a572, #e8dcc6); color: #141006; }
+    .offline-btn:focus-visible { outline: 2px solid #f3d9a4; outline-offset: 3px; }
+    .offline-foot { margin-top: 22px; color: #6b7a8a; font-size: 11.5px; font-weight: 600; line-height: 1.8; }
+  </style>
+</head>
+<body class="offline-body">
+  <main class="offline-card">
+    <div class="offline-mark" aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M2 8.8a16 16 0 0 1 20 0M5 12.4a11 11 0 0 1 14 0M8.5 16a6 6 0 0 1 7 0"/>
+        <path d="M12 19.5h.01" stroke-width="2.6"/>
+        <path d="m3 3 18 18"/>
+      </svg>
+    </div>
+    <p class="offline-eyebrow">WATCH TOGETHER · OFFLINE</p>
+    <h1>انقطع الاتصال، لا السهرة.</h1>
+    <p class="offline-lead">هذه الصفحة محفوظة على جهازك لتعمل دون إنترنت. حين تعود الشبكة سيستأنف الموقع المزامنة تلقائياً.</p>
+    <p class="offline-status" id="offlineStatus" role="status">
+      <span class="offline-dot" aria-hidden="true"></span><span id="offlineStatusText">لا يوجد اتصال بالإنترنت</span>
+    </p>
+    <div class="offline-actions">
+      <button class="offline-btn offline-btn--primary" type="button" id="offlineRetry">إعادة المحاولة</button>
+      <a class="offline-btn" href="index.html">العودة إلى الغرف</a>
+    </div>
+    <p class="offline-foot">لا تُحفظ بيانات الدخول أو الرسائل داخل هذه الصفحة. تتوفّر بعض الصفحات من الكاش فقط.</p>
+  </main>
+  <script>
+    (function () {
+      'use strict';
+      var status = document.getElementById('offlineStatus');
+      var text = document.getElementById('offlineStatusText');
+      function render(online) {
+        status.classList.toggle('is-back', online);
+        text.textContent = online ? 'عاد الاتصال — يمكنك المتابعة الآن' : 'لا يوجد اتصال بالإنترنت';
+        if (online) setTimeout(function () { location.href = 'index.html'; }, 1400);
+      }
+      render(navigator.onLine);
+      window.addEventListener('online', function () { render(true); });
+      window.addEventListener('offline', function () { render(false); });
+      document.getElementById('offlineRetry').addEventListener('click', function () {
+        if (navigator.onLine) location.href = 'index.html';
+        else location.reload();
+      });
+    })();
+  </script>
+</body>
+</html>
