@@ -91,6 +91,7 @@
                   <p class="s-muted s-small">مساحتك، قواعدك. الحفظ مطلوب لتطبيق التعديلات.</p>
                   <label class="s-switch-row"><span><strong>الظهور في البحث</strong><small>متوقف افتراضيًا. عند تفعيله يستطيع الأعضاء العثور عليك بالاسم أو المعرّف أو الذائقة. رابط ملفك يبقى متاحًا للأعضاء الذين يعرفونه.</small></span><input class="s-switch" id="prefDiscoverable" type="checkbox" role="switch"></label>
                   <label class="s-switch-row"><span><strong>استقبال طلبات الصداقة</strong><small>إيقافه يمنع الطلبات الجديدة، دون تغيير صداقاتك الحالية.</small></span><input class="s-switch" id="prefRequests" type="checkbox" role="switch"></label>
+                  <label class="s-switch-row"><span><strong>استقبال المكالمات الصوتية</strong><small>إيقافه يعطّل زرّ الاتصال عند أصدقائك، ويمنع الخادم بدء أي مكالمة معك. لا يؤثر على المكالمات الجارية. يُحفظ فورًا.</small><span class="s-hint" id="prefCallsNote" role="status" aria-live="polite" style="display:block;margin-top:4px">المكالمات للأصدقاء المقبولين فقط، والصوت يمر بين الجهازين مباشرة دون تخزين.</span></span><input class="s-switch" id="prefCalls" type="checkbox" role="switch" aria-describedby="prefCallsNote"></label>
                   <label class="s-switch-row"><span><strong>إيصالات القراءة</strong><small>اسمح للطرف الآخر بمعرفة أنك قرأت رسائله. إيقافها لا يؤثر على عدّادك الخاص.</small></span><input class="s-switch" id="prefReceipts" type="checkbox" role="switch"></label>
                   <label class="s-switch-row"><span><strong>إظهار عدد الأصدقاء</strong><small>العدد فقط؛ قائمة أصدقائك لا تُعرض على ملفك.</small></span><input class="s-switch" id="prefFriendCount" type="checkbox" role="switch"></label>
                   <a class="s-text-link" style="margin-top:20px" href="friends.html?tab=blocked"><span class="ic" data-icon="block" data-size="17"></span> إدارة الأعضاء المحظورين</a>
@@ -108,14 +109,14 @@
   </div>
   <dialog class="s-dialog" id="socialConfirm" aria-labelledby="confirmTitle" aria-describedby="confirmBody"><h2 id="confirmTitle"></h2><p id="confirmBody"></p><div class="s-dialog-actions"><button class="s-btn" id="confirmNo" type="button">تراجع</button><button class="s-btn s-btn--primary" id="confirmYes" type="button">تأكيد</button></div></dialog>
   <dialog class="s-dialog" id="photoDialog" aria-labelledby="photoTitle" aria-describedby="photoHelp"><div class="s-dialog-head"><h2 id="photoTitle">صورتك، على طريقتك.</h2><button class="s-icon-btn" id="closePhoto" type="button" aria-label="إغلاق محرّر الصورة"><span class="ic" data-icon="x" data-size="20"></span></button></div><p id="photoHelp">اسحب الصورة لضبطها، أو استخدم الأسهم بعد تحديد المعاينة. يدعم الرفع من معرض الهاتف.</p><div class="s-photo-crop"><canvas id="photoCanvas" width="512" height="512" tabindex="0" role="img" aria-label="معاينة قصّ الصورة، استخدم الأسهم لتحريكها وShift للتحريك الدقيق"></canvas></div><div class="s-photo-tools"><label for="photoZoom">التكبير<input id="photoZoom" type="range" min="1" max="3" step="0.01" value="1"></label><button class="s-icon-btn" id="rotatePhoto" type="button" aria-label="تدوير الصورة 90 درجة" title="تدوير"><span class="ic" data-icon="rotate" data-size="21"></span></button></div><div class="s-photo-privacy"><span class="ic" data-icon="shield" data-size="15"></span> تُعاد معالجة الصورة إلى WebP بحجم 512×512 لإزالة بيانات الموقع وEXIF. صورة الملف ورابطها علنيان؛ لا ترفع وثائق أو صورًا حساسة. JPEG وPNG وWebP، وHEIC إذا دعمه متصفحك.</div><div class="s-error" id="photoError" hidden></div><div class="s-dialog-actions"><button class="s-btn" id="photoCancel" type="button">تراجع</button><button class="s-btn s-btn--primary" id="photoSave" type="button"><span class="ic" data-icon="camera" data-size="17"></span> حفظ الصورة</button></div></dialog>
-  <script src="assets/js/config.js?v=3.1.2"></script>
+  <script src="assets/js/config.js?v=3.2.0"></script>
   <script src="assets/js/util.js?v=3.1.0"></script>
   <script src="assets/js/icons.js?v=3.2.0"></script>
   <script src="assets/js/auth.js?v=3.2.0"></script>
-  <script src="assets/js/social.js?v=3.1.0"></script>
-  <script src="assets/js/social-ui.js?v=3.0.0"></script>
+  <script src="assets/js/social.js?v=3.2.0"></script>
+  <script src="assets/js/social-ui.js?v=3.1.0"></script>
   <script src="assets/js/photo-editor.js?v=3.0.0"></script>
-  <script src="assets/js/profile.js?v=3.0.0"></script>
-  <script src="assets/js/site.js?v=1.0.0"></script>
+  <script src="assets/js/profile.js?v=3.1.0"></script>
+  <script src="assets/js/site.js?v=1.0.1"></script>
 </body>
 </html>

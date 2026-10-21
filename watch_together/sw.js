@@ -6,7 +6,7 @@
    ========================================================= */
 'use strict';
 
-const VERSION = 'wt-v1.0.0';
+const VERSION = 'wt-v1.0.3';
 const SHELL = VERSION + '-shell';
 const RUNTIME = VERSION + '-runtime';
 const OFFLINE_URL = 'offline.html';
@@ -64,6 +64,12 @@ function isCacheableAsset(url) {
   return /\.(css|js|png|jpg|jpeg|webp|svg|woff2?|ttf|json|webmanifest)$/i.test(url.pathname);
 }
 
+/* ملفات الكود: الشبكة أولاً — كي يظهر أي تحديث من أوّل زيارة بعد النشر.
+   الصور والخطوط تبقى «الكاش أولاً» لأنها ثقيلة ولا تتغيّر. */
+function isCodeAsset(url) {
+  return /\.(js|css|json|webmanifest)$/i.test(url.pathname);
+}
+
 function isNavigation(request) {
   return request.mode === 'navigate' ||
     (request.headers.get('accept') || '').includes('text/html');
@@ -104,8 +110,28 @@ self.addEventListener('fetch', (event) => {
 
   if (!isCacheableAsset(url)) return;
 
-  /* الأصول الثابتة: أعطِ الكاش فوراً ثم حدّثه في الخلفية.
-     الكاش بالمفتاح الكامل (مع ?v=) حتى يظهر أي إصدار جديد فوراً. */
+  /* 1) الكود (js/css/json): من الشبكة دائماً، والكاش بديل عند الانقطاع فقط.
+     سبب ذلك: «الكاش أولاً» كان يُظهر نسخة قديمة من الموقع بعد كل نشر
+     حتّى مع تحديث ?v= في صفحات قد تكون هي نفسها مخزّنة. */
+  if (isCodeAsset(url)) {
+    event.respondWith((async () => {
+      try {
+        const response = await fetch(request, { cache: 'no-cache' });
+        if (response && response.ok) {
+          const cache = await caches.open(RUNTIME);
+          cache.put(request, response.clone()).catch(() => {});
+        }
+        return response;
+      } catch (e) {
+        const cached = await caches.match(request, { ignoreSearch: true });
+        if (cached) return cached;
+        return new Response('', { status: 504, statusText: 'غير متصل' });
+      }
+    })());
+    return;
+  }
+
+  /* 2) الصور والخطوط: الكاش أولاً ثم تحديث في الخلفية (لا تتغيّر عملياً). */
   const network = fetch(request).then((response) => {
     if (response && response.ok) {
       caches.open(RUNTIME).then((cache) => cache.put(request, response.clone())).catch(() => {});

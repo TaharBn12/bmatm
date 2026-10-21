@@ -196,5 +196,82 @@ t('سجل المكالمة نصّي بلا بيانات حساسة', (() => {
   return !/sdp|candidate|ip/i.test(insert);
 })());
 
+/* ==================== 6) تفضيل استقبال المكالمات ==================== */
+{
+  const profileHtml = read('profile.html');
+  const profileJs = read('assets/js/profile.js');
+  t('الملف الشخصي: مفتاح «استقبال المكالمات» موجود', /id="prefCalls"/.test(profileHtml) &&
+    /استقبال المكالمات الصوتية/.test(profileHtml));
+  t('الملف الشخصي: توضيح أن الحفظ فوري', /يُحفظ فورًا/.test(profileHtml));
+  t('profile.js: يقرأ allow_calls من الملف', /\$\('prefCalls'\)\.checked\s*=\s*p\.allow_calls !== false/.test(profileJs));
+  t('profile.js: يحفظ عبر RPC calls_pref', /S\.call\('calls_pref',\s*\{\s*p_allow:\s*wanted\s*\}\)/.test(profileJs));
+  t('profile.js: لا يُدخل التفضيل في نموذج الحفظ', !/allow_calls\s*:\s*'prefCalls'/.test(profileJs) &&
+    !/const prefs = \{[^}]*allow_calls/.test(profileJs));
+  t('profile.js: يمنع وسم النموذج بتعديل غير محفوظ', /prefCalls'\)\.addEventListener\('change', async event => \{\s*\n\s*event\.stopPropagation\(\)/.test(profileJs));
+  t('profile.js: يعيد المفتاح عند الفشل', /input\.checked = !wanted/.test(profileJs));
+  t('profile.js: رسالة واضحة إن لم يُنفَّذ 09-calls.sql', /09-calls\.sql على قاعدة البيانات/.test(profileJs));
+  t('profile.js: يعرض حالة الإيقاف في بطاقة الخصوصية', /المكالمات الصوتية موقوفة حاليًا/.test(profileJs));
+
+  const jsonFn = sql.slice(sql.indexOf('create or replace function wt_social_private.profile_json'));
+  t('SQL: profile_json يعيد allow_calls', /'allow_calls'/.test(jsonFn.slice(0, 2000)));
+  t('SQL: يقرأ allow_calls بأمان قبل وجود العمود', /to_jsonb\(p\)->>'allow_calls'/.test(jsonFn));
+  t('SQL: القيمة الافتراضية مفعّلة', /coalesce\(\(to_jsonb\(p\)->>'allow_calls'\)::boolean,\s*true\)/.test(jsonFn));
+  t('calls.js: زرّ المكالمة يعتمد على allow_calls', /peer\.allow_calls !== false/.test(calls) &&
+    /هذا العضو أوقف استقبال المكالمات/.test(calls));
+  t('الخادم يرفض البدء رغم تعطيل الواجهة', /select allow_calls into allowed from public\.wt_profiles where user_id = peer/.test(sql) &&
+    /allowed/.test(sql));
+}
+
+/* ==================== 7) مقاومة «المكالمة العالقة» ==================== */
+{
+  const CS = loadState();
+  const now = 1_800_000_000_000;
+
+  t('watchExpired: لا ينهي مكالمة نشطة', CS.watchExpired(now - 5000, now, 25000) === false);
+  t('watchExpired: ينهي بعد تجاوز الحد', CS.watchExpired(now - 30000, now, 25000) === true);
+  t('watchExpired: بلا نبضة سابقة لا يحكم', CS.watchExpired(0, now, 25000) === false &&
+    CS.watchExpired(null, now) === false);
+
+  const me = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
+  const peer = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb';
+  t('resumeState: لا يعيد حالة لمكالمة منتهية', CS.resumeState({ id: 'x', state: 'ended' }, me) === null &&
+    CS.resumeState(null, me) === null);
+  t('resumeState: الرنين يُعرض كصادر للمتّصل', CS.resumeState({ id: 'x', state: 'ringing', caller_id: me }, me) === 'ringing_out');
+  t('resumeState: الرنين يُعرض كوارد للمستقبل', CS.resumeState({ id: 'x', state: 'ringing', caller_id: peer }, me) === 'ringing_in');
+  t('resumeState: النشطة تُستأنف نشطة', CS.resumeState({ id: 'x', state: 'active', caller_id: peer }, me) === 'active');
+
+  const calls = read('assets/js/calls.js');
+  t('calls.js: يوقف المؤقّتات عند الإنهاء', /clearWatchdog\(\)/.test(calls) && /clearReset\(\)/.test(calls));
+  t('calls.js: إعادة الضبط لا تمسح مكالمة جديدة', /if \(state\.call && state\.call !== ended\) return;/.test(calls));
+  t('calls.js: حارس بدورتين بلا ردّ', /const WATCHDOG_MS = 25000;/.test(calls) &&
+    /state\.misses < 2/.test(calls) && /watchdogTick/.test(calls));
+  t('calls.js: يستعيد المكالمة القائمة', /async function reconcile/.test(calls) && /S\.call\('call_current'\)/.test(calls));
+  t('calls.js: يبحث عن مكالمة واردة في أي محادثة', /p_thread: state\.thread \|\| null/.test(calls));
+  t('calls.js: يعرض إغلاق المكالمة العالقة', /call_reset/.test(calls) && /مكالمة سابقة ما زالت مفتوحة/.test(calls));
+  t('calls.js: keepalive عند إغلاق الصفحة', /keepalive: true/.test(calls));
+  t('calls.js: يؤجّل مرشّحات ICE قبل الوصف', /queueIce|pendingIce/.test(calls) && /flushIce/.test(calls));
+  t('calls.js: يتحقّق من وصول الصوت فعلاً', /getStats/.test(calls) && /bytesReceived/.test(calls) &&
+    /لا يصل صوت/.test(calls));
+  t('calls.js: زرّ تشغيل الصوت عند منع التشغيل التلقائي', /wtCallAudio/.test(calls) && /audioBlocked/.test(calls));
+
+  const sqlNow = read('docs/sql/09-calls.sql');
+  t('SQL: نبضة آخر نشاط', /last_seen_at/.test(sqlNow) && /create or replace function wt_social_private\.call_touch/.test(sqlNow));
+  t('SQL: يُغلق المكالمة النشطة المهجورة', /state = 'active'[\s\S]{0,240}interval '10 minutes'/.test(sqlNow));
+  t('SQL: مسح شامل عند بدء مكالمة', /perform wt_social_private\.call_expire\(null\);/.test(sqlNow));
+  t('SQL: يستطيع الاستماع لكل المحادثات', /wt_social_call_incoming\(p_thread uuid default null\)/.test(sqlNow));
+  t('SQL: دوال الاستعادة والإصلاح', /wt_social_call_current\(\)/.test(sqlNow) && /wt_social_call_reset\(\)/.test(sqlNow));
+  t('SQL: صلاحيات الدوال الجديدة للمسجّلين فقط', /revoke all on function public\.wt_social_call_reset\(\) from public, anon/.test(sqlNow) &&
+    /grant execute on function public\.wt_social_call_current\(\) to authenticated/.test(sqlNow));
+
+  const socialNow = read('assets/js/social.js');
+  t('social.js: الطرق الجديدة مسجّلة', /'call_current','call_reset'/.test(socialNow));
+  t('social.js: يدعم keepalive', /keepalive: !!options\.keepalive/.test(socialNow));
+
+  const messagesNow = read('assets/js/messages.js');
+  t('messages.js: يفحص الوارد دائماً لا عند فتح محادثة فقط', /\/\* فحص المكالمات الواردة دائماً/.test(messagesNow) &&
+    !/if \(state\.active && window\.WTCalls\) window\.WTCalls\.pollIncoming/.test(messagesNow));
+  t('messages.js: يستعيد المكالمة عند الإقلاع', /WTCalls\.reconcile\(\)/.test(messagesNow));
+}
+
 console.log(`Calls: ${pass} passed, ${fail} failed`);
 if (fail) process.exitCode = 1;

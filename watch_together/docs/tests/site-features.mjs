@@ -242,5 +242,28 @@ try {
   t('بدون تعديل على مخطط قاعدة البيانات', !/(from\(|rpc\(|supabase)/i.test(site), '');
 }
 
+/* ==================== 8) التحديث يظهر بعد النشر ==================== */
+{
+  const sw = read('sw.js');
+  const config = read('assets/js/config.js');
+  const site = read('assets/js/site.js');
+  const pages = fs.readdirSync(base).filter(name => name.endsWith('.html'));
+
+  t('sw.js: الكود يُطلب من الشبكة أولاً', /function isCodeAsset/.test(sw) &&
+    /fetch\(request, \{ cache: 'no-cache' \}\)/.test(sw), '');
+  t('sw.js: الكاش بديل فقط عند انقطاع الشبكة', /await caches\.match\(request, \{ ignoreSearch: true \}\)/.test(sw) &&
+    /status: 504/.test(sw), '');
+  t('sw.js: الصور ما زالت من الكاش أولاً', /const cached = await caches\.match\(request\);/.test(sw), '');
+  t('sw.js: نسخة الكاش مرفوعة مع هذا التغيير', /VERSION = 'wt-v1\.0\.[2-9]'/.test(sw), '');
+  t('config.js: بصمة نشر قابلة للقراءة', /build:\s*'20\d\d-\d\d-\d\d/.test(config), '');
+  t('site.js: يعرض بصمة النشر للمستخدم', /buildTag\(\)/.test(site) && /WT_CONFIG\.build/.test(site), '');
+  t('لا صفحات تشير إلى نسخة قديمة من config.js', pages.every(name => !read(name).includes('config.js?v=3.1.2')), '');
+  t('لا صفحات تشير إلى نسخة قديمة من site.js', pages.every(name => !read(name).includes('site.js?v=1.0.0')), '');
+  t('كل صفحة تحمّل config.js تحمّله قبل site.js', pages.filter(name => read(name).includes('config.js')).every(name => {
+    const page = read(name);
+    return page.indexOf('config.js') < page.indexOf('site.js');
+  }), '');
+}
+
 console.log(`Site features: ${pass} passed, ${fail} failed${siteTests ? '' : ' (site.js logic skipped)'}`);
 if (fail) process.exitCode = 1;

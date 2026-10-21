@@ -50,6 +50,8 @@
           if (!options.binary) headers['Content-Type'] = 'application/json';
           const response = await fetch(cfg().url.replace(/\/$/, '') + path, {
             method: options.method || 'POST', headers, cache: 'no-store', signal: controller.signal,
+            /* keepalive: يجعل طلب «إنهاء المكالمة» يصل حتّى عند إغلاق الصفحة */
+            keepalive: !!options.keepalive,
             body: options.body == null ? undefined : options.binary ? options.body : JSON.stringify(options.body)
           });
           let data = null;
@@ -73,10 +75,11 @@
     } finally { clearTimeout(timer); if (signal && onAbort) signal.removeEventListener('abort', onAbort); }
   }
   const METHODS = new Set(['bootstrap','profile','save_profile','search','friends','friend_action','open_thread','threads','messages','send','edit_message','mark_read','typing',
-    'calls_pref','call_start','call_answer','call_end','call_state','call_signal_put','call_signal_get','call_incoming']);
-  function call(method, args, signal) {
+    'calls_pref','call_start','call_answer','call_end','call_state','call_signal_put','call_signal_get','call_incoming',
+    'call_current','call_reset']);
+  function call(method, args, signal, extra) {
     if (!METHODS.has(method)) return Promise.reject(new Error('طلب غير مدعوم'));
-    return request('/rest/v1/rpc/wt_social_' + method, { body: args || {}, signal });
+    return request('/rest/v1/rpc/wt_social_' + method, Object.assign({ body: args || {}, signal }, extra || {}));
   }
   function remember(profile) {
     if (!profile || !UUID.test(profile.user_id || '') || profile.user_id !== (Auth.accountUser() || {}).id) throw new Error('استجابة حساب غير صالحة');

@@ -40,7 +40,7 @@
     if (own) {
       const total = [p.avatar_path,p.bio,p.username !== 'u_' + p.user_id.replace(/-/g,'').slice(0,20),interests.length,(p.favorites || []).length,p.location,p.website].filter(Boolean).length;
       $('profileCompletion').innerHTML = '<h3>تفاصيل تُشبهك <span class="s-hint" dir="ltr">' + total + ' / 7</span></h3><div class="completion-rail" role="progressbar" aria-label="تفاصيل الملف المضافة" aria-valuenow="' + total + '" aria-valuemin="0" aria-valuemax="7"><span style="width:' + (total/7*100).toFixed(1) + '%"></span></div><p>ليست كل التفاصيل ضرورية. اختر ما يعبّر عنك فقط.</p><button class="s-text-link" type="button" data-open-editor="details">أضف لمستك ' + icon('arrowLeft',14) + '</button>';
-      $('profilePrivacy').innerHTML = '<h3>' + icon(p.discoverable ? 'eye' : 'eyeOff',17) + ' ' + (p.discoverable ? 'يمكن العثور عليك' : 'خارج نتائج البحث') + '</h3><p style="margin-top:10px">' + (p.discoverable ? 'اخترت أن يظهر ملفك للأعضاء في البحث. يمكنك تغيير ذلك متى شئت.' : 'الظهور في البحث متوقف. ملفك متاح للأعضاء الذين يعرفون رابطه فقط.') + '</p><button class="s-text-link" type="button" data-open-editor="privacy">تحكّم في خصوصيتك ' + icon('arrowLeft',14) + '</button>';
+      $('profilePrivacy').innerHTML = '<h3>' + icon(p.discoverable ? 'eye' : 'eyeOff',17) + ' ' + (p.discoverable ? 'يمكن العثور عليك' : 'خارج نتائج البحث') + '</h3><p style="margin-top:10px">' + (p.discoverable ? 'اخترت أن يظهر ملفك للأعضاء في البحث. يمكنك تغيير ذلك متى شئت.' : 'الظهور في البحث متوقف. ملفك متاح للأعضاء الذين يعرفون رابطه فقط.') + '</p><button class="s-text-link" type="button" data-open-editor="privacy">تحكّم في خصوصيتك ' + icon('arrowLeft',14) + '</button>' + (p.allow_calls === false ? '<p class="s-hint" style="margin-top:10px">المكالمات الصوتية موقوفة حاليًا؛ زرّ الاتصال معطّل عند أصدقائك.</p>' : '');
     }
   }
   function editTab(tab, focus) {
@@ -53,6 +53,8 @@
     for (const [key,id] of Object.entries({display_name:'editName',username:'editUsername',bio:'editBio',location:'editLocation',website:'editWebsite'})) $(id).value = p[key] || '';
     $('profileEmail').value = (A.accountUser() || {}).email || '';
     Object.entries(prefs).forEach(([key,id]) => { $(id).checked = !!p[key]; });
+    $('prefCalls').checked = p.allow_calls !== false; /* تفضيل منفصل: لا يمرّ بنموذج الحفظ */
+    $('prefCallsNote').textContent = p.allow_calls === false ? 'المكالمات موقوفة: لن يستطيع أحد بدء مكالمة معك.' : 'المكالمات للأصدقاء المقبولين فقط، والصوت يمر بين الجهازين مباشرة دون تخزين.';
     [0,1,2].forEach(i => { $('favorite'+i).value = (p.favorites || [])[i] || ''; });
     state.genres = new Set(p.interests || []); state.accent = p.accent; state.cover = p.cover;
     $('genreChoices').innerHTML = Object.entries(S.GENRES).map(([key,label]) => '<button type="button" class="s-choice-chip" data-genre="' + key + '" aria-pressed="' + state.genres.has(key) + '">' + esc(label) + '</button>').join('');
@@ -118,6 +120,27 @@
     catch (err) { select.value = state.p.mood; C.error('profileError',err); }
     finally { select.disabled = false; }
   };
+  /* المكالمات: تُحفظ فورًا عبر wt_social_calls_pref، ولا تُعدّ تعديلاً غير محفوظ.
+     نوقف انتشار input/change كي لا يوسم النموذج بأنه «تعديلات غير محفوظة». */
+  $('prefCalls').addEventListener('input', event => event.stopPropagation());
+  $('prefCalls').addEventListener('change', async event => {
+    event.stopPropagation();
+    const input = $('prefCalls'), note = $('prefCallsNote'), wanted = input.checked;
+    if (!state.own) { input.checked = !wanted; return; }
+    input.disabled = true; C.error('profileError',null);
+    try {
+      const data = await S.call('calls_pref', { p_allow: wanted });
+      if (!data || data.allow_calls !== wanted) throw new Error('لم يُحفظ الإعداد. أعد المحاولة.');
+      state.p.allow_calls = wanted;
+      if (state.me) state.me.allow_calls = wanted;
+      note.textContent = wanted ? 'المكالمات مفعّلة: أصدقاؤك المقبولون يستطيعون الاتصال بك.' : 'المكالمات موقوفة: لن يستطيع أحد بدء مكالمة معك.';
+      U.toast(wanted ? 'المكالمات مفعّلة' : 'أوقفت استقبال المكالمات','success');
+    } catch (err) {
+      input.checked = !wanted;
+      const missing = err && (err.setup || err.status === 404 || err.code === 'PGRST202' || err.code === '42883');
+      C.error('profileError', missing ? new Error('إعداد المكالمات يحتاج تنفيذ docs/sql/09-calls.sql على قاعدة البيانات أولاً.') : err);
+    } finally { input.disabled = false; }
+  });
   $('socialContent').addEventListener('click', async event => {
     const opener = event.target.closest('[data-open-editor]'); if (opener) { openEditor(opener.dataset.openEditor); return; }
     const friend = event.target.closest('[data-friend-action]');
