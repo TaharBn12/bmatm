@@ -147,6 +147,12 @@
   function U() { return global.WTUtil; }
   function IC() { return global.WTIcons; }
   function $(id) { return doc ? doc.getElementById(id) : null; }
+  /* بصمة النشر: تُقرأ من config.js وتظهر للمستخدم كي يميّز النسخة الجديدة. */
+  function buildTag() {
+    var cfg = (window.WT_CONFIG && window.WT_CONFIG.build) || '';
+    return String(cfg).slice(0, 16) || '—';
+  }
+
   function esc(value) {
     var util = U();
     if (util && util.esc) return util.esc(value);
@@ -205,7 +211,7 @@
         '</div>' +
         '<div class="wt-palette__foot" id="wtPaletteHelp">' +
           '<span><kbd class="wt-kbd">↑</kbd><kbd class="wt-kbd">↓</kbd> تنقّل · <kbd class="wt-kbd">↵</kbd> تشغيل</span>' +
-          '<span class="wt-palette__brand">WatchTogether</span>' +
+          '<span class="wt-palette__brand">WatchTogether · <span dir="ltr">' + esc(buildTag()) + '</span></span>' +
         '</div>' +
       '</div>';
     doc.body.appendChild(layer);
@@ -731,7 +737,7 @@
           row[1].map(function (key) { return '<kbd class="wt-kbd">' + esc(key) + '</kbd>'; }).join('') + '</span></div>';
       }).join('') + '</div>' +
       '<p class="wt-keys__note">داخل لوحة الأوامر: الأسهم للتنقّل، Enter للتشغيل، Esc للإغلاق. على الهاتف كل شيء متاح من مركز التحكم.</p></div>' +
-      '<div class="wt-sheet__footer"><span>WatchTogether</span><span>اضغط <kbd class="wt-kbd">?</kbd> في أي وقت</span></div>';
+      '<div class="wt-sheet__footer"><span>WatchTogether · <span dir="ltr">' + esc(buildTag()) + '</span></span><span>اضغط <kbd class="wt-kbd">?</kbd> في أي وقت</span></div>';
     IC().apply && IC().apply(sheet);
     $('wtHelpClose').addEventListener('click', closeHelp);
     if (!previous || (ui.paletteLayer && ui.paletteLayer.contains(previous))) previous = doc.body;

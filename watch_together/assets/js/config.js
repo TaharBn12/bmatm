@@ -5,6 +5,10 @@
 window.WT_CONFIG = {
   appName: 'WatchTogether — شاهدوا معاً',
 
+  /* بصمة الإصدار: تظهر في لوحة الأوامر (Ctrl+K) وفي نافذة الاختصارات (؟).
+     غيّرها عند كل نشر لتتأكّد أن متصفحك يعرض النسخة الجديدة لا نسخة مخزّنة. */
+  build: '2026-10-21.1',
+
   /* ---------- 1) Supabase (للاستضافة العادية: cPanel / Netlify / GitHub Pages) ----------
      Dashboard → Project Settings → API
      الجدول يجب أن يكون منشأً من docs/sql/02-schema.sql */
