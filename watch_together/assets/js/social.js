@@ -5,7 +5,7 @@
   const dict = values => Object.freeze(Object.assign(Object.create(null),values));
   const GENRES = dict({ scifi: 'خيال علمي', drama: 'دراما', comedy: 'كوميديا', thriller: 'إثارة', animation: 'رسوم متحركة', documentary: 'وثائقي', fantasy: 'فانتازيا', adventure: 'مغامرة', romance: 'رومانسي', mystery: 'غموض', anime: 'أنمي', shorts: 'أفلام قصيرة' });
   const MOODS = dict({ none: 'على مهل', open: 'مستعد لسهرة', quiet: 'مزاج هادئ', busy: 'مشغول الآن' });
-  const ACCENTS = dict({ mint: '#b9f2cf', violet: '#c9b7ff', amber: '#f4ce91', rose: '#f4b8c9' });
+  const ACCENTS = dict({ mint: '#c5a572', violet: '#c9b7ff', amber: '#f4ce91', rose: '#f4b8c9' });
   const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
   let bootPromise, me;
   const cfg = () => (global.WT_CONFIG && global.WT_CONFIG.supabase) || {};
