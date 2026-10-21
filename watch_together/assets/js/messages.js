@@ -57,7 +57,7 @@
     const focus = document.activeElement && document.activeElement.closest('[data-thread]'); const focusId = focus && focus.dataset.thread;
     $('threadList').innerHTML = rows.length ? rows.map(t => {
       const p = t.peer || {}, m = t.preview;
-      const preview = !m ? 'ابدأ أول رسالة' : m.deleted_at ? 'رسالة محذوفة' : (m.sender_id === state.uid ? 'أنت: ' : '') + (m.kind === 'room' ? 'دعوة: ' : '') + m.body;
+      const preview = !m ? 'ابدأ أول رسالة' : m.deleted_at ? 'رسالة محذوفة' : (m.sender_id === state.uid ? 'أنت: ' : '') + (m.kind === 'call' ? '📞 ' : m.kind === 'room' ? 'دعوة: ' : '') + m.body;
       return '<button type="button" class="thread-item' + (state.active && state.active.id === t.id ? ' is-active' : '') + '" data-thread="' + esc(t.id) + '"' + (state.active && state.active.id === t.id ? ' aria-current="true"' : '') + '>' + C.avatar(p,'sm') + '<span class="thread-item-main"><span class="thread-item-title"><strong>' + esc(p.display_name || 'عضو') + '</strong><time datetime="' + esc(t.updated_at) + '">' + esc(C.date(t.updated_at)) + '</time></span><span class="thread-item-bottom"><span class="thread-item-preview">' + esc(preview) + '</span>' + (t.unread ? '<b class="thread-unread" aria-label="' + Number(t.unread) + ' غير مقروءة">' + Math.min(99,Number(t.unread)) + '</b>' : '') + '</span></span></button>';
     }).join('') : C.empty('chat',query ? 'لا محادثة بهذا الاسم' : 'لا محادثات بعد',query ? 'جرّب اسمًا آخر ضمن المحادثات المحمّلة.' : 'ابدأ حديثًا مع أحد أصدقائك.');
     if (focusId) { const b = $('threadList').querySelector('[data-thread="' + focusId + '"]'); if (b) b.focus({preventScroll:true}); }
@@ -106,9 +106,12 @@
   function messageHTML(ctx,m) {
     const own = m.sender_id === state.uid, deleted = !!m.deleted_at, read = own && numeric(ctx.peerRead) && !newer(m.id,ctx.peerRead);
     const room = !deleted && m.kind === 'room' && /^[A-Z0-9]{4,12}$/.test(m.room_id || '');
-    const content = deleted ? '<p class="dm-text">حُذفت هذه الرسالة</p>' : room ? '<a class="dm-invite" href="room.html?id=' + encodeURIComponent(m.room_id) + '">' + icon('film',26) + '<span><small>دعوة إلى غرفة مشاهدة</small><strong>' + esc(m.body) + '</strong></span><span class="dm-invite-arrow">' + icon('arrowLeft',16) + '</span></a>' : '<p class="dm-text" dir="auto">' + esc(m.body) + '</p>';
+    const callLog = !deleted && m.kind === 'call';
+    const content = deleted ? '<p class="dm-text">حُذفت هذه الرسالة</p>' : callLog ? '<div class="dm-call-log"><span class="dm-call-log__ic" aria-hidden="true">' + icon('phoneCall',16) + '</span><span dir="auto">' + esc(m.body) + '</span></div>' : room ? '<a class="dm-invite" href="room.html?id=' + encodeURIComponent(m.room_id) + '">' + icon('film',26) + '<span><small>دعوة إلى غرفة مشاهدة</small><strong>' + esc(m.body) + '</strong></span><span class="dm-invite-arrow">' + icon('arrowLeft',16) + '</span></a>' : '<p class="dm-text" dir="auto">' + esc(m.body) + '</p>';
     let actions = '';
-    if (!deleted) actions = (ctx.canSend ? '<button type="button" data-msg-action="reply" title="رد" aria-label="رد على الرسالة">' + icon('reply',14) + '</button>' : '') + '<button type="button" data-msg-action="copy" title="نسخ" aria-label="نسخ الرسالة">' + icon('copy',14) + '</button>' + (own && ctx.canSend && m.kind === 'text' ? '<button type="button" data-msg-action="edit" title="تعديل" aria-label="تعديل الرسالة">' + icon('pencil',14) + '</button>' : '') + (own ? '<button type="button" data-msg-action="delete" title="حذف للجميع" aria-label="حذف رسالتك للجميع">' + icon('trash',14) + '</button>' : '');
+    if (!deleted) actions = callLog
+      ? '<button type="button" data-msg-action="copy" title="نسخ" aria-label="نسخ نص المكالمة">' + icon('copy',14) + '</button>' + (own ? '<button type="button" data-msg-action="delete" title="حذف للجميع" aria-label="حذف سجل المكالمة">' + icon('trash',14) + '</button>' : '')
+      : (ctx.canSend ? '<button type="button" data-msg-action="reply" title="رد" aria-label="رد على الرسالة">' + icon('reply',14) + '</button>' : '') + '<button type="button" data-msg-action="copy" title="نسخ" aria-label="نسخ الرسالة">' + icon('copy',14) + '</button>' + (own && ctx.canSend && m.kind === 'text' ? '<button type="button" data-msg-action="edit" title="تعديل" aria-label="تعديل الرسالة">' + icon('pencil',14) + '</button>' : '') + (own ? '<button type="button" data-msg-action="delete" title="حذف للجميع" aria-label="حذف رسالتك للجميع">' + icon('trash',14) + '</button>' : '');
     if (ctx.editBusy) actions = actions.replace(/<button /g,'<button disabled ');
     return '<article class="dm-row' + (own ? '' : ' dm-row--other') + (deleted ? ' is-deleted' : '') + '" data-message="' + esc(m.id) + '" role="listitem" aria-label="' + (own ? 'رسالتك' : 'رسالة من ' + esc((ctx.peer && ctx.peer.display_name) || 'الطرف الآخر')) + '"><div class="dm-bubble">' + (deleted ? '' : quote(ctx,m)) + content + '<div class="dm-meta"><time datetime="' + esc(m.created_at) + '">' + esc(time(m.created_at)) + '</time>' + (m.edited_at && !deleted ? '<span>عُدّلت</span>' : '') + (own && !deleted ? '<span class="' + (read ? 'is-read' : '') + '" title="' + (read ? 'قُرئت' : 'حُفظت على الخادم') + '">' + icon(read ? 'doubleCheck' : 'check',13) + '</span>' : '') + '</div></div>' + (actions ? '<div class="dm-actions">' + actions + '</div>' : '') + '</article>';
   }
@@ -134,6 +137,8 @@
     $('chatPeer').innerHTML = p ? C.avatar(p,'sm') + '<span class="chat-peer-info"><strong>' + esc(p.display_name) + '</strong><small>' + (p.unavailable ? 'المحادثة السابقة متاحة للقراءة' : 'محادثة خاصة · ' + esc(S.MOODS[p.mood] || 'على مهل')) + '</small></span>' : '<span class="s-muted">جارٍ فتح المحادثة…</span>';
     $('chatProfile').hidden = !p || !!p.unavailable; $('chatBlock').hidden = !p || !!p.unavailable;
     $('chatTyping').hidden = !ctx.typing || !ctx.canSend;
+    /* المكالمات: الحالة تُشتق من الخادم؛ الزر يظهر للأصدقاء المقبولين فقط */
+    if (window.WTCalls) { window.WTCalls.attach({id:ctx.id,peer:p,canSend:ctx.canSend}); window.WTCalls.syncButton(); }
   }
   function render(ctx,mode,incoming) {
     if (ctx !== state.active) return;
@@ -269,6 +274,7 @@
         const tasks = [];
         if (Date.now()-state.lastList > 12000) tasks.push(loadThreads(false,true));
         if (state.active && visibleChat(state.active)) tasks.push(loadMessages(state.active,false));
+        if (state.active && window.WTCalls) window.WTCalls.pollIncoming();
         await Promise.all(tasks);
       }
     } finally { state.ticking = false; if (!state.stopped) state.timer = setTimeout(tick,4000); }
@@ -297,6 +303,8 @@
   $('threadList').onclick = event => { const b = event.target.closest('[data-thread]'); if (b) selectThread(b.dataset.thread); };
   $('threadQuery').oninput = listRender; $('threadsMore').onclick = () => loadThreads(true,false);
   $('chatBack').onclick = () => { if (state.active) stopTyping(state.active); document.body.classList.remove('chat-open'); history.replaceState(null,'','messages.html'); $('threadQuery').focus({preventScroll:true}); };
+  $('chatCall').onclick = () => { if (window.WTCalls) window.WTCalls.start(); };
+  document.addEventListener('wt:call-logged', () => { setTimeout(() => { if (state.active) loadMessages(state.active,false); loadThreads(false,true); }, 700); });
   $('chatProfile').onclick = () => { if (state.active && state.active.peer && !state.active.peer.unavailable) location.href = 'profile.html?u=' + encodeURIComponent(state.active.peer.user_id); };
   $('chatBlock').onclick = async () => {
     const ctx = state.active; if (!ctx || !ctx.peer) return;
