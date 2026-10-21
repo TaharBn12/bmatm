@@ -130,6 +130,10 @@ t('calls.js: الإشارات عبر RPC محمية فقط', /call_signal_put/.t
 t('calls.js: لا قنوات عامة تحمل SDP', !/\.channel\(|broadcast|postgres_changes/.test(calls));
 t('calls.js: لا تسجيل ولا رفع صوت', !/MediaRecorder|startRecording|audio\/webm|storage\/v1/.test(calls));
 t('calls.js: لا مفاتيح ولا أسرار', !/eyJhbGciOi|service_role/.test(calls));
+t('calls.js: يقبل صيغ TURN الثلاث ({urls} / مصفوفة / iceServers)', /Array\.isArray\(data\)/.test(calls) &&
+  /data\.iceServers/.test(calls) && /data\.urls/.test(calls));
+t('calls.js: مهلة لطلب TURN حتى لا يتعلّق بدء المكالمة', /AbortController/.test(calls) && /turnFetchTimeoutMs/.test(calls));
+t('calls.js: يشرح سبب غياب TURN في الواجهة', /لم نستلم خادم ترحيل/.test(calls) && /تعذّر جلب بيانات TURN/.test(calls));
 t('calls.js: كتم عبر تعطيل المسار (بلا إعادة تفاوض)', /track\.enabled = !state\.muted/.test(calls));
 t('calls.js: استئناف ICE عند الانقطاع', /restartIce/.test(calls));
 t('calls.js: إنهاء عند إغلاق الصفحة', /beforeunload/.test(calls) && /'pagehide'|pagehide/.test(calls));
@@ -172,6 +176,10 @@ const configCode = config.replace(/\/\*[\s\S]*?\*\//g, '');
 t('config.js: TURN قابل للضبط بلا مفاتيح مضمّنة', /turnFetchUrl: null/.test(configCode) && /turn: null/.test(configCode) &&
   !/credential:\s*'[^']+'/.test(configCode));
 t('config.js: خادم STUN افتراضي', /stun:stun\.l\.google\.com:19302/.test(config));
+t('config.js: مهلة جلب TURN مضبوطة', /turnFetchTimeoutMs: 5000/.test(config));
+t('docs/turn-setup.md: دليل TURN موجود ويشرح الخيارات', exists('docs/turn-setup.md') &&
+  /Cloudflare Worker/.test(read('docs/turn-setup.md')) && /coturn/.test(read('docs/turn-setup.md')) &&
+  /OPTIONS/.test(read('docs/turn-setup.md')));
 
 t('call.css: شاشة الرنين وشريط المكالمة', /\.call-layer/.test(css) && /\.call-bar/.test(css) && /\.call-btn--accept/.test(css));
 t('call.css: سطر سجل المكالمة منسّق', /\.dm-call-log/.test(css));

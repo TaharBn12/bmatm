@@ -22,7 +22,8 @@
       maxCallMs: Number(raw.maxCallMs) || 2 * 3600 * 1000,
       iceServers: Array.isArray(raw.iceServers) ? raw.iceServers.slice() : [],
       turn: raw.turn || null,
-      turnFetchUrl: raw.turnFetchUrl || null
+      turnFetchUrl: raw.turnFetchUrl || null,
+      turnFetchTimeoutMs: Number(raw.turnFetchTimeoutMs) || 5000
     };
   };
 
@@ -71,11 +72,46 @@
       if (urls.length) list.push({ urls, username: conf.turn.username || '', credential: conf.turn.credential || '' });
     }
     if (conf.turnFetchUrl) {
+      const controller = typeof global.AbortController === 'function' ? new global.AbortController() : null;
+      const timer = controller ? global.setTimeout(() => controller.abort(), conf.turnFetchTimeoutMs) : null;
       try {
-        const response = await fetch(conf.turnFetchUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}', cache: 'no-store' });
+        const response = await fetch(conf.turnFetchUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: '{}',
+          cache: 'no-store',
+          credentials: 'omit',
+          signal: controller ? controller.signal : undefined
+        });
+        if (!response.ok) throw new Error('HTTP ' + response.status);
         const data = await response.json();
-        if (data && data.urls) list.push({ urls: data.urls, username: data.username || '', credential: data.credential || '' });
-      } catch (e) { state.note = 'تعذّر جلب بيانات TURN؛ قد تفشل المكالمة على بعض الشبكات.'; }
+        /* نقبل ثلاث صيغ شائعة: {urls,...} أو [ {urls,...}, ... ] أو {iceServers:[...]} */
+        const entries = Array.isArray(data) ? data
+          : Array.isArray(data && data.iceServers) ? data.iceServers
+          : data && data.urls ? [data] : [];
+        let gotTurn = false;
+        entries.forEach((entry) => {
+          if (!entry) return;
+          const urls = entry.urls || entry.url;
+          if (!urls) return;
+          const isTurn = Array.isArray(urls)
+            ? urls.some((u) => /^turns?:/i.test(String(u)))
+            : /^turns?:/i.test(String(urls));
+          list.push({
+            urls,
+            username: entry.username || '',
+            credential: entry.credential || entry.password || ''
+          });
+          if (isTurn) gotTurn = true;
+        });
+        if (!gotTurn) state.note = 'لم نستلم خادم ترحيل (TURN)؛ تنجح المكالمة على الواي فاي وقد تفشل على شبكات الجوال.';
+      } catch (e) {
+        state.note = e && e.name === 'AbortError'
+          ? 'تأخّر خادم TURN؛ نكمل بـSTUN (قد تفشل المكالمة على شبكات الجوال).'
+          : 'تعذّر جلب بيانات TURN؛ قد تفشل المكالمة على بعض الشبكات.';
+      } finally {
+        if (timer) global.clearTimeout(timer);
+      }
     }
     if (!list.length) list.push({ urls: 'stun:stun.l.google.com:19302' });
     return list;

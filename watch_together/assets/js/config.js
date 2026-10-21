@@ -61,10 +61,12 @@ window.WT_CONFIG = {
   /* ---------- 7) المكالمات الصوتية (WebRTC) ----------
      الصوت ينتقل مباشرة بين الجهازين ولا يُخزَّن. الإشارات فقط عبر Supabase.
      ⚠️ مطلوب لنجاح المكالمات على شبكات الجوال: TURN (خدمة مُدارة أو coturn).
-     لا تضع مفاتيح سرية هنا؛ استخدم رابطاً يعيد بياناتاً مؤقتة:
-       turnFetchUrl: 'https://your-endpoint.example/turn'   // يعيد {urls,username,credential}
+     لا تضع مفاتيح سرية هنا؛ استخدم رابطاً على خادمك يعيد بيانات مؤقتة:
+       turnFetchUrl: 'https://your-endpoint.example/turn'
+     يقبل ثلاث صيغ: {urls,username,credential} · [{urls,...},...] · {iceServers:[...]}
      أو بيانات ثابتة لمزوّد يسمح بذلك:
        turn: { urls: ['turn:turn.example.com:3478'], username: '...', credential: '...' }
+     التفصيل خطوة بخطوة: docs/turn-setup.md
      نفّذ docs/sql/09-calls.sql أولاً. */
   calls: {
     enabled: true,
@@ -77,7 +79,8 @@ window.WT_CONFIG = {
       { urls: 'stun:stun1.l.google.com:19302' }
     ],
     turn: null,                  /* { urls, username, credential } */
-    turnFetchUrl: null           /* نقطة نهاية تعيد بيانات TURN مؤقتة */
+    turnFetchUrl: null,          /* نقطة نهاية تعيد بيانات TURN مؤقتة */
+    turnFetchTimeoutMs: 5000     /* لا نُبطئ بدء المكالمة إن تعطّل الخادم */
   },
 
   /* ---------- 8) الوسائط (صور وفيديو في دردشة الغرفة) ----------

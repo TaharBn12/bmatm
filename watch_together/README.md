@@ -15,7 +15,7 @@
 - **سجل واضح:** تظهر في المحادثة رسالة أنيقة «📞 مكالمة صوتية · 04:12» أو «مكالمة صوتية فائتة» — بلا أي بيانات حساسة.
 - **قاعدة البيانات:** نفّذ [`docs/sql/09-calls.sql`](docs/sql/09-calls.sql) بعد `07`. لا يمسّ الغرف ولا الرسائل السابقة.
 - **قبل الإطلاق:** أضف **TURN** (خدمة مُدارة مثل Metered/Twilio أو coturn) في `calls.turnFetchUrl` أو `calls.turn` داخل `config.js` — بدونه تنجح المكالمات على الواي فاي وتفشل على شبكات جوال كثيرة.
-- **التصميم والحدود كاملة:** [docs/voice-call.md](docs/voice-call.md) ·اختبارات: `node docs/tests/calls.mjs` (111 فحصاً).
+- **التصميم والحدود كاملة:** [docs/voice-call.md](docs/voice-call.md) · **إعداد TURN خطوة بخطوة:** [docs/turn-setup.md](docs/turn-setup.md) · اختبارات: `node docs/tests/calls.mjs` (111 فحصاً).
 
 ### ✨ طبقة الموقع الاحترافية — ميزات لكل الصفحات (جديد 4.4.0)
 
