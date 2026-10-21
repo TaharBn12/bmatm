@@ -1,0 +1,502 @@
+/* =========================================================
+   WatchTogether — الميزات الاحترافية (features.css)
+   شريط الميزات · إضاءات المزاج · شريط اللحظات · الملاحظات
+   الذاكرة · اللقطة · تصويت القائمة — كلها على Midnight Gold
+   ========================================================= */
+
+/* ============================== شريط الميزات ============================== */
+.feature-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 8px;
+  margin-top: 10px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: rgba(15, 22, 36, .72);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.feature-bar::-webkit-scrollbar { display: none; }
+
+.fbtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+  min-height: 34px;
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: rgba(232, 220, 198, .05);
+  color: var(--text);
+  font: 700 12.5px/1 var(--font);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background .16s, border-color .16s, transform .16s, color .16s;
+}
+.fbtn .ic { color: var(--brand); }
+.fbtn:hover {
+  background: rgba(197, 165, 114, .14);
+  border-color: rgba(197, 165, 114, .45);
+  transform: translateY(-1px);
+}
+.fbtn:active { transform: translateY(0); }
+.fbtn.is-on {
+  background: linear-gradient(135deg, rgba(197, 165, 114, .26), rgba(182, 122, 59, .16));
+  border-color: rgba(197, 165, 114, .6);
+  color: #f2e8d4;
+}
+
+.fbtn__badge {
+  min-width: 17px;
+  height: 17px;
+  padding: 0 5px;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 999px;
+  background: var(--grad-warm);
+  color: #141006;
+  font: 800 10.5px/1 var(--font);
+}
+
+/* ============================== شريحة المزاج في الرأس ============================== */
+.mood-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 180px;
+  min-height: 26px;
+  padding: 3px 10px;
+  border: 1px solid rgba(197, 165, 114, .45);
+  border-radius: 999px;
+  background: rgba(197, 165, 114, .12);
+  color: #ecd9b0;
+  font: 700 11.5px/1.3 var(--font);
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: background .16s, border-color .16s;
+}
+.mood-chip:hover { background: rgba(197, 165, 114, .2); border-color: rgba(197, 165, 114, .7); }
+.rtopbar__main { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; }
+
+/* ============================== إضاءات المزاج (تُطبَّق على الخلفية فقط) ============================== */
+body.room-body[data-mood] {
+  --glow-1: rgba(197, 165, 114, .16);
+  --glow-2: rgba(182, 122, 59, .09);
+  --glow-3: rgba(232, 220, 198, .05);
+  --blob-a: #C5A572;
+  --blob-b: #1A2332;
+  --blob-c: #B67A3B;
+}
+body.room-body[data-mood="horror"] {
+  --glow-1: rgba(200, 60, 75, .20);
+  --glow-2: rgba(110, 20, 35, .15);
+  --glow-3: rgba(150, 40, 55, .10);
+  --blob-a: #B84356;
+  --blob-b: #2A1018;
+  --blob-c: #8E2438;
+}
+body.room-body[data-mood="chill"] {
+  --glow-1: rgba(120, 160, 200, .17);
+  --glow-2: rgba(70, 110, 150, .11);
+  --glow-3: rgba(180, 200, 220, .06);
+  --blob-a: #7FA8CC;
+  --blob-b: #14202E;
+  --blob-c: #4E7BA0;
+}
+body.room-body[data-mood="hype"] {
+  --glow-1: rgba(230, 150, 60, .20);
+  --glow-2: rgba(200, 110, 40, .13);
+  --glow-3: rgba(255, 190, 100, .07);
+  --blob-a: #E8963E;
+  --blob-b: #2A1C10;
+  --blob-c: #C9761F;
+}
+body.room-body[data-mood="romance"] {
+  --glow-1: rgba(220, 110, 140, .18);
+  --glow-2: rgba(160, 60, 95, .12);
+  --glow-3: rgba(255, 190, 210, .06);
+  --blob-a: #D4708C;
+  --blob-b: #26141C;
+  --blob-c: #A84864;
+}
+body.room-body[data-mood="party"] {
+  --glow-1: rgba(150, 110, 230, .18);
+  --glow-2: rgba(100, 70, 180, .13);
+  --glow-3: rgba(200, 170, 255, .07);
+  --blob-a: #9B7BE0;
+  --blob-b: #1A1630;
+  --blob-c: #6C4FBF;
+}
+
+/* إعادة رسم طبقات الإضاءة بمقدّمات المزاج — قاعدة Midnight Gold تبقى كما هي */
+body.room-body[data-mood] .bg-fx {
+  background:
+    radial-gradient(1100px 650px at 85% -10%, var(--glow-1), transparent 60%),
+    radial-gradient(900px 600px at 0% 18%, var(--glow-2), transparent 65%),
+    radial-gradient(700px 500px at 50% 110%, var(--glow-3), transparent 60%),
+    var(--bg);
+}
+body.room-body[data-mood] .blob--a { background: var(--blob-a); }
+body.room-body[data-mood] .blob--b { background: var(--blob-b); }
+body.room-body[data-mood] .blob--c { background: var(--blob-c); }
+
+/* ============================== شريط اللحظات (Timeline Reactions) ============================== */
+.moments {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 4px 2px;
+}
+.moments[hidden] { display: none !important; }
+
+.moments__track {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  height: 30px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: rgba(232, 220, 198, .05);
+}
+.moments__head {
+  position: absolute;
+  top: 3px;
+  bottom: 3px;
+  width: 2px;
+  border-radius: 2px;
+  background: var(--brand);
+  box-shadow: 0 0 8px rgba(197, 165, 114, .8);
+  transform: translateX(50%);
+  pointer-events: none;
+}
+.moments__head[hidden] { display: none !important; }
+
+.mpin {
+  position: absolute;
+  top: 50%;
+  transform: translate(50%, -50%);
+  min-width: 26px;
+  height: 26px;
+  padding: 0 4px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(197, 165, 114, .55);
+  border-radius: 999px;
+  background: rgba(15, 22, 36, .92);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  transition: transform .15s, border-color .15s, box-shadow .15s;
+}
+.mpin:hover {
+  transform: translate(50%, -50%) scale(1.18);
+  border-color: var(--brand);
+  box-shadow: 0 4px 14px rgba(197, 165, 114, .45);
+  z-index: 3;
+}
+
+.moments__add {
+  flex: none;
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border: 1px dashed rgba(197, 165, 114, .55);
+  border-radius: 999px;
+  background: rgba(197, 165, 114, .1);
+  color: var(--brand);
+  cursor: pointer;
+  transition: background .16s, transform .16s;
+}
+.moments__add:hover { background: rgba(197, 165, 114, .24); transform: scale(1.06); }
+
+/* ============================== منتقي الإيموجي للحظة ============================== */
+.pin-picker {
+  position: fixed;
+  z-index: 260;
+  display: flex;
+  gap: 5px;
+  padding: 8px;
+  border: 1px solid rgba(197, 165, 114, .4);
+  border-radius: 14px;
+  background: rgba(13, 17, 26, .97);
+  box-shadow: 0 18px 44px rgba(0, 0, 0, .6);
+  animation: pop .22s cubic-bezier(.2, .9, .3, 1.2) both;
+}
+.pin-picker[hidden] { display: none !important; }
+.pin-picker__btn {
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: rgba(232, 220, 198, .06);
+  font-size: 19px;
+  cursor: pointer;
+  transition: transform .14s, background .14s, border-color .14s;
+}
+.pin-picker__btn:hover {
+  transform: translateY(-3px) scale(1.12);
+  background: rgba(197, 165, 114, .2);
+  border-color: rgba(197, 165, 114, .5);
+}
+
+/* ============================== نافذة الأجواء ============================== */
+.modal__card--mood { width: min(600px, 100%); }
+.mood-hint {
+  margin: -4px 0 14px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.7;
+}
+.mood-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+.mood-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 16px 8px 13px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: rgba(232, 220, 198, .04);
+  color: var(--text);
+  font-family: var(--font);
+  cursor: pointer;
+  transition: border-color .16s, background .16s, transform .16s;
+}
+.mood-card:hover { transform: translateY(-2px); border-color: rgba(197, 165, 114, .5); background: rgba(197, 165, 114, .1); }
+.mood-card__e { font-size: 30px; line-height: 1; }
+.mood-card__n { font-size: 13.5px; font-weight: 800; }
+.mood-card__d { font-size: 10.5px; color: var(--muted-2); text-align: center; line-height: 1.5; }
+.mood-card.is-on {
+  border-color: var(--brand);
+  background: linear-gradient(160deg, rgba(197, 165, 114, .22), rgba(182, 122, 59, .1));
+  box-shadow: 0 0 0 3px rgba(197, 165, 114, .16);
+}
+
+/* ============================== ملاحظات الأريكة ============================== */
+.modal__card--notes { width: min(620px, 100%); }
+
+.notes-compose {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.notes-now {
+  flex: none;
+  min-width: 62px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(197, 165, 114, .5);
+  border-radius: 10px;
+  background: rgba(197, 165, 114, .12);
+  color: #ecd9b0;
+  font: 800 12.5px/1 ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+}
+.notes-compose .input { flex: 1; min-width: 0; }
+
+.notes-list {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  max-height: 44vh;
+  overflow-y: auto;
+  padding-inline-end: 3px;
+}
+.note {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 11px;
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  background: rgba(232, 220, 198, .04);
+}
+.note__t {
+  flex: none;
+  min-width: 56px;
+  height: 26px;
+  padding: 0 8px;
+  border: 1px solid rgba(197, 165, 114, .45);
+  border-radius: 8px;
+  background: rgba(197, 165, 114, .1);
+  color: #ecd9b0;
+  font: 800 11.5px/1 ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  transition: background .14s;
+}
+.note__t:hover { background: rgba(197, 165, 114, .26); }
+.note__x { flex: 1; min-width: 0; font-size: 12.5px; line-height: 1.6; word-break: break-word; }
+.note__by { flex: none; color: var(--muted-2); font-size: 10.5px; }
+.note__del {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 7px;
+  background: rgba(212, 122, 122, .12);
+  color: var(--err);
+  font-size: 15px;
+  cursor: pointer;
+}
+.note__del:hover { background: rgba(212, 122, 122, .28); }
+
+.notes-empty,
+.mem-empty {
+  padding: 22px 10px;
+  border: 1px dashed var(--border);
+  border-radius: 12px;
+  color: var(--muted-2);
+  font-size: 12.5px;
+  text-align: center;
+  line-height: 1.8;
+}
+.notes-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 13px;
+}
+
+/* ============================== ذاكرة السهرة ============================== */
+.modal__card--mem { width: min(560px, 100%); }
+.mem-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 14px;
+}
+.mem-stat {
+  padding: 11px 8px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: rgba(232, 220, 198, .04);
+  text-align: center;
+}
+.mem-stat b {
+  display: block;
+  color: var(--brand);
+  font-size: 19px;
+  font-weight: 900;
+  line-height: 1.3;
+}
+.mem-stat small { color: var(--muted-2); font-size: 10.5px; }
+.mem-videos {
+  margin: 0 0 14px;
+  padding: 10px 13px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: rgba(232, 220, 198, .03);
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.9;
+  list-style: none;
+}
+.mem-videos li { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mem-videos li::before { content: '◂ '; color: var(--brand); }
+.mem-preview { margin-top: 14px; }
+.mem-preview img {
+  display: block;
+  width: 100%;
+  border: 1px solid rgba(197, 165, 114, .4);
+  border-radius: 14px;
+}
+.mem-actions,
+.art-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+.mem-actions .btn,
+.art-actions .btn { flex: 1; min-width: 120px; }
+
+/* ============================== لقطة سينما ============================== */
+.modal__card--snap { width: min(780px, 100%); }
+#snapImg {
+  display: block;
+  width: 100%;
+  border: 1px solid rgba(197, 165, 114, .4);
+  border-radius: 14px;
+}
+.snap-hint { margin: 9px 0 0; color: var(--muted-2); font-size: 11.5px; line-height: 1.7; }
+
+/* ============================== تصويت القائمة (70%) ============================== */
+.queue-item.has-vote { flex-wrap: wrap; row-gap: 6px; }
+.qv {
+  flex-basis: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--border);
+}
+.qv__row {
+  flex: 1;
+  min-width: 40px;
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(232, 220, 198, .09);
+  overflow: hidden;
+}
+.qv__fill {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--grad-warm);
+  transition: width .35s ease;
+}
+.qv__fill.is-pass { background: var(--ok); }
+.qv__count {
+  flex: none;
+  color: var(--muted);
+  font-size: 10.5px;
+  font-weight: 700;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.qv__count small { color: var(--muted-2); font-weight: 600; }
+.qv__pass { flex: none; color: var(--ok); font-size: 10.5px; font-weight: 800; white-space: nowrap; }
+.qv__btn {
+  flex: none;
+  min-height: 26px;
+  padding: 4px 10px;
+  border: 1px solid rgba(197, 165, 114, .45);
+  border-radius: 8px;
+  background: rgba(197, 165, 114, .12);
+  color: var(--text);
+  font: 700 10.5px/1.3 var(--font);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background .14s, border-color .14s;
+}
+.qv__btn:hover { background: rgba(197, 165, 114, .26); border-color: var(--brand); }
+.qv__btn.is-on { background: var(--grad-warm); border-color: transparent; color: #141006; }
+
+/* ============================== استجابة الجوال ============================== */
+@media (max-width: 600px) {
+  .fbtn { padding: 6px 10px; font-size: 12px; }
+  .mood-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .mem-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .notes-compose { flex-wrap: wrap; }
+  .notes-compose .input { flex-basis: 100%; }
+  .note__by { display: none; }
+  .mem-actions .btn, .art-actions .btn { min-width: 100px; }
+}

@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
-  <meta name="theme-color" content="#06070f">
+  <meta name="theme-color" content="#080c14">
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
   <meta http-equiv="Pragma" content="no-cache">
   <meta http-equiv="Expires" content="0">
@@ -11,14 +11,15 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <title>الغرفة — WatchTogether</title>
 
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='24' fill='%237c5cff'/%3E%3Cpath d='M40 32l28 18-28 18z' fill='white'/%3E%3C/svg%3E">
-  <link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='24' fill='%237c5cff'/%3E%3Cpath d='M40 32l28 18-28 18z' fill='white'/%3E%3C/svg%3E">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='24' fill='%23c5a572'/%3E%3Cpath d='M40 32l28 18-28 18z' fill='%23141006'/%3E%3C/svg%3E">
+  <link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='24' fill='%23c5a572'/%3E%3Cpath d='M40 32l28 18-28 18z' fill='%23141006'/%3E%3C/svg%3E">
 
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800;900&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="assets/css/app.css?v=4.0.1">
-  <link rel="stylesheet" href="assets/css/media.css?v=3.1.5">
+  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800;900&family=Grand+Hotel&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="assets/css/app.css?v=4.1.0">
+  <link rel="stylesheet" href="assets/css/media.css?v=3.2.0">
+  <link rel="stylesheet" href="assets/css/features.css?v=1.0.0">
 </head>
 <body class="room-body">
   <div class="bg-fx"></div>
@@ -94,6 +95,7 @@
         <header class="rtopbar">
       <div class="rtopbar__main">
         <p class="rtopbar__sub" id="roomSub">جارٍ الاتصال…</p>
+        <button class="mood-chip" id="moodChip" type="button" hidden title="أجواء السهرة — اضغط للتغيير">🎬 كلاسيكي</button>
       </div>
       <span class="badge room-connection" id="statusBadge" title="حالة اتصال الغرفة">
         <span class="dot"></span><span id="statusText">جارٍ الاتصال</span>
@@ -137,6 +139,26 @@
         <p class="change-bar__hint"><span class="ic" data-icon="info" data-size="14"></span> سيظهر الفيديو في قائمة تشغيل مشتركة، ويمكن للمنظّمين بدء عرضه للجميع.</p>
       </section>
 
+      <!-- شريط الميزات الاحترافية: الأجواء · اللقطة · الملاحظات · الذاكرة · اللحظات -->
+      <nav class="feature-bar" id="featureBar" aria-label="ميزات السهرة">
+        <button class="fbtn" id="moodBtn" type="button" title="قوالب أجواء السهرة">
+          <span class="ic" data-icon="sparkle" data-size="17"></span><span>الأجواء</span>
+        </button>
+        <button class="fbtn" id="pinBtn" type="button" data-pin-open title="ثبّت تفاعلاً عند الوقت الحالي">
+          <span class="ic" data-icon="pin" data-size="17"></span><span>لحظة</span>
+        </button>
+        <button class="fbtn" id="notesBtn" type="button" title="ملاحظات مرتبطة بتوقيت الفيديو">
+          <span class="ic" data-icon="pencil" data-size="17"></span><span>ملاحظات</span>
+          <span class="fbtn__badge" id="notesBadge" hidden>0</span>
+        </button>
+        <button class="fbtn" id="snapBtn" type="button" title="التقط لقطة سينما من الفيديو وبطاقته">
+          <span class="ic" data-icon="camera" data-size="17"></span><span>لقطة سينما</span>
+        </button>
+        <button class="fbtn" id="memBtn" type="button" title="ملخّص سهرتك كبطاقة تُشارك">
+          <span class="ic" data-icon="heart" data-size="17"></span><span>ذاكرة السهرة</span>
+        </button>
+      </nav>
+
       <div class="media-shell" id="mediaShell">
       <!-- المشغّل (الفيديو) + شريط التحكم أسفله مباشرة — ثم الرسائل تحته فوراً -->
       <section class="stage glass" id="stage">
@@ -170,6 +192,16 @@
               <span class="progress__tip" id="progressTip" hidden>00:00</span>
             </div>
           </div>
+        </div>
+
+        <!-- شريط اللحظات: تفاعلات مثبتة على خط زمني منفصل (يعمل مع اليوتيوب أيضاً) -->
+        <div class="moments" id="momentsRail" hidden>
+          <div class="moments__track" id="momentsTrack">
+            <span class="moments__head" id="momentsHead" hidden></span>
+          </div>
+          <button class="moments__add" id="momentsAdd" type="button" title="ثبّت تفاعل عند الوقت الحالي" aria-label="إضافة لحظة">
+            <span class="ic" data-icon="plus" data-size="15"></span>
+          </button>
         </div>
       </section>
 
@@ -354,16 +386,113 @@
     </div>
   </div>
 
+  <!-- ===== نوافذ الميزات ===== -->
+
+  <!-- قوالب أجواء السهرة -->
+  <div class="modal" id="moodModal" hidden>
+    <div class="modal__card glass modal__card--mood">
+      <div class="modal__head">
+        <div>
+          <p class="drawer__eyebrow">أجواء السهرة</p>
+          <h2 class="modal__title"><span class="ic" data-icon="sparkle" data-size="19"></span> قوالب المزاج</h2>
+        </div>
+        <button class="btn btn--ghost btn--icon-sm" data-close type="button" aria-label="إغلاق"><span class="ic" data-icon="x" data-size="18"></span></button>
+      </div>
+      <p class="mood-hint">تُبدّل إضاءة خلفية الغرفة لتوافق المزاج — القاعدة الذهبية Midnight Gold كما هي، والقالب مُشارَك مع الجميع فوراً.</p>
+      <div class="mood-grid" id="moodGrid">
+        <button class="mood-card" type="button" data-mood="classic"><span class="mood-card__e">🎬</span><span class="mood-card__n">كلاسيكي</span><span class="mood-card__d">Midnight Gold الأصلي</span></button>
+        <button class="mood-card" type="button" data-mood="horror"><span class="mood-card__e">👻</span><span class="mood-card__n">رعب</span><span class="mood-card__d">توهج قرمزي خافت</span></button>
+        <button class="mood-card" type="button" data-mood="chill"><span class="mood-card__e">🌊</span><span class="mood-card__n">هادئ</span><span class="mood-card__d">فضي أزرق بارد</span></button>
+        <button class="mood-card" type="button" data-mood="hype"><span class="mood-card__e">🔥</span><span class="mood-card__n">حماس</span><span class="mood-card__d">كهرماني نابض</span></button>
+        <button class="mood-card" type="button" data-mood="romance"><span class="mood-card__e">🌹</span><span class="mood-card__n">رومانسي</span><span class="mood-card__d">وردي دافئ</span></button>
+        <button class="mood-card" type="button" data-mood="party"><span class="mood-card__e">🪩</span><span class="mood-card__n">حفلة</span><span class="mood-card__d">بنفسجي محتشم</span></button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ملاحظات الأريكة -->
+  <div class="modal" id="notesModal" hidden>
+    <div class="modal__card glass modal__card--notes">
+      <div class="modal__head">
+        <div>
+          <p class="drawer__eyebrow">ملاحظات السهرة</p>
+          <h2 class="modal__title"><span class="ic" data-icon="pencil" data-size="19"></span> ملاحظات الأريكة</h2>
+        </div>
+        <button class="btn btn--ghost btn--icon-sm" data-close type="button" aria-label="إغلاق"><span class="ic" data-icon="x" data-size="18"></span></button>
+      </div>
+      <div class="notes-compose">
+        <span class="notes-now" id="noteTime">00:00</span>
+        <input class="input" id="noteInput" type="text" maxlength="240" placeholder="اكتب ملاحظة مرتبطة بالوقت الحالي…">
+        <button class="btn btn--primary" id="noteAdd" type="button"><span class="ic" data-icon="plus" data-size="16"></span> ثبّت</button>
+      </div>
+      <div class="notes-list" id="notesList"></div>
+      <p class="notes-empty" id="notesEmpty">لا ملاحظات بعد — صوّر لحظة مهمة بتوقيتها، وستبقى مرتبطة بخط الزمن مع الجميع.</p>
+      <div class="notes-actions">
+        <button class="btn btn--ghost" id="notesExport" type="button">
+          <span class="ic" data-icon="download" data-size="16"></span> تصدير PDF / طباعة
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ذاكرة السهرة -->
+  <div class="modal" id="memModal" hidden>
+    <div class="modal__card glass modal__card--mem">
+      <div class="modal__head">
+        <div>
+          <p class="drawer__eyebrow">تلخّص الجلسة</p>
+          <h2 class="modal__title"><span class="ic" data-icon="heart" data-size="19"></span> ذاكرة السهرة</h2>
+        </div>
+        <button class="btn btn--ghost btn--icon-sm" data-close type="button" aria-label="إغلاق"><span class="ic" data-icon="x" data-size="18"></span></button>
+      </div>
+      <div class="mem-stats" id="memStats"></div>
+      <ul class="mem-videos" id="memVideos"></ul>
+      <button class="btn btn--primary btn--block" id="memGen" type="button">
+        <span class="ic" data-icon="sparkle" data-size="17"></span> أنشئ بطاقة المشاركة
+      </button>
+      <div class="mem-preview" id="memPreview" hidden>
+        <img id="memImg" alt="بطاقة ذاكرة السهرة">
+        <div class="mem-actions">
+          <a class="btn btn--primary" id="memDownload" download href="#"><span class="ic" data-icon="download" data-size="16"></span> تنزيل PNG</a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- لقطة سينما -->
+  <div class="modal" id="snapModal" hidden>
+    <div class="modal__card glass modal__card--snap">
+      <div class="modal__head">
+        <div>
+          <p class="drawer__eyebrow">التقاط الفيديو</p>
+          <h2 class="modal__title"><span class="ic" data-icon="camera" data-size="19"></span> لقطة سينما</h2>
+        </div>
+        <button class="btn btn--ghost btn--icon-sm" data-close type="button" aria-label="إغلاق"><span class="ic" data-icon="x" data-size="18"></span></button>
+      </div>
+      <img id="snapImg" alt="لقطة السينما">
+      <p class="snap-hint" id="snapHint"></p>
+      <div class="art-actions">
+        <button class="btn btn--primary" id="snapSend" type="button"><span class="ic" data-icon="send" data-size="16"></span> أرسل للدردشة</button>
+        <button class="btn btn--ghost" id="snapShare" type="button"><span class="ic" data-icon="share" data-size="16"></span> مشاركة</button>
+        <a class="btn btn--ghost" id="snapDownload" href="#" download><span class="ic" data-icon="download" data-size="16"></span> تنزيل</a>
+      </div>
+    </div>
+  </div>
+
+  <!-- منتقي إيموجي اللحظة -->
+  <div class="pin-picker" id="pinPicker" hidden role="menu" aria-label="اختر تفاعلاً"></div>
+
   <!-- ===== سكربتات ===== -->
   <script src="assets/vendor/hls.min.js?v=3.0.0"></script>
   <script src="assets/vendor/qrcode.min.js?v=3.0.0"></script>
   <script src="assets/js/config.js?v=3.1.2"></script>
-  <script src="assets/js/util.js?v=3.0.0"></script>
-  <script src="assets/js/icons.js?v=3.1.1"></script>
+  <script src="assets/js/util.js?v=3.1.0"></script>
+  <script src="assets/js/icons.js?v=3.2.0"></script>
   <script src="assets/js/auth.js?v=3.2.0"></script>
   <script src="assets/js/transport.js?v=3.2.0"></script>
   <script src="assets/js/player.js?v=3.0.0"></script>
   <script src="assets/js/media.js?v=3.1.5"></script>
-  <script src="assets/js/room.js?v=3.2.1"></script>
+  <script src="assets/js/room.js?v=3.3.1"></script>
+  <script src="assets/js/features.js?v=1.0.0"></script>
 </body>
 </html>

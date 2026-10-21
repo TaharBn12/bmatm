@@ -86,7 +86,7 @@
 
     /* لون ثابت لكل اسم (لصور المشاركين والرسائل) */
     colorFor(seed) {
-      const palette = ['#7c5cff', '#00d4ff', '#ff4d8d', '#ffb020', '#2dd4a7', '#ff6b4a', '#a78bfa', '#4ade80'];
+      const palette = ['#c5a572', '#b67a3b', '#d4a574', '#e8b86a', '#8fa8c4', '#d47a7a', '#a99bd4', '#7fc0a0'];
       let h = 0;
       const s = String(seed || 'x');
       for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;

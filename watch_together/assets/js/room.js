@@ -26,6 +26,23 @@
   const paramVideo = params.get('v') || '';
   if (!roomId) { location.replace('index.html'); return; }
 
+  /* ============================== هوية العرض المحلي ==============================
+   * ?local=1&demo=1 يفتح الغرفة بهوية محلية للاطلاع على الواجهة والميزات بلا حساب
+   * وبلا أي اتصال بالسيرفر (الوضع المحلي أصلاً لا تتم فيه مزامنة بين الأجهزة).
+   * الشرطان معاً مطلوبان: demo وحده لا يفتح شيئاً، وlocal وحده يبقى كما كان.
+   * ============================================================================ */
+  const demoMode = params.get('local') === '1' && params.get('demo') === '1';
+  function demoSession() {
+    let id = U.store.get('demoId', '');
+    if (!id) { id = 'demo-' + Math.random().toString(36).slice(2, 10); U.store.set('demoId', id); }
+    const name = U.cleanName(params.get('name') || '') || 'ضيف العرض';
+    return {
+      access_token: 'demo-local-token',
+      user: { id: id, name: name, email: '', guest: false },
+      expires_at: Date.now() + 6 * 3600 * 1000
+    };
+  }
+
   let createInfo = null;
   try { createInfo = JSON.parse(sessionStorage.getItem('wt:create:' + roomId) || 'null'); } catch (e) { createInfo = null; }
 
@@ -170,21 +187,23 @@
 
   /* ============================== التحقق من الحساب ============================== */
   async function initRoom() {
-    const authSession = await (Auth ? Auth.validSession().catch(() => null) : null);
+    let authSession = await (Auth ? Auth.validSession().catch(() => null) : null);
     const user = authSession && authSession.user;
     const account = authSession && authSession.access_token && user && user.id && !user.guest
       && (!authSession.expires_at || authSession.expires_at > Date.now()) ? user : null;
-    if (!account) {
+    if (!account && demoMode) authSession = demoSession();
+    if (!account && !demoMode) {
       if (Auth && Auth.currentUser && Auth.currentUser() && Auth.currentUser().guest) Auth.clearSession();
       const returnTo = 'room.html?id=' + encodeURIComponent(roomId) + (params.get('local') === '1' ? '&local=1' : '');
       location.replace('auth.html?next=' + encodeURIComponent(returnTo));
       return;
     }
-    session.name = U.cleanName(account.name) || U.cleanName(account.email && account.email.split('@')[0]) || 'مستخدم';
-    session.userId = account.id;
+    session.name = U.cleanName(authSession.user.name) || U.cleanName(authSession.user.email && authSession.user.email.split('@')[0]) || 'مستخدم';
+    session.userId = authSession.user.id;
     session.isGuest = false;
     if (el.authStatus) el.authStatus.hidden = true;
     el.room.hidden = false;
+    if (!account) U.toast('وضع العرض: هوية محلية للاطلاع — بلا حساب وبلا مزامنة', 'info', 5000);
     await enterRoom(authSession);
   }
 
@@ -1150,14 +1169,16 @@
           media: mediaListOf(o.m),
           action: o.a === 'reaction' ? 'reaction' : '',
           reaction: typeof o.e === 'string' && typeof o.u === 'string'
-            ? { emoji: o.e, actor: o.u, version: o.v } : null
+            ? { emoji: o.e, actor: o.u, version: o.v } : null,
+          /* الغلاف الخام كما هو — تقرأ منه وحدة features.js أحداث الميزات */
+          meta: o
         };
       } catch (e) {
         /* ليس غلافاً — نسقط العلامة ونتعامل معه كنص عادي */
-        return { ok: false, text: s.slice(1), cid: '', reply: null, next: '', media: [] };
+        return { ok: false, text: s.slice(1), cid: '', reply: null, next: '', media: [], meta: null };
       }
     }
-    return { ok: false, text: s, cid: '', reply: null, next: '', media: [] };
+    return { ok: false, text: s, cid: '', reply: null, next: '', media: [], meta: null };
   }
 
   /* ربط المعاينة المحلية بالرابط المرفوع لنفس الجلسة (احتياط فوري للعرض) */
@@ -1183,6 +1204,9 @@
     /* The envelope also identifies reactions on legacy tables without a kind column. */
     if (m.kind === 'reaction' || d.action === 'reaction') return applyMessageReaction(m);
     if (m.kind === 'edit' || m.kind === 'del') return applyChatAction(m, m.kind);
+    /* أحداث الميزات (مزاج/لحظة/ملاحظة/تصويت) — تُسلّم لوحدة features.js بلا فقاعة */
+    if (window.WTFeatures && typeof window.WTFeatures.onMessage === 'function' &&
+      window.WTFeatures.onMessage(m, d, opts)) return null;
 
     const text = d.text;
     const cid = d.cid || String(m.id || '') || U.uid('m');
@@ -2881,6 +2905,26 @@
     get state() { return st; },
     publish,
     onRemoteState,
+    canControl,
+    sysMessage,
+    /** الانتقال الزمني الآمن — ينشر الحالة إن كان لدى المستخدم صلاحية التحكم */
+    seekTo(sec) {
+      if (!requireControl() || !player.isReady()) return false;
+      const to = Math.max(0, Number(sec) || 0);
+      player.seek(to);
+      st.pos = to;
+      updateProgressUI();
+      localControl('seek');
+      pokeVideoUI();
+      return true;
+    },
+    /** تشغيل عنصر من قائمة التشغيل (يمرّ عبر بوابة الصلاحية نفسها) */
+    playQueueItemById(id) {
+      const item = (session.queue || []).find(x => String(x.id) === String(id));
+      if (!item) return false;
+      playQueueItem(item);
+      return true;
+    },
     diagnose: runDiagnostics,
     openDiag,
     closeDiag,
