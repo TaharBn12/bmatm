@@ -196,5 +196,31 @@ t('سجل المكالمة نصّي بلا بيانات حساسة', (() => {
   return !/sdp|candidate|ip/i.test(insert);
 })());
 
+/* ==================== 6) تفضيل استقبال المكالمات ==================== */
+{
+  const profileHtml = read('profile.html');
+  const profileJs = read('assets/js/profile.js');
+  t('الملف الشخصي: مفتاح «استقبال المكالمات» موجود', /id="prefCalls"/.test(profileHtml) &&
+    /استقبال المكالمات الصوتية/.test(profileHtml));
+  t('الملف الشخصي: توضيح أن الحفظ فوري', /يُحفظ فورًا/.test(profileHtml));
+  t('profile.js: يقرأ allow_calls من الملف', /\$\('prefCalls'\)\.checked\s*=\s*p\.allow_calls !== false/.test(profileJs));
+  t('profile.js: يحفظ عبر RPC calls_pref', /S\.call\('calls_pref',\s*\{\s*p_allow:\s*wanted\s*\}\)/.test(profileJs));
+  t('profile.js: لا يُدخل التفضيل في نموذج الحفظ', !/allow_calls\s*:\s*'prefCalls'/.test(profileJs) &&
+    !/const prefs = \{[^}]*allow_calls/.test(profileJs));
+  t('profile.js: يمنع وسم النموذج بتعديل غير محفوظ', /prefCalls'\)\.addEventListener\('change', async event => \{\s*\n\s*event\.stopPropagation\(\)/.test(profileJs));
+  t('profile.js: يعيد المفتاح عند الفشل', /input\.checked = !wanted/.test(profileJs));
+  t('profile.js: رسالة واضحة إن لم يُنفَّذ 09-calls.sql', /09-calls\.sql على قاعدة البيانات/.test(profileJs));
+  t('profile.js: يعرض حالة الإيقاف في بطاقة الخصوصية', /المكالمات الصوتية موقوفة حاليًا/.test(profileJs));
+
+  const jsonFn = sql.slice(sql.indexOf('create or replace function wt_social_private.profile_json'));
+  t('SQL: profile_json يعيد allow_calls', /'allow_calls'/.test(jsonFn.slice(0, 2000)));
+  t('SQL: يقرأ allow_calls بأمان قبل وجود العمود', /to_jsonb\(p\)->>'allow_calls'/.test(jsonFn));
+  t('SQL: القيمة الافتراضية مفعّلة', /coalesce\(\(to_jsonb\(p\)->>'allow_calls'\)::boolean,\s*true\)/.test(jsonFn));
+  t('calls.js: زرّ المكالمة يعتمد على allow_calls', /peer\.allow_calls !== false/.test(calls) &&
+    /هذا العضو أوقف استقبال المكالمات/.test(calls));
+  t('الخادم يرفض البدء رغم تعطيل الواجهة', /select allow_calls into allowed from public\.wt_profiles where user_id = peer/.test(sql) &&
+    /allowed/.test(sql));
+}
+
 console.log(`Calls: ${pass} passed, ${fail} failed`);
 if (fail) process.exitCode = 1;

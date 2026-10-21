@@ -10,7 +10,8 @@
 
 | الملف | ماذا فيه |
 |-------|----------|
-| [`docs/sql/09-calls.sql`](sql/09-calls.sql) | جدول `wt_dm_calls` + `wt_call_signals` (RLS مغلق، بلا سياسات) + 8 RPC محمية + مهلة رنين 50 ثانية على الخادم + سطر سجل في المحادثة + دوال تنظيف |
+| [`docs/sql/09-calls.sql`](sql/09-calls.sql) | جدول `wt_dm_calls` + `wt_call_signals` (RLS مغلق، بلا سياسات) + 8 RPC محمية + مهلة رنين 50 ثانية على الخادم + سطر سجل في المحادثة + دوال تنظيف + `allow_calls` داخل `profile_json` (لتعطيل الزرّ قبل الاتصال) |
+| `profile.html` + `profile.js` | مفتاح **«استقبال المكالمات الصوتية»** في تبويب الخصوصية، يُحفظ فورًا عبر `wt_social_calls_pref` (بلا نموذج الحفظ) |
 | [`assets/js/call-state.js`](../assets/js/call-state.js) | آلة الحالات النقية: `idle → ringing → connecting → active → ended/missed/declined/busy/failed` مع كل الحراسات |
 | [`assets/js/calls.js`](../assets/js/calls.js) | WebRTC: ميكروفون، `RTCPeerConnection`، offer/answer/ICE عبر RPC، إعادة `restartIce`، كتم، مؤقّت، نغمة مولّدة، اهتزاز، Wake Lock، إغلاق آمن عند مغادرة الصفحة |
 | [`assets/css/call.css`](../assets/css/call.css) | شاشة رنين، شريط مكالمة جارية، سطر سجل المكالمة، جوال، تقليل حركة |

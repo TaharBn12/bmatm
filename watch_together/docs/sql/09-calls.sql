@@ -25,6 +25,24 @@ begin
 end $$;
 
 -- ---------------------------------------------------------------------
+-- 1.5) إظهار التفضيل في بطاقة الملف (حتّى يعرف الطرف الآخر قبل الاتصال)
+-- ---------------------------------------------------------------------
+-- profile_json يُستخدم في: الملف الشخصي · قائمة الأصدقاء · بيانات المحادثة.
+-- إضافة allow_calls هنا تعني أن زرّ المكالمة يتعطّل فورًا بلا طلب إضافي،
+-- مع بقاء الفحص الحقيقي على الخادم داخل wt_social_call_start.
+-- (to_jsonb لا p.allow_calls: فيعمل الملف حتّى قبل إضافة العمود في بيئة قديمة)
+create or replace function wt_social_private.profile_json(u uuid,v uuid) returns jsonb language sql stable security definer set search_path = pg_catalog, public as $$
+ select jsonb_build_object('user_id',p.user_id,'username',p.username,'display_name',p.display_name,'bio',p.bio,'location',p.location,'website',p.website,
+   'avatar_path',p.avatar_path,'interests',p.interests,'favorites',p.favorites,'mood',p.mood,'accent',p.accent,'cover',p.cover,'created_at',p.created_at,'updated_at',p.updated_at,
+   'own',u=v,'relation',wt_social_private.relation(v,u),'allow_requests',p.allow_requests,
+   'allow_calls',coalesce((to_jsonb(p)->>'allow_calls')::boolean,true),
+   'discoverable',case when u=v then p.discoverable else null end,'read_receipts',case when u=v then p.read_receipts else null end,
+   'show_friend_count',p.show_friend_count,
+   'friend_count',case when u=v or p.show_friend_count then (select count(*) from public.wt_friendships f where u in(f.requester,f.recipient) and f.status='accepted') else null end,
+   'shared_interests',to_jsonb(array(select unnest(p.interests) intersect select unnest(me.interests))))
+ from public.wt_profiles p left join public.wt_profiles me on me.user_id=v where p.user_id=u $$;
+
+-- ---------------------------------------------------------------------
 -- 2) أنواع رسائل المحادثة: نص · دعوة غرفة · سجل مكالمة
 -- ---------------------------------------------------------------------
 alter table public.wt_dm_messages drop constraint if exists wt_dm_messages_kind_check;

@@ -96,7 +96,7 @@
   function relationButtons(p, compact) {
     const id = esc(p.user_id);
     if (p.relation === 'blocked') return '<button class="s-btn s-btn--soft" data-friend-action="unblock" data-user="' + id + '">' + icon('shield', 16) + ' إلغاء الحظر</button>';
-    if (p.relation === 'friends') return '<a class="s-btn s-btn--primary' + (compact ? ' s-btn--sm' : '') + '" href="messages.html?with=' + id + '">' + icon('chat', 17) + ' رسالة</a><button class="s-icon-btn" data-friend-action="remove" data-user="' + id + '" aria-label="إزالة الصداقة" title="إزالة الصداقة">' + icon('userMinus', 17) + '</button>';
+    if (p.relation === 'friends') return '<a class="s-btn s-btn--primary' + (compact ? ' s-btn--sm' : '') + '" href="messages.html?with=' + id + '">' + icon('chat', 17) + ' رسالة</a><button class="s-icon-btn" data-friend-action="remove" data-user="' + id + '" aria-label="إزالة الصداقة" title="إزالة الصداقة">' + icon('userMinus', 17) + '</button>' + (p.allow_calls === false ? '<span class="s-muted s-small">المكالمات متوقفة</span>' : '');
     if (p.relation === 'outgoing') return '<button class="s-btn s-btn--soft" data-friend-action="cancel" data-user="' + id + '">' + icon('clock', 16) + ' إلغاء الطلب</button>';
     if (p.relation === 'incoming') return '<button class="s-btn s-btn--primary" data-friend-action="accept" data-user="' + id + '">' + icon('check', 17) + ' قبول</button><button class="s-icon-btn" data-friend-action="reject" data-user="' + id + '" aria-label="رفض الطلب" title="رفض الطلب">' + icon('x', 17) + '</button>';
     if (p.relation === 'unavailable') return '';
