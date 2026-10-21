@@ -199,7 +199,7 @@ const UID = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
   t('messages.html: يحمّل dm-realtime قبل messages.js',
     html.indexOf('assets/js/dm-realtime.js') > 0 &&
     html.indexOf('assets/js/dm-realtime.js') < html.indexOf('assets/js/messages.js'));
-  t('messages.html: نسخة messages.js مرتفعة', /messages\.js\?v=3\.2\.0/.test(html));
+  t('messages.html: نسخة messages.js مرتفعة', /messages\.js\?v=3\.(3|4|5)\.0/.test(html), '');
 
   t('messages.js: يشغّل البثّ عند الإقلاع', /startRealtime\(\);/.test(messages) &&
     /function startRealtime/.test(messages));
