@@ -539,3 +539,70 @@ textarea.s-input { resize: vertical; min-height: 115px; line-height: 1.9; }
 .social-page[data-accent="amber"] .cover-orb { filter:hue-rotate(290deg); }
 .social-page[data-accent="rose"] .cover-orb { filter:hue-rotate(235deg); }
 .s-btn--primary:hover:not(:disabled) { background:color-mix(in srgb,var(--s-accent) 80%,white); border-color:color-mix(in srgb,var(--s-accent) 80%,white); }
+
+/* ---------------- تفاعل سريع وسحب للردّ ---------------- */
+.dm-reaction {
+  display: inline-flex; align-items: center; justify-content: center;
+  margin-top: 6px; padding: 2px 9px; border-radius: 999px;
+  background: rgba(197, 165, 114, .16);
+  border: 1px solid rgba(197, 165, 114, .34);
+  font-size: 14px; line-height: 1.5;
+  animation: dmReactionPop .18s ease-out both;
+}
+@keyframes dmReactionPop { from { transform: scale(.7); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+.dm-row { transition: transform .16s cubic-bezier(.2,.8,.25,1); }
+.dm-row.is-swiping { transition: none; }
+.dm-row.is-ready .dm-bubble { border-color: rgba(197, 165, 114, .55); }
+.dm-row.is-ready::after {
+  content: '↩'; position: absolute; inset-inline-end: -22px; top: 50%;
+  transform: translateY(-50%); font-size: 15px;
+  color: var(--s-accent); opacity: .9;
+}
+.dm-row { position: relative; }
+:root[data-wt-motion="reduce"] .dm-reaction { animation: none; }
+:root[data-wt-motion="reduce"] .dm-row { transition: none; }
+@media (prefers-reduced-motion: reduce) {
+  .dm-reaction { animation: none; }
+  .dm-row { transition: none; }
+}
+
+/* ---------------- قائمة خيارات المحادثة والأرشيف ---------------- */
+.thread-row { position: relative; display: block; width: 100%; }
+.thread-row .thread-item { width: 100%; }
+.thread-row.is-active .thread-item { background: rgba(197, 165, 114, .12); }
+.thread-more-btn {
+  position: absolute; inset-inline-end: 4px; bottom: 6px;
+  width: 26px; height: 26px; display: grid; place-items: center;
+  border: 1px solid transparent; border-radius: 8px;
+  background: transparent; color: var(--s-dim); cursor: pointer;
+  font-size: 15px; line-height: 1; opacity: .65;
+}
+.thread-more-btn:hover, .thread-more-btn:focus-visible { opacity: 1; border-color: var(--s-line); color: var(--s-text); }
+.thread-flag { display: inline-flex; margin-inline-start: 5px; color: var(--s-accent); vertical-align: middle; }
+.thread-flag--muted { color: var(--s-dim); }
+.thread-archive-toggle {
+  margin-top: 8px; padding: 6px 10px; width: 100%;
+  border: 1px solid var(--s-line); border-radius: 10px;
+  background: transparent; color: var(--s-dim); cursor: pointer;
+  font: inherit; font-size: 11px; letter-spacing: .02em;
+}
+.thread-archive-toggle.is-active { color: var(--s-accent); border-color: rgba(197, 165, 114, .45); }
+.thread-archive-count { display: inline-block; margin-inline-start: 4px; font-weight: 700; }
+
+.dm-thread-menu {
+  position: fixed; z-index: 9200; min-width: 224px; padding: 6px;
+  border-radius: 14px; border: 1px solid var(--s-line);
+  background: #0d1420; box-shadow: 0 20px 48px rgba(0, 0, 0, .55);
+  animation: dmMenuIn .14s ease-out both;
+}
+@keyframes dmMenuIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+.dm-thread-menu button {
+  display: flex; align-items: center; gap: 8px; width: 100%;
+  padding: 9px 10px; border: 0; border-radius: 9px;
+  background: transparent; color: var(--s-text); cursor: pointer;
+  font: inherit; font-size: 12.5px; text-align: start;
+}
+.dm-thread-menu button:hover, .dm-thread-menu button:focus-visible { background: rgba(232, 220, 198, .08); }
+.dm-menu-check { width: 16px; display: inline-grid; place-items: center; color: var(--s-accent); }
+.dm-menu-note { margin: 6px 8px 4px; font-size: 10.5px; line-height: 1.8; color: var(--s-dim); }
+:root[data-wt-motion="reduce"] .dm-thread-menu { animation: none; }

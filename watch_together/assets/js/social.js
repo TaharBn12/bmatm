@@ -76,7 +76,7 @@
   }
   const METHODS = new Set(['bootstrap','profile','save_profile','search','friends','friend_action','open_thread','threads','messages','send','edit_message','mark_read','typing',
     'calls_pref','call_start','call_answer','call_end','call_state','call_signal_put','call_signal_get','call_incoming',
-    'call_current','call_reset']);
+    'call_current','call_reset','react','thread_pref']);
   function call(method, args, signal, extra) {
     if (!METHODS.has(method)) return Promise.reject(new Error('طلب غير مدعوم'));
     return request('/rest/v1/rpc/wt_social_' + method, Object.assign({ body: args || {}, signal }, extra || {}));

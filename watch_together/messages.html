@@ -28,7 +28,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800;900&family=Grand+Hotel&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="assets/css/app.css?v=4.1.0">
-  <link rel="stylesheet" href="assets/css/social.css?v=3.1.0">
+  <link rel="stylesheet" href="assets/css/social.css?v=3.3.0">
   <link rel="stylesheet" href="assets/css/call.css?v=1.1.0">
   <link rel="stylesheet" href="assets/css/site.css?v=1.0.0">
 </head>
@@ -44,7 +44,7 @@
           <div class="s-page-heading messages-heading"><div><span class="s-eyebrow">A CONVERSATION, A CONNECTION</span><h1>بينك وبين رفيقك.</h1></div><button class="s-btn s-btn--soft" id="newChat" type="button"><span class="ic" data-icon="pencil" data-size="16"></span> محادثة جديدة</button></div>
           <div class="s-error" id="messagesError" hidden></div>
           <div class="messages-frame">
-            <aside class="thread-sidebar" aria-label="محادثاتك"><div class="thread-sidebar-head"><label class="thread-search"><span class="ic" data-icon="search" data-size="16"></span><input type="search" id="threadQuery" aria-label="فلترة المحادثات المحمّلة" placeholder="ابحث في محادثاتك…"></label></div><div class="thread-list" id="threadList"></div><button class="s-btn s-btn--sm thread-more" id="threadsMore" type="button" hidden>محادثات أقدم</button></aside>
+            <aside class="thread-sidebar" aria-label="محادثاتك"><div class="thread-sidebar-head"><label class="thread-search"><span class="ic" data-icon="search" data-size="16"></span><input type="search" id="threadQuery" aria-label="فلترة المحادثات المحمّلة" placeholder="ابحث في محادثاتك…"></label><button class="thread-archive-toggle" id="threadArchived" type="button" aria-pressed="false" title="إظهار المحادثات المؤرشفة">المؤرشفة <span class="thread-archive-count" id="threadArchivedCount" hidden></span></button></div><div class="thread-list" id="threadList"></div><button class="s-btn s-btn--sm thread-more" id="threadsMore" type="button" hidden>محادثات أقدم</button></aside>
             <section class="chat-pane" aria-label="المحادثة الخاصة">
               <div class="chat-idle" id="chatIdle"><div class="s-empty"><span class="s-empty-icon"><span class="ic" data-icon="chat" data-size="34"></span></span><h2>حكاية صغيرة، تبدأ برسالة.</h2><p>اختر محادثة، أو ابدأ حديثًا مع صديق. أرسل دعوة لغرفة، وخطّطا لسهرتكما القادمة.</p><button class="s-btn s-btn--soft" type="button" id="idleNewChat">اختر صديقًا</button><span class="s-hint">محادثات للأصدقاء فقط، منفصلة عن دردشة الغرف.</span></div></div>
               <div class="chat-active" id="chatActive" hidden>
@@ -71,12 +71,13 @@
   <script src="assets/js/util.js?v=3.1.0"></script>
   <script src="assets/js/icons.js?v=3.2.0"></script>
   <script src="assets/js/auth.js?v=3.2.0"></script>
-  <script src="assets/js/social.js?v=3.2.0"></script>
+  <script src="assets/js/social.js?v=3.4.0"></script>
   <script src="assets/js/social-ui.js?v=3.1.0"></script>
   <script src="assets/js/call-state.js?v=1.0.0"></script>
   <script src="assets/js/calls.js?v=1.1.0"></script>
   <script src="assets/js/dm-realtime.js?v=1.0.0"></script>
-  <script src="assets/js/messages.js?v=3.2.0"></script>
+  <script src="assets/js/dm-gestures.js?v=1.0.0"></script>
+  <script src="assets/js/messages.js?v=3.4.0"></script>
   <script src="assets/js/site.js?v=1.0.1"></script>
 </body>
 </html>

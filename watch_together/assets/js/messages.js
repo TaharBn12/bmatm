@@ -6,8 +6,10 @@
   const numeric = value => /^\d{1,19}$/.test(String(value || ''));
   const nonceOK = value => /^[a-f0-9]{48,128}$/.test(value || '');
   const newer = (a,b) => BigInt(a || '0') > BigInt(b || '0');
+  const G = window.WTDMGestures;
   const state = { uid:null,threads:[],threadOffset:0,threadMore:false,threadBusy:false,threadPromise:null,threadKey:'',listController:null,
-    active:null,contexts:new Map(),selection:0,timer:null,ticking:false,stopped:false,lastList:0,newFriends:[],friendOffset:0,friendBusy:false };
+    active:null,contexts:new Map(),selection:0,timer:null,ticking:false,stopped:false,lastList:0,newFriends:[],friendOffset:0,friendBusy:false,
+    showArchived:false,hiddenArchived:0,threadMenu:null };
   let storageAvailable = false;
   try { localStorage.setItem('wt:dm-storage-check','1'); localStorage.removeItem('wt:dm-storage-check'); storageAvailable = true; } catch (_) { /* memory-only mode is labelled below */ }
   const ownsContext = ctx => !!ctx && ctx.uid === state.uid && (A.accountUser() || {}).id === ctx.uid;
@@ -56,26 +58,44 @@
     const key = JSON.stringify([rows,state.active && state.active.id,query]); if (key === state.threadKey) return; state.threadKey = key;
     const focus = document.activeElement && document.activeElement.closest('[data-thread]'); const focusId = focus && focus.dataset.thread;
     $('threadList').innerHTML = rows.length ? rows.map(t => {
-      const p = t.peer || {}, m = t.preview;
+      const p = t.peer || {}, m = t.preview, prefs = t.prefs || {};
       const preview = !m ? 'ابدأ أول رسالة' : m.deleted_at ? 'رسالة محذوفة' : (m.sender_id === state.uid ? 'أنت: ' : '') + (m.kind === 'call' ? '📞 ' : m.kind === 'room' ? 'دعوة: ' : '') + m.body;
-      return '<button type="button" class="thread-item' + (state.active && state.active.id === t.id ? ' is-active' : '') + '" data-thread="' + esc(t.id) + '"' + (state.active && state.active.id === t.id ? ' aria-current="true"' : '') + '>' + C.avatar(p,'sm') + '<span class="thread-item-main"><span class="thread-item-title"><strong>' + esc(p.display_name || 'عضو') + '</strong><time datetime="' + esc(t.updated_at) + '">' + esc(C.date(t.updated_at)) + '</time></span><span class="thread-item-bottom"><span class="thread-item-preview">' + esc(preview) + '</span>' + (t.unread ? '<b class="thread-unread" aria-label="' + Number(t.unread) + ' غير مقروءة">' + Math.min(99,Number(t.unread)) + '</b>' : '') + '</span></span></button>';
-    }).join('') : C.empty('chat',query ? 'لا محادثة بهذا الاسم' : 'لا محادثات بعد',query ? 'جرّب اسمًا آخر ضمن المحادثات المحمّلة.' : 'ابدأ حديثًا مع أحد أصدقائك.');
+      const flags = (prefs.pinned ? '<span class="thread-flag" title="مثبّتة" aria-label="مثبّتة">' + icon('pin',12) + '</span>' : '') +
+        (prefs.muted ? '<span class="thread-flag thread-flag--muted" title="مكتومة" aria-label="مكتومة">' + icon('mute',12) + '</span>' : '');
+      /* الكتم يخفي شارة العدّاد فقط؛ الرسائل تُقرأ كالعادة ولا نخفي شيئاً */
+      const unread = t.unread && !prefs.muted ? '<b class="thread-unread" aria-label="' + Number(t.unread) + ' غير مقروءة">' + Math.min(99,Number(t.unread)) + '</b>' : '';
+      return '<div class="thread-row' + (state.active && state.active.id === t.id ? ' is-active' : '') + '">' +
+        '<button type="button" class="thread-item" data-thread="' + esc(t.id) + '"' + (state.active && state.active.id === t.id ? ' aria-current="true"' : '') + '>' + C.avatar(p,'sm') +
+        '<span class="thread-item-main"><span class="thread-item-title"><strong>' + esc(p.display_name || 'عضو') + flags + '</strong><time datetime="' + esc(t.updated_at) + '">' + esc(C.date(t.updated_at)) + '</time></span>' +
+        '<span class="thread-item-bottom"><span class="thread-item-preview">' + esc(preview) + '</span>' + unread + '</span></span></button>' +
+        '<button type="button" class="thread-more-btn" data-thread-menu="' + esc(t.id) + '" aria-label="خيارات محادثة ' + esc(p.display_name || 'عضو') + '" title="خيارات المحادثة">⋯</button>' +
+        '</div>';
+    }).join('') : C.empty('chat',query ? 'لا محادثة بهذا الاسم' : (state.showArchived ? 'لا محادثة مؤرشفة' : 'لا محادثات بعد'),query ? 'جرّب اسمًا آخر ضمن المحادثات المحمّلة.' : (state.showArchived ? 'الأرشفة تُخفي المحادثة من القائمة، ويمكنك فكّها من هنا في أي وقت.' : 'ابدأ حديثًا مع أحد أصدقائك.'));
     if (focusId) { const b = $('threadList').querySelector('[data-thread="' + focusId + '"]'); if (b) b.focus({preventScroll:true}); }
     $('threadsMore').hidden = !state.threadMore;
+    const archivedBtn = $('threadArchived'), archivedCount = $('threadArchivedCount');
+    archivedBtn.setAttribute('aria-pressed', String(!!state.showArchived));
+    archivedBtn.classList.toggle('is-active', !!state.showArchived);
+    archivedBtn.title = state.showArchived ? 'العودة إلى المحادثات النشطة' : 'إظهار المحادثات المؤرشفة';
+    archivedCount.hidden = !!state.showArchived || !state.hiddenArchived;
+    archivedCount.textContent = state.showArchived ? '' : String(state.hiddenArchived || '');
   }
   async function loadThreads(append,quiet) {
     if (state.threadBusy) return state.threadPromise;
     state.threadBusy = true; $('threadsMore').disabled = true; state.listController = new AbortController();
     state.threadPromise = (async () => {
       try {
-        const data = await S.call('threads',{p_offset:append ? state.threadOffset : 0},state.listController.signal);
+        const data = await S.call('threads',{p_offset:append ? state.threadOffset : 0,p_archived:!!state.showArchived},state.listController.signal);
         if (!data || !Array.isArray(data.threads)) throw new Error('تعذّر قراءة قائمة المحادثات.');
         const rows = data.threads.filter(t => S.UUID.test(t.id || ''));
         state.threads = append ? [...new Map([...state.threads,...rows].map(t => [t.id,t])).values()] : [...rows,...state.threads.filter(old => !rows.some(t => t.id === old.id))];
         state.threads.sort((a,b) => Date.parse(b.updated_at) - Date.parse(a.updated_at));
         if (append) state.threadOffset += data.threads.length; else if (!quiet || !state.threadOffset) state.threadOffset = data.threads.length;
         if (append || state.threadOffset <= 30) state.threadMore = !!data.has_more;
-        if (data.counts) C.setCounts(data.counts); state.lastList = Date.now(); listRender();
+        if (data.counts) C.setCounts(data.counts);
+        if (data.hidden_archived != null) state.hiddenArchived = Number(data.hidden_archived) || 0;
+        if (data.archived != null && !!data.archived !== !!state.showArchived) state.showArchived = !!data.archived;
+        state.lastList = Date.now(); listRender();
         C.error('messagesError',null);
       } catch (err) { if (err.name !== 'AbortError') C.error('messagesError',err,() => loadThreads(false,false)); }
       finally { state.threadBusy = false; $('threadsMore').disabled = false; }
@@ -107,13 +127,33 @@
     const own = m.sender_id === state.uid, deleted = !!m.deleted_at, read = own && numeric(ctx.peerRead) && !newer(m.id,ctx.peerRead);
     const room = !deleted && m.kind === 'room' && /^[A-Z0-9]{4,12}$/.test(m.room_id || '');
     const callLog = !deleted && m.kind === 'call';
+    const reaction = !deleted && m.reaction && (!G || G.reactionAllowed(m.reaction))
+      ? '<span class="dm-reaction" role="img" aria-label="تفاعل ' + esc(m.reaction) + '">' + esc(m.reaction) + '</span>' : '';
     const content = deleted ? '<p class="dm-text">حُذفت هذه الرسالة</p>' : callLog ? '<div class="dm-call-log"><span class="dm-call-log__ic" aria-hidden="true">' + icon('phoneCall',16) + '</span><span dir="auto">' + esc(m.body) + '</span></div>' : room ? '<a class="dm-invite" href="room.html?id=' + encodeURIComponent(m.room_id) + '">' + icon('film',26) + '<span><small>دعوة إلى غرفة مشاهدة</small><strong>' + esc(m.body) + '</strong></span><span class="dm-invite-arrow">' + icon('arrowLeft',16) + '</span></a>' : '<p class="dm-text" dir="auto">' + esc(m.body) + '</p>';
     let actions = '';
     if (!deleted) actions = callLog
       ? '<button type="button" data-msg-action="copy" title="نسخ" aria-label="نسخ نص المكالمة">' + icon('copy',14) + '</button>' + (own ? '<button type="button" data-msg-action="delete" title="حذف للجميع" aria-label="حذف سجل المكالمة">' + icon('trash',14) + '</button>' : '')
-      : (ctx.canSend ? '<button type="button" data-msg-action="reply" title="رد" aria-label="رد على الرسالة">' + icon('reply',14) + '</button>' : '') + '<button type="button" data-msg-action="copy" title="نسخ" aria-label="نسخ الرسالة">' + icon('copy',14) + '</button>' + (own && ctx.canSend && m.kind === 'text' ? '<button type="button" data-msg-action="edit" title="تعديل" aria-label="تعديل الرسالة">' + icon('pencil',14) + '</button>' : '') + (own ? '<button type="button" data-msg-action="delete" title="حذف للجميع" aria-label="حذف رسالتك للجميع">' + icon('trash',14) + '</button>' : '');
+      : (ctx.canSend ? '<button type="button" data-msg-action="react" title="تفاعل ❤️" aria-label="تفاعل سريع على الرسالة">' + icon('heart',14) + '</button>' +
+          '<button type="button" data-msg-action="reply" title="رد" aria-label="رد على الرسالة">' + icon('reply',14) + '</button>' : '') + '<button type="button" data-msg-action="copy" title="نسخ" aria-label="نسخ الرسالة">' + icon('copy',14) + '</button>' + (own && ctx.canSend && m.kind === 'text' ? '<button type="button" data-msg-action="edit" title="تعديل" aria-label="تعديل الرسالة">' + icon('pencil',14) + '</button>' : '') + (own ? '<button type="button" data-msg-action="delete" title="حذف للجميع" aria-label="حذف رسالتك للجميع">' + icon('trash',14) + '</button>' : '');
     if (ctx.editBusy) actions = actions.replace(/<button /g,'<button disabled ');
-    return '<article class="dm-row' + (own ? '' : ' dm-row--other') + (deleted ? ' is-deleted' : '') + '" data-message="' + esc(m.id) + '" role="listitem" aria-label="' + (own ? 'رسالتك' : 'رسالة من ' + esc((ctx.peer && ctx.peer.display_name) || 'الطرف الآخر')) + '"><div class="dm-bubble">' + (deleted ? '' : quote(ctx,m)) + content + '<div class="dm-meta"><time datetime="' + esc(m.created_at) + '">' + esc(time(m.created_at)) + '</time>' + (m.edited_at && !deleted ? '<span>عُدّلت</span>' : '') + (own && !deleted ? '<span class="' + (read ? 'is-read' : '') + '" title="' + (read ? 'قُرئت' : 'حُفظت على الخادم') + '">' + icon(read ? 'doubleCheck' : 'check',13) + '</span>' : '') + '</div></div>' + (actions ? '<div class="dm-actions">' + actions + '</div>' : '') + '</article>';
+    return '<article class="dm-row' + (own ? '' : ' dm-row--other') + (deleted ? ' is-deleted' : '') + '" data-message="' + esc(m.id) + '" role="listitem" aria-label="' + (own ? 'رسالتك' : 'رسالة من ' + esc((ctx.peer && ctx.peer.display_name) || 'الطرف الآخر')) + '"><div class="dm-bubble">' + (deleted ? '' : quote(ctx,m)) + content + reaction + '<div class="dm-meta"><time datetime="' + esc(m.created_at) + '">' + esc(time(m.created_at)) + '</time>' + (m.edited_at && !deleted ? '<span>عُدّلت</span>' : '') + (own && !deleted ? '<span class="' + (read ? 'is-read' : '') + '" title="' + (read ? 'قُرئت' : 'حُفظت على الخادم') + '">' + icon(read ? 'doubleCheck' : 'check',13) + '</span>' : '') + '</div></div>' + (actions ? '<div class="dm-actions">' + actions + '</div>' : '') + '</article>';
+  }
+  function startReply(ctx,m) {
+    if (!ctx || !ctx.canSend || !m || m.deleted_at) return;
+    if (ctx.draft.editId) cancelReply(ctx);
+    ctx.draft.replyId = m.id; persistDraft(ctx); composer(ctx,true); $('chatInput').focus();
+  }
+  async function reactTo(ctx,m) {
+    if (!ctx || !ctx.canSend || !m || m.deleted_at || ctx.reactBusy) return;
+    const next = G ? G.toggleReaction(m.reaction, G.QUICK) : null;
+    ctx.reactBusy = true;
+    try {
+      const updated = await S.call('react',{p_message:m.id,p_reaction:next});
+      merge(ctx,[updated],false); render(ctx,'',false);
+    } catch (err) {
+      const missing = err && (err.setup || err.status === 404 || err.code === 'PGRST202' || err.code === '42883');
+      C.error('chatError', missing ? new Error('التفاعلات تحتاج تنفيذ docs/sql/11-dm-reactions.sql أولاً.') : err);
+    } finally { ctx.reactBusy = false; }
   }
   function pendingHTML(ctx,item) {
     return '<article class="dm-row" role="listitem" data-pending="' + esc(item.nonce) + '"><div class="dm-bubble"><p class="dm-text" dir="auto">' + esc(item.roomId ? 'دعوة: ' + item.roomTitle : item.body) + '</p><div class="dm-meta">' + (item.status === 'sending' ? '<span class="s-loader s-loader--sm"></span> جارٍ الإرسال' : 'لم يُؤكَّد الإرسال') + '</div></div>' + (item.status === 'failed' ? '<div class="dm-failed"><span>' + esc(item.error || 'تعذّر الإرسال') + '</span><button class="s-text-link" type="button" data-pending-action="retry"' + (!ctx.canSend || ctx.sendBusy ? ' disabled' : '') + '>إعادة المحاولة</button><button class="s-text-link" type="button" data-pending-action="discard">إزالة المسودة</button></div>' : '') + '</article>';
@@ -379,7 +419,74 @@
     catch (err) { C.error('newChatError',err); }
     finally { state.friendBusy = false; buttons.forEach(b => { b.disabled = false; }); }
   };
-  $('threadList').onclick = event => { const b = event.target.closest('[data-thread]'); if (b) selectThread(b.dataset.thread); };
+  /* ---------------- قائمة خيارات المحادثة: تثبيت · كتم · أرشفة ---------------- */
+  function closeThreadMenu() {
+    if (state.threadMenu) { state.threadMenu.remove(); state.threadMenu = null; }
+  }
+  function threadMenuItem(key,on,label) {
+    return '<button type="button" role="menuitemcheckbox" aria-checked="' + String(!!on) + '" data-pref="' + key + '">' +
+      '<span class="dm-menu-check">' + (on ? icon('check',14) : '') + '</span>' + esc(label) + '</button>';
+  }
+  function openThreadMenu(id,anchor) {
+    closeThreadMenu();
+    const thread = state.threads.find(t => t.id === id); if (!thread || !anchor) return;
+    const prefs = Object.assign({pinned:false,muted:false,archived:false}, thread.prefs || {});
+    const menu = document.createElement('div');
+    menu.className = 'dm-thread-menu';
+    menu.setAttribute('role','menu');
+    menu.setAttribute('aria-label','خيارات المحادثة');
+    menu.innerHTML = threadMenuItem('pinned',prefs.pinned,'تثبيت في الأعلى') +
+      threadMenuItem('muted',prefs.muted,'كتم إشعارات العدّاد') +
+      threadMenuItem('archived',prefs.archived,state.showArchived ? 'إخراج من الأرشيف' : 'أرشفة (إخفاء من القائمة)') +
+      '<p class="dm-menu-note">' + (state.showArchived ? 'الأرشفة تُخفي المحادثة فقط؛ لا تحذف أي رسالة.' : 'لا حذف ولا إخفاء دائم — كل شيء قابل للتراجع.') + '</p>';
+    document.body.appendChild(menu);
+    const box = anchor.getBoundingClientRect();
+    menu.style.top = Math.min(window.innerHeight - 40, box.bottom + 6) + 'px';
+    menu.style.insetInlineStart = Math.max(8, Math.min(box.left, window.innerWidth - 240)) + 'px';
+    state.threadMenu = menu;
+    menu.onclick = async event => {
+      const item = event.target.closest('[data-pref]'); if (!item) return;
+      const key = item.dataset.pref;
+      await setThreadPref(thread, key, !prefs[key]);
+      closeThreadMenu();
+    };
+    const first = menu.querySelector('[data-pref]'); if (first) first.focus({preventScroll:true});
+  }
+  async function setThreadPref(thread,key,value) {
+    const args = { p_thread: thread.id };
+    args['p_' + key] = !!value;
+    try {
+      const data = await S.call('thread_pref',args);
+      thread.prefs = Object.assign({pinned:false,muted:false,archived:false},thread.prefs||{},(data && data.prefs) || args);
+      state.threadKey = '';
+      if (key === 'archived') {
+        /* أرشفة/فكّ أرشفة تُغيّر أي قائمة نعرضها — نعيد التحميل لا نخمّن */
+        await loadThreads(false,true);
+        U.toast(value ? 'أُضيفت إلى الأرشيف' : 'أُعيدت إلى المحادثات','success');
+      } else {
+        listRender();
+        U.toast(key === 'pinned' ? (value ? 'ثُبّتت المحادثة' : 'أُلغي التثبيت')
+          : (value ? 'كُتم عدّاد المحادثة' : 'أُلغي الكتم'),'success');
+        if (key === 'pinned') loadThreads(false,true);
+      }
+    } catch (err) {
+      const missing = err && (err.setup || err.status === 404 || err.code === 'PGRST202' || err.code === '42883');
+      C.error('messagesError', missing ? new Error('خيارات المحادثة تحتاج تنفيذ docs/sql/12-dm-thread-prefs.sql أولاً.') : err);
+    }
+  }
+  document.addEventListener('click', event => { if (state.threadMenu && !event.target.closest('.dm-thread-menu') && !event.target.closest('[data-thread-menu]')) closeThreadMenu(); });
+  document.addEventListener('keydown', event => { if (event.key === 'Escape' && state.threadMenu) { closeThreadMenu(); } });
+  $('threadArchived').onclick = () => {
+    closeThreadMenu();
+    state.showArchived = !state.showArchived;
+    state.threads = []; state.threadOffset = 0; state.threadMore = false; state.threadKey = '';
+    loadThreads(false,false);
+  };
+  $('threadList').onclick = event => {
+    const menuBtn = event.target.closest('[data-thread-menu]');
+    if (menuBtn) { event.stopPropagation(); openThreadMenu(menuBtn.dataset.threadMenu,menuBtn); return; }
+    const b = event.target.closest('[data-thread]'); if (b) selectThread(b.dataset.thread);
+  };
   $('threadQuery').oninput = listRender; $('threadsMore').onclick = () => loadThreads(true,false);
   $('chatBack').onclick = () => { if (state.active) stopTyping(state.active); document.body.classList.remove('chat-open'); history.replaceState(null,'','messages.html'); $('threadQuery').focus({preventScroll:true}); };
   $('chatCall').onclick = () => { if (window.WTCalls) window.WTCalls.start(); };
@@ -390,6 +497,44 @@
     try { const result = await C.friendAction(ctx.peer.user_id,'block',$('chatBlock')); if (result) { await loadMessages(ctx,false); loadThreads(false,true); } }
     catch (err) { C.error('chatError',err); }
   };
+  /* نقر مزدوج = ❤️ مباشرة، والنقر على أزرار الإجراءات لا يُحسب */
+  $('chatMessages').addEventListener('dblclick', event => {
+    const ctx = state.active; if (!ctx || !ctx.canSend) return;
+    if (event.target.closest('[data-msg-action]') || event.target.closest('[data-msg-jump]')) return;
+    const row = event.target.closest('[data-message]'); if (!row) return;
+    const m = ctx.messages.get(row.dataset.message); if (!m) return;
+    reactTo(ctx,m);
+  });
+  let swipe = null;
+  $('chatMessages').addEventListener('touchstart', event => {
+    if (event.touches.length !== 1) { swipe = null; return; }
+    const row = event.target.closest('[data-message]');
+    if (!row || !G) { swipe = null; return; }
+    swipe = { row, x:event.touches[0].clientX, y:event.touches[0].clientY, dx:0, ready:false };
+  },{passive:true});
+  $('chatMessages').addEventListener('touchmove', event => {
+    if (!swipe || event.touches.length !== 1) return;
+    const dx = event.touches[0].clientX - swipe.x, dy = event.touches[0].clientY - swipe.y;
+    const intent = G.swipeIntent(dx,dy);
+    if (intent.vertical) { swipe = null; return; }
+    if (!intent.active) return;
+    swipe.dx = dx; swipe.ready = intent.trigger;
+    swipe.row.classList.add('is-swiping');
+    swipe.row.classList.toggle('is-ready', intent.trigger);
+    swipe.row.style.transform = 'translateX(' + intent.offset + 'px)';
+  },{passive:true});
+  const endSwipe = () => {
+    if (!swipe) return;
+    const row = swipe.row, ready = swipe.ready;
+    swipe = null;
+    row.classList.remove('is-swiping','is-ready'); row.style.transform = '';
+    if (!ready) return;
+    const ctx = state.active; if (!ctx) return;
+    const m = ctx.messages.get(row.dataset.message);
+    if (m) startReply(ctx,m);
+  };
+  $('chatMessages').addEventListener('touchend', endSwipe);
+  $('chatMessages').addEventListener('touchcancel', endSwipe);
   $('chatInput').oninput = () => { const ctx = state.active; if (!ctx) return; ctx.draft.text = $('chatInput').value; persistDraft(ctx); composer(ctx,false); typing(ctx); if (!ctx.draft.text.trim()) stopTyping(ctx); };
   $('chatInput').onkeydown = event => { if (event.key === 'Enter' && !event.shiftKey && !event.isComposing && !matchMedia('(pointer:coarse)').matches) { event.preventDefault(); $('chatForm').requestSubmit(); } };
   $('chatInput').onblur = () => { if (state.active) stopTyping(state.active); };
@@ -419,7 +564,8 @@
     const b = event.target.closest('[data-msg-action]'); if (!b) return;
     const m = ctx.messages.get(b.closest('[data-message]').dataset.message); if (!m || m.deleted_at) return;
     const action = b.dataset.msgAction; if (ctx.editBusy) return;
-    if (action === 'reply') { if (ctx.draft.editId) cancelReply(ctx); ctx.draft.replyId = m.id; persistDraft(ctx); composer(ctx,true); $('chatInput').focus(); }
+    if (action === 'react') { reactTo(ctx,m); }
+    if (action === 'reply') { startReply(ctx,m); }
     if (action === 'edit') { if (!ctx.draft.editId) ctx.draft.beforeEdit = {text:ctx.draft.text,replyId:ctx.draft.replyId}; ctx.draft.editId = m.id; ctx.draft.replyId = null; ctx.draft.text = m.body; persistDraft(ctx); composer(ctx,true); $('chatInput').focus(); }
     if (action === 'copy') { try { const copied = await U.copyText(m.kind === 'room' ? new URL('room.html?id=' + encodeURIComponent(m.room_id),location.href).href : m.body); if (copied === false) throw new Error('copy'); U.toast('نُسخت الرسالة','success'); } catch (_) { C.error('chatError',new Error('تعذّر النسخ في هذا المتصفح.')); } }
     if (action === 'delete' && await C.confirm({title:'حذف رسالتك للجميع؟',body:'سيُزال نص الرسالة ودعوة الغرفة إن وجدت. يبقى مكانها تنبيه بالحذف.',label:'حذف الرسالة',danger:true})) {

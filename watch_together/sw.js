@@ -6,7 +6,7 @@
    ========================================================= */
 'use strict';
 
-const VERSION = 'wt-v1.0.4';
+const VERSION = 'wt-v1.0.5';
 const SHELL = VERSION + '-shell';
 const RUNTIME = VERSION + '-runtime';
 const OFFLINE_URL = 'offline.html';
@@ -32,6 +32,7 @@ const PRECACHE = [
   'assets/js/util.js',
   'assets/js/icons.js',
   'assets/js/dm-realtime.js',
+  'assets/js/dm-gestures.js',
   'assets/icons/icon-192.png',
   'assets/icons/icon-512.png'
 ];
