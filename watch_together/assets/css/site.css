@@ -1,0 +1,586 @@
+/* =========================================================
+   WatchTogether — طبقة الموقع المشتركة (site.css)
+   تعمل على كل الصفحات: لوحة الأوامر · مركز التحكم · شريط التقدّم
+   · مؤشر الاتصال · زر الصعود · التخطّي · احترام تقليل الحركة
+   اللوحة: Midnight Gold (#080C14 / #C5A572) + خط Cairo
+   ========================================================= */
+
+/* ============================== 1) رموز التفضيلات ============================== */
+:root {
+  --wt-accent: #C5A572;
+  --wt-accent-2: #E8DCC6;
+  --wt-accent-ink: #141006;
+  --wt-panel: #0d1420;
+  --wt-panel-2: #101a28;
+  --wt-line: rgba(232, 220, 198, .12);
+  --wt-line-strong: rgba(232, 220, 198, .22);
+  --wt-glass: rgba(13, 20, 32, .92);
+  --wt-shadow: 0 26px 70px rgba(0, 0, 0, .62);
+  --wt-ease: cubic-bezier(.22, .8, .28, 1);
+  --wt-z-chrome: 70;
+  --wt-z-palette: 9000;   /* فوق نوافذ الصفحة (حتى 260) وتحت التنبيهات (9999) */
+  --wt-z-toast: 9999;
+}
+
+/* ألوان مختارة من مركز التحكم — الافتراضي ذهبي بلا سمة */
+:root[data-wt-accent="mint"] {
+  --wt-accent: #7FC0A0; --wt-accent-2: #CDEBDD; --wt-accent-ink: #08201a;
+  --brand: #7FC0A0; --brand-2: #4F9C7C; --accent: #7FC0A0;
+  --grad: linear-gradient(135deg, #7FC0A0 0%, #CDEBDD 100%);
+}
+:root[data-wt-accent="rose"] {
+  --wt-accent: #E099A6; --wt-accent-2: #F3D2D8; --wt-accent-ink: #2a1016;
+  --brand: #E099A6; --brand-2: #B96A7C; --accent: #E099A6;
+  --grad: linear-gradient(135deg, #E099A6 0%, #F3D2D8 100%);
+}
+:root[data-wt-accent="azure"] {
+  --wt-accent: #86B4E0; --wt-accent-2: #CFE4F7; --wt-accent-ink: #0a1b2a;
+  --brand: #86B4E0; --brand-2: #5B8FC4; --accent: #86B4E0;
+  --grad: linear-gradient(135deg, #86B4E0 0%, #CFE4F7 100%);
+}
+:root[data-wt-accent="violet"] {
+  --wt-accent: #A99BD4; --wt-accent-2: #DCD3F2; --wt-accent-ink: #16112a;
+  --brand: #A99BD4; --brand-2: #7C6CB0; --accent: #A99BD4;
+  --grad: linear-gradient(135deg, #A99BD4 0%, #DCD3F2 100%);
+}
+
+/* الواجهة المضغوطة: مساحات أهدأ على الشاشات الصغيرة */
+:root[data-wt-compact="1"] {
+  --radius: 14px;
+  --radius-sm: 10px;
+}
+
+/* تباين عالٍ اختياري — يرفع وضوح النص والحدود دون تغيير اللوحة */
+:root[data-wt-contrast="high"] {
+  --text: #FFFFFF;
+  --muted: #D8E0E9;
+  --muted-2: #B4C0CC;
+  --border: rgba(255, 255, 255, .32);
+  --border-strong: rgba(255, 255, 255, .52);
+  --surface: rgba(255, 255, 255, .10);
+  --surface-2: rgba(255, 255, 255, .17);
+}
+:root[data-wt-contrast="high"] a { text-decoration: underline; text-underline-offset: 3px; }
+:root[data-wt-contrast="high"] :focus-visible {
+  outline: 2px solid #F3D9A4 !important;
+  outline-offset: 3px !important;
+}
+
+/* احترام «تقليل الحركة» المضبوط من مركز التحكم */
+:root[data-wt-motion="reduce"] *,
+:root[data-wt-motion="reduce"] *::before,
+:root[data-wt-motion="reduce"] *::after {
+  animation-duration: .001ms !important;
+  animation-delay: 0ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: .001ms !important;
+  scroll-behavior: auto !important;
+}
+
+/* ============================== 2) شريط تقدّم التنقّل ============================== */
+.wt-progress {
+  position: fixed;
+  inset-block-start: 0;
+  inset-inline: 0;
+  height: 3px;
+  z-index: var(--wt-z-chrome);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity .25s ease;
+}
+.wt-progress.is-on { opacity: 1; }
+.wt-progress__bar {
+  width: 100%;
+  height: 100%;
+  transform: scaleX(0);
+  transform-origin: 100% 50%; /* RTL: ينمو من اليمين */
+  background: linear-gradient(90deg, var(--wt-accent), var(--wt-accent-2));
+  box-shadow: 0 0 14px rgba(197, 165, 114, .55);
+  transition: transform .35s var(--wt-ease);
+}
+.wt-progress__bar.is-run { transform: scaleX(.72); transition: transform 2.6s cubic-bezier(.1, .8, .2, 1); }
+.wt-progress.is-done .wt-progress__bar { transform: scaleX(1); transition: transform .18s ease-out; }
+
+/* ============================== 3) مؤشر عدم الاتصال ============================== */
+.wt-net {
+  position: fixed;
+  inset-block-start: calc(64px + env(safe-area-inset-top));  /* أسفل رؤوس الصفحات، بعيداً عن التنبيهات */
+  inset-inline-start: 50%;
+  transform: translateX(-50%) translateY(-14px);
+  z-index: var(--wt-z-chrome);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: calc(100% - 24px);
+  padding: 7px 14px;
+  border-radius: 999px;
+  border: 1px solid rgba(212, 122, 122, .42);
+  background: rgba(38, 20, 22, .94);
+  color: #F3D7D7;
+  font: 700 12.5px/1.4 var(--font, "Cairo", sans-serif);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, .5);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .22s ease, transform .28s var(--wt-ease);
+}
+.wt-net.is-on { opacity: 1; transform: translateX(-50%) translateY(0); pointer-events: auto; }
+.wt-net__dot {
+  width: 8px; height: 8px; flex: none; border-radius: 50%;
+  background: #D47A7A;
+  box-shadow: 0 0 0 0 rgba(212, 122, 122, .55);
+  animation: wtPulse 2s ease-out infinite;
+}
+.wt-net.is-back { border-color: rgba(122, 184, 154, .5); background: rgba(16, 34, 27, .95); color: #D6F1E4; }
+.wt-net.is-back .wt-net__dot { background: #7AB89A; animation: none; }
+@keyframes wtPulse {
+  0% { box-shadow: 0 0 0 0 rgba(212, 122, 122, .5); }
+  70% { box-shadow: 0 0 0 9px rgba(212, 122, 122, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(212, 122, 122, 0); }
+}
+
+/* ============================== 4) زر الصعود ============================== */
+.wt-top {
+  position: fixed;
+  inset-block-end: calc(18px + env(safe-area-inset-bottom));
+  inset-inline-start: 16px;
+  z-index: calc(var(--wt-z-chrome) - 1);
+  width: 44px; height: 44px;
+  display: grid; place-items: center;
+  border-radius: 14px;
+  border: 1px solid var(--wt-line);
+  background: var(--wt-glass);
+  color: var(--text, #E8DCC6);
+  cursor: pointer;
+  opacity: 0;
+  transform: translateY(12px) scale(.94);
+  pointer-events: none;
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  box-shadow: 0 14px 30px rgba(0, 0, 0, .42);
+  transition: opacity .2s ease, transform .24s var(--wt-ease), border-color .2s;
+}
+.wt-top.is-on { opacity: 1; transform: none; pointer-events: auto; }
+.wt-top:hover { border-color: var(--wt-line-strong); }
+.wt-top svg { width: 19px; height: 19px; }
+
+/* ============================== 5) رابط التخطّي ============================== */
+.wt-skip {
+  position: fixed;
+  inset-block-start: -80px;
+  inset-inline-start: 12px;
+  z-index: var(--wt-z-toast);
+  padding: 10px 16px;
+  border-radius: 12px;
+  background: var(--wt-accent);
+  color: var(--wt-accent-ink);
+  font: 800 13px/1 var(--font, "Cairo", sans-serif);
+  text-decoration: none;
+  transition: inset-block-start .18s ease;
+}
+.wt-skip:focus-visible { inset-block-start: 10px; outline: 2px solid #fff; outline-offset: 2px; }
+
+/* ============================== 6) لوحة الأوامر ============================== */
+.wt-layer {
+  position: fixed;
+  inset: 0;
+  z-index: var(--wt-z-palette);
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding: clamp(48px, 11vh, 130px) 12px 20px;
+  background: rgba(4, 7, 12, .68);
+  backdrop-filter: blur(6px) saturate(120%);
+  -webkit-backdrop-filter: blur(6px) saturate(120%);
+  animation: wtFade .18s ease both;
+}
+@keyframes wtFade { from { opacity: 0; } to { opacity: 1; } }
+
+.wt-palette {
+  width: min(660px, 100%);
+  max-height: min(70vh, 640px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: 20px;
+  border: 1px solid var(--wt-line-strong);
+  background:
+    radial-gradient(680px 220px at 82% -20%, rgba(197, 165, 114, .16), transparent 70%),
+    linear-gradient(180deg, var(--wt-panel-2), var(--wt-panel));
+  box-shadow: var(--wt-shadow);
+  color: var(--text, #E8DCC6);
+  font-family: var(--font, "Cairo", sans-serif);
+  animation: wtRise .26s var(--wt-ease) both;
+}
+@keyframes wtRise { from { opacity: 0; transform: translateY(-10px) scale(.985); } to { opacity: 1; transform: none; } }
+
+.wt-palette__head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 16px;
+  border-block-end: 1px solid var(--wt-line);
+}
+.wt-palette__head svg { width: 21px; height: 21px; color: var(--wt-accent); flex: none; }
+.wt-palette__input {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text, #E8DCC6);
+  font: 700 16px/1.5 var(--font, "Cairo", sans-serif);
+  outline: none;
+}
+.wt-palette__input::placeholder { color: var(--muted-2, #6B7A8A); font-weight: 600; }
+.wt-palette__hint {
+  flex: none;
+  font: 800 10.5px/1 var(--font, "Cairo", sans-serif);
+  color: var(--muted-2, #6B7A8A);
+  letter-spacing: .4px;
+  border: 1px solid var(--wt-line);
+  border-radius: 7px;
+  padding: 5px 7px;
+}
+
+.wt-palette__body {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 8px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(197, 165, 114, .3) transparent;
+}
+.wt-palette__body::-webkit-scrollbar { width: 9px; }
+.wt-palette__body::-webkit-scrollbar-thumb { background: rgba(197, 165, 114, .26); border-radius: 99px; }
+
+.wt-palette__group {
+  margin: 10px 10px 4px;
+  font: 800 10.5px/1 var(--font, "Cairo", sans-serif);
+  letter-spacing: 1.1px;
+  color: var(--muted-2, #6B7A8A);
+  text-transform: uppercase;
+}
+.wt-palette__list { list-style: none; margin: 0; padding: 0; }
+
+.wt-cmd {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+.wt-cmd__icon {
+  width: 34px; height: 34px; flex: none;
+  display: grid; place-items: center;
+  border-radius: 10px;
+  border: 1px solid var(--wt-line);
+  background: rgba(232, 220, 198, .05);
+  color: var(--wt-accent);
+}
+.wt-cmd__icon svg { width: 18px; height: 18px; }
+.wt-cmd__text { flex: 1 1 auto; min-width: 0; }
+.wt-cmd__title {
+  display: block;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.45;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.wt-cmd__sub {
+  display: block;
+  margin-top: 1px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--muted, #9AA8B8);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.wt-cmd__keys { display: flex; gap: 4px; flex: none; }
+.wt-cmd.is-active, .wt-cmd:hover {
+  background: rgba(197, 165, 114, .13);
+  border-color: rgba(197, 165, 114, .34);
+}
+.wt-cmd.is-danger .wt-cmd__icon { color: #E39A9A; }
+.wt-cmd.is-danger.is-active { background: rgba(212, 122, 122, .13); border-color: rgba(212, 122, 122, .36); }
+.wt-cmd:focus-visible { outline: 2px solid var(--wt-accent); outline-offset: -2px; }
+
+.wt-kbd {
+  display: inline-grid;
+  place-items: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 6px;
+  border: 1px solid var(--wt-line-strong);
+  background: rgba(232, 220, 198, .06);
+  color: var(--muted, #9AA8B8);
+  font: 800 10.5px/1 "Cairo", system-ui, sans-serif;
+  direction: ltr;
+}
+
+.wt-palette__empty {
+  padding: 34px 18px 40px;
+  text-align: center;
+  color: var(--muted, #9AA8B8);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.9;
+}
+.wt-palette__empty strong { display: block; color: var(--text, #E8DCC6); font-size: 15px; margin-bottom: 4px; }
+
+.wt-palette__foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 14px;
+  border-block-start: 1px solid var(--wt-line);
+  background: rgba(8, 12, 20, .5);
+  color: var(--muted-2, #6B7A8A);
+  font: 700 11px/1.4 var(--font, "Cairo", sans-serif);
+}
+.wt-palette__foot span { display: inline-flex; align-items: center; gap: 5px; }
+.wt-palette__brand { color: var(--wt-accent); font-weight: 800; letter-spacing: .3px; }
+
+/* ============================== 7) مركز التحكم ============================== */
+.wt-sheet {
+  width: min(560px, 100%);
+  max-height: min(86vh, 760px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: 22px;
+  border: 1px solid var(--wt-line-strong);
+  background:
+    radial-gradient(620px 240px at 86% -18%, rgba(197, 165, 114, .15), transparent 70%),
+    linear-gradient(180deg, var(--wt-panel-2), var(--wt-panel));
+  box-shadow: var(--wt-shadow);
+  color: var(--text, #E8DCC6);
+  font-family: var(--font, "Cairo", sans-serif);
+  animation: wtRise .26s var(--wt-ease) both;
+}
+.wt-sheet__head {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 18px 18px 14px;
+  border-block-end: 1px solid var(--wt-line);
+}
+.wt-sheet__head > div { flex: 1 1 auto; min-width: 0; }
+.wt-sheet__eyebrow {
+  margin: 0 0 3px;
+  font: 800 10px/1 var(--font, "Cairo", sans-serif);
+  letter-spacing: 1.6px;
+  color: var(--wt-accent);
+  text-transform: uppercase;
+}
+.wt-sheet__title { margin: 0; font-size: 19px; font-weight: 800; line-height: 1.3; }
+.wt-sheet__sub { margin: 5px 0 0; font-size: 12.5px; line-height: 1.7; color: var(--muted, #9AA8B8); font-weight: 600; }
+.wt-sheet__body {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 6px 18px 18px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(197, 165, 114, .3) transparent;
+}
+.wt-sheet__body::-webkit-scrollbar { width: 9px; }
+.wt-sheet__body::-webkit-scrollbar-thumb { background: rgba(197, 165, 114, .26); border-radius: 99px; }
+
+.wt-close {
+  flex: none;
+  width: 36px; height: 36px;
+  display: grid; place-items: center;
+  border-radius: 11px;
+  border: 1px solid var(--wt-line);
+  background: rgba(232, 220, 198, .05);
+  color: var(--text, #E8DCC6);
+  cursor: pointer;
+}
+.wt-close:hover { border-color: var(--wt-line-strong); background: rgba(232, 220, 198, .1); }
+.wt-close svg { width: 17px; height: 17px; }
+
+.wt-group { margin-top: 18px; }
+.wt-group__title {
+  margin: 0 0 9px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: .4px;
+  color: var(--muted, #9AA8B8);
+}
+.wt-group__title svg { width: 15px; height: 15px; color: var(--wt-accent); }
+
+.wt-swatches { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.wt-swatch {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 7px;
+  padding: 10px 6px;
+  border-radius: 13px;
+  border: 1px solid var(--wt-line);
+  background: rgba(232, 220, 198, .035);
+  color: inherit;
+  font: 700 11px/1.2 var(--font, "Cairo", sans-serif);
+  cursor: pointer;
+  transition: border-color .18s, background .18s, transform .18s;
+}
+.wt-swatch:hover { transform: translateY(-2px); background: rgba(232, 220, 198, .07); }
+.wt-swatch[aria-pressed="true"] { border-color: var(--swatch); background: color-mix(in srgb, var(--swatch) 16%, transparent); }
+.wt-swatch__dot {
+  width: 30px; height: 30px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--swatch), var(--swatch-2));
+  border: 1px solid rgba(0, 0, 0, .28);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .28);
+}
+.wt-swatch[aria-pressed="true"] .wt-swatch__dot { box-shadow: 0 0 0 3px var(--wt-panel), 0 0 0 4.5px var(--swatch); }
+
+.wt-rows { display: grid; gap: 4px; }
+.wt-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 4px;
+  border-block-end: 1px solid rgba(232, 220, 198, .06);
+}
+.wt-row:last-child { border-block-end: 0; }
+.wt-row__text { flex: 1 1 auto; min-width: 0; }
+.wt-row__title { display: block; font-size: 13.5px; font-weight: 700; line-height: 1.4; }
+.wt-row__sub { display: block; margin-top: 1px; font-size: 11.5px; font-weight: 600; color: var(--muted, #9AA8B8); line-height: 1.55; }
+.wt-row__action {
+  flex: none;
+  min-height: 34px;
+  padding: 7px 13px;
+  border-radius: 10px;
+  border: 1px solid var(--wt-line);
+  background: rgba(232, 220, 198, .06);
+  color: inherit;
+  font: 800 12px/1 var(--font, "Cairo", sans-serif);
+  cursor: pointer;
+}
+.wt-row__action:hover { border-color: var(--wt-line-strong); background: rgba(232, 220, 198, .11); }
+.wt-row__action--accent { border-color: transparent; background: var(--wt-accent); color: var(--wt-accent-ink); }
+.wt-row__action[disabled] { opacity: .5; cursor: not-allowed; }
+
+.wt-switch {
+  flex: none;
+  position: relative;
+  width: 46px; height: 27px;
+  border-radius: 99px;
+  border: 1px solid var(--wt-line-strong);
+  background: rgba(232, 220, 198, .1);
+  cursor: pointer;
+  transition: background .2s, border-color .2s;
+}
+.wt-switch::after {
+  content: "";
+  position: absolute;
+  inset-block-start: 3px;
+  inset-inline-start: 3px;
+  width: 19px; height: 19px;
+  border-radius: 50%;
+  background: var(--muted, #9AA8B8);
+  transition: transform .22s var(--wt-ease), background .2s;
+}
+.wt-switch[aria-checked="true"] { background: rgba(197, 165, 114, .32); border-color: var(--wt-accent); }
+.wt-switch[aria-checked="true"]::after { transform: translateX(-19px); background: var(--wt-accent); }
+
+.wt-sheet__footer {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 11px 18px calc(11px + env(safe-area-inset-bottom));
+  border-block-start: 1px solid var(--wt-line);
+  background: rgba(8, 12, 20, .55);
+  font: 700 11px/1.4 var(--font, "Cairo", sans-serif);
+  color: var(--muted-2, #6B7A8A);
+}
+.wt-sheet__footer a { color: var(--wt-accent); text-decoration: none; font-weight: 800; }
+.wt-sheet__footer a:hover { text-decoration: underline; }
+
+/* ============================== 8) اختصارات لوحة المفاتيح ============================== */
+.wt-keys { display: grid; gap: 2px; }
+.wt-keys__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 8px 4px;
+  border-block-end: 1px solid rgba(232, 220, 198, .06);
+  font-size: 13px;
+  font-weight: 600;
+}
+.wt-keys__row:last-child { border-block-end: 0; }
+.wt-keys__row > span { color: var(--muted, #9AA8B8); }
+.wt-keys__combo { display: inline-flex; align-items: center; gap: 4px; flex: none; }
+.wt-keys__note { margin: 10px 4px 0; font-size: 11.5px; line-height: 1.8; color: var(--muted-2, #6B7A8A); font-weight: 600; }
+
+/* ============================== 9) إشعارات الطبقة ============================== */
+#toastHost { z-index: var(--wt-z-toast); }
+
+/* ============================== 10) أهداف اللمس والجوال ============================== */
+@media (max-width: 640px) {
+  .wt-layer {
+    align-items: flex-end;
+    padding: 0;
+  }
+  .wt-palette, .wt-sheet {
+    width: 100%;
+    max-height: 86vh;
+    border-radius: 22px 22px 0 0;
+    border-inline: 0;
+    border-block-end: 0;
+    animation: wtSheetUp .26s var(--wt-ease) both;
+  }
+  @keyframes wtSheetUp { from { opacity: .4; transform: translateY(28px); } to { opacity: 1; transform: none; } }
+  .wt-palette__foot { padding-block-end: calc(9px + env(safe-area-inset-bottom)); }
+  .wt-palette__hint { display: none; }
+  .wt-cmd { padding: 10px; }
+  .wt-cmd__title { font-size: 14.5px; }
+  /* الجوال: ننتقل إلى الجهة المقابلة حتى لا نزاحم زر إضافة الغرفة أو شريط التنقل */
+  .wt-top {
+    inset-inline-start: auto;
+    inset-inline-end: 14px;
+    inset-block-end: calc(86px + env(safe-area-inset-bottom));
+    width: 42px; height: 42px;
+  }
+  .wt-net { inset-block-start: calc(58px + env(safe-area-inset-top)); font-size: 11.5px; padding: 6px 12px; }
+}
+
+@media (pointer: coarse) {
+  .wt-cmd, .wt-swatch, .wt-row, .wt-switch, .wt-close, .wt-row__action { min-height: 44px; }
+  .wt-switch { min-height: 27px; }
+}
+
+/* ============================== 11) الطباعة ============================== */
+@media print {
+  .wt-progress, .wt-net, .wt-top, .wt-skip, .wt-layer { display: none !important; }
+}
+
+/* ============================== 12) حركة تقليلية من النظام ============================== */
+@media (prefers-reduced-motion: reduce) {
+  .wt-progress, .wt-progress__bar, .wt-net, .wt-top, .wt-layer, .wt-palette, .wt-sheet {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+/* ============================== 13) تفاصيل مساعدة ============================== */
+.wt-palette__ic { display: inline-grid; place-items: center; flex: none; color: var(--wt-accent); }
+.wt-muted { font-size: 11px; font-weight: 700; color: var(--muted, #9AA8B8); flex: none; }
+.wt-sheet__body .wt-group:first-child { margin-top: 12px; }
+.wt-layer [hidden] { display: none !important; }
+.wt-cmd__title, .wt-cmd__sub { max-width: 100%; }

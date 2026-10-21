@@ -1,0 +1,44 @@
+{
+  "name": "WatchTogether — شاهدوا معاً",
+  "short_name": "WatchTogether",
+  "description": "غرف مشاهدة جماعية متزامنة مع دردشة مباشرة، وأصدقاء وذائقة مشاهدة، ووسائط داخل الغرفة.",
+  "lang": "ar",
+  "dir": "rtl",
+  "start_url": "./index.html?src=pwa",
+  "scope": "./",
+  "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone", "minimal-ui"],
+  "orientation": "any",
+  "background_color": "#080C14",
+  "theme_color": "#080C14",
+  "categories": ["entertainment", "social", "video"],
+  "icons": [
+    { "src": "assets/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "assets/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "assets/icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    {
+      "name": "الغرف",
+      "short_name": "الغرف",
+      "description": "اختر غرفة أو أنشئ واحدة",
+      "url": "./index.html?src=shortcut",
+      "icons": [{ "src": "assets/icons/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "الأصدقاء",
+      "short_name": "الأصدقاء",
+      "description": "ابحث عن رفاق مشاهدة",
+      "url": "./friends.html?src=shortcut",
+      "icons": [{ "src": "assets/icons/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "الرسائل",
+      "short_name": "الرسائل",
+      "description": "محادثاتك الخاصة",
+      "url": "./messages.html?src=shortcut",
+      "icons": [{ "src": "assets/icons/icon-192.png", "sizes": "192x192" }]
+    }
+  ],
+  "prefer_related_applications": false
+}
