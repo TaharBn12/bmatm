@@ -281,3 +281,5 @@ idle ──start()──▶ ringing_out ──accept──▶ connecting ──i
 
 > ✅ نُفِّذت المراحل 0–3 (قاعدة البيانات، العميل، الواجهة، إعداد TURN في الكود).
 > 📘 إعداد TURN عملياً — بالتفصيل: [turn-setup.md](turn-setup.md).
+> ⚡ وسيط جاهز للنسخ: `tools/turn/` (Supabase Edge · Cloudflare Worker · PHP) وفاحص
+> `node tools/turn/check.mjs <url> --origin https://موقعك --stun` يخبرك بالنواقص قبل النشر.

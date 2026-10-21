@@ -25,6 +25,77 @@ calls: {
 
 ---
 
+## 0.5) كيف أسجّل وأجلب البيانات؟ (خطوة بخطوة)
+
+### أ) إنشاء الحساب في Metered (5 دقائق)
+
+1. افتح **<https://dashboard.metered.ca/signup>** (أو `metered.ca` ← *Get Started*).
+2. أنشئ الحساب بالبريد أو Google، ثم **أكّد البريد** من الرسالة.
+3. حين يُطلب اختيار خطة: اختر **Free**.
+   - الحصة المجانية المعلنة: **20 غ.ب/شهر** لترحيل TURN (وبعض الحسابات تحصل على حصة
+     أصغر حتى تُضاف وسيلة دفع — ابحث عن `Usage` في اللوحة لمعرفة حصتك الفعلية).
+4. من القائمة الجانبية افتح قسم **TURN Server** (أو **Open Relay**).
+
+### ب) ما الذي تنسخه بالضبط؟
+
+| ما تنسخه | أين تجده | إلى أين يذهب |
+|-----------|----------|---------------|
+| **اسم التطبيق** (`<appname>`) | أعلى اللوحة، أو في رابط `https://<appname>.metered.live/...` | `METERED_APP` في **خادمك** فقط |
+| **TURN API key** (مفتاح REST) | في صفحة TURN ← *API Keys / Generate API Key* | `METERED_KEY` في **خادمك** فقط |
+| **username + password** (اختياري) | *Credentials* ← *Create credential* (يمكن تحديد صلاحية) | لإعداد تجربة سريعة فقط في `calls.turn` |
+
+> ⚠️ **المفتاح لا يدخل `config.js`** — كل زائر يقرأ الملف. المفتاح يبقى في
+> Supabase Secrets / Cloudflare Secrets / متغيّرات بيئة PHP.
+
+### ج) كيف تجلب البيانات؟ (طريقتان)
+
+**1) تجربة سريعة — بيانات ثابتة (10 دقائق، لجهازك فقط):**
+
+```js
+// assets/js/config.js — لا ترفع هذا إلى موقع عام!
+calls: {
+  turn: {
+    urls: ['turn:standard.relay.metered.ca:80',
+           'turn:standard.relay.metered.ca:80?transport=tcp',
+           'turns:standard.relay.metered.ca:443'],
+    username: '<username من Credentials>',
+    credential: '<password من Credentials>'
+  }
+}
+```
+
+**2) الإنتاج — بيانات مؤقتة عبر خادمك:**
+
+```bash
+# اختبر يدوياً أن المفتاح واسم التطبيق يعملان (من حاسوبك، لا من المتصفح):
+curl -s "https://<appname>.metered.live/api/v1/turn/credentials?apiKey=<API_KEY>" | head -c 400
+```
+
+المتوقّع: مصفوفة مثل `[{"urls":"turn:standard.relay.metered.ca:80","username":"…","credential":"…"}, …]`.
+
+ثم انشر الوسيط الجاهز في المستودع (اختر واحداً):
+
+| الخادم | الملف | الأمر |
+|--------|-------|-------|
+| Supabase Edge Function | [`tools/turn/supabase-edge.ts`](../tools/turn/supabase-edge.ts) | `supabase functions deploy turn --no-verify-jwt` ثم `supabase secrets set METERED_APP=… METERED_KEY=… ALLOWED_ORIGIN=https://موقعك` |
+| Cloudflare Worker | [`tools/turn/cloudflare-worker.js`](../tools/turn/cloudflare-worker.js) | `wrangler secret put METERED_KEY` … ثم `wrangler deploy` |
+| استضافة PHP/cPanel | [`tools/turn/turn.php`](../tools/turn/turn.php) | ارفعه إلى جذر الموقع واضبط `SetEnv` |
+
+ثم في `config.js`:
+
+```js
+calls: { turnFetchUrl: 'https://…/turn', turnFetchTimeoutMs: 5000 }
+```
+
+### د) هل نجح؟ أمر واحد
+
+```bash
+node tools/turn/check.mjs https://…/turn --origin https://your-site.com --stun
+```
+أخضر بالكامل ⇒ انتقل للاختبار في المتصفح (القسم 8).
+
+---
+
 ## 1) لماذا هذه الخطوة ضرورية؟ (المشكلة التي تحلّها)
 
 عندما يريد هاتفان التحدث، يحاول المتصفح أولاً **اتصالاً مباشراً** بينهما:
@@ -268,7 +339,7 @@ res.json({ urls: [
 
 | المزوّد | ملاحظة |
 |---------|--------|
-| **Twilio Network Traversal** | يعيد `iceServers` بنفس الشكل ⇒ مدعوم في كودك؛ تسعير بالنطاق الترددي |
+| **Twilio Network Traversal** | Console ← *Network Traversal* ← أنشئ Credential؛ التسجيل عبر `POST https://api.twilio.com/2010-04-01/Accounts/<SID>/Tokens.json` (Basic auth) يعيد `ice_servers`؛ ضعه في خادمك بنفس شكل `{iceServers:[…]}` ⇒ مدعوم بلا تعديل كود |
 | **Cloudflare Realtime (TURN)** | بيانات مؤقتة عبر API بمفتاح على الخادم؛ أداء ممتاز |
 | **خدمة STUN/TURN عامة ببيانات ثابتة** | ❌ لا تُستخدم في منتج: لا ضمان، وقد تُغلق أو تُستغل |
 
@@ -290,6 +361,23 @@ res.json({ urls: [
 ---
 
 ## 8) الاختبار والتحقّق — كيف تعرف أنها تعمل فعلاً؟
+
+### 8.0 فاحص جاهز في المستودع (الأسرع)
+
+```bash
+cd watch_together
+node tools/turn/check.mjs https://your-endpoint/turn --origin https://your-site.com --stun
+```
+
+يفحص: الاستجابة والشكل، فؤوس CORS، وجود `turn:`/`turns:`، بيانات الاعتماد، انتهاء
+صلاحيتها، وردّ خادم TURN فعلياً على الشبكة (STUN Binding). يعيد `0` عند النجاح
+و`1` عند وجود مشكلة — صالح للتشغيل في CI بعد النشر.
+
+لفحص بيانات ثابتة (قبل بناء الخادم):
+```bash
+node tools/turn/check.mjs --servers '[{"urls":"turn:host:3478","username":"u","credential":"p"}]'
+```
+
 
 ### 8.1 اختبار نقطة النهاية (قبل المتصفح)
 ```bash
