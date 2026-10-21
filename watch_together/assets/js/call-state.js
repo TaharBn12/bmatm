@@ -115,10 +115,32 @@
     return 'hangup';
   }
 
+  /** هل مرّ وقت كافٍ بلا ردّ من الخادم لاعتبار المكالمة ميتة محلياً؟ */
+  function watchExpired(lastSeenAt, now, limitMs) {
+    const last = Number(lastSeenAt) || 0;
+    if (!last) return false;
+    return (Number(now) || Date.now()) - last > (Number(limitMs) || 25000);
+  }
+
+  /**
+   * كيف نعرض مكالمة قائمة قرأناها من الخادم (بعد تحديث الصفحة أو جهاز آخر)؟
+   * يعيد حالة العرض أو null إن كانت منتهية. لا يخترع حالة: الشكل يُشتق من صفّ الخادم.
+   */
+  function resumeState(call, uid) {
+    if (!call || !call.id) return null;
+    if (call.state === 'active') return STATES.ACTIVE;
+    if (call.state === 'ringing') {
+      if (!uid) return STATES.RINGING_IN;
+      return call.caller_id === uid ? STATES.RINGING_OUT : STATES.RINGING_IN;
+    }
+    return null;
+  }
+
   const CS = {
     STATES, TERMINAL, TRANSITIONS,
     next, isTerminal, isLive, isRinging, canStart, ringExpired,
-    signalWindowOpen, formatDuration, logLabel, statusText, reasonFromIce
+    signalWindowOpen, formatDuration, logLabel, statusText, reasonFromIce,
+    watchExpired, resumeState
   };
 
   global.WTCallState = CS;

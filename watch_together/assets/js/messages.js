@@ -274,7 +274,8 @@
         const tasks = [];
         if (Date.now()-state.lastList > 12000) tasks.push(loadThreads(false,true));
         if (state.active && visibleChat(state.active)) tasks.push(loadMessages(state.active,false));
-        if (state.active && window.WTCalls) window.WTCalls.pollIncoming();
+        /* فحص المكالمات الواردة دائماً — لا فقط عند فتح محادثة */
+        if (window.WTCalls) window.WTCalls.pollIncoming();
         await Promise.all(tasks);
       }
     } finally { state.ticking = false; if (!state.stopped) state.timer = setTimeout(tick,4000); }
@@ -379,7 +380,10 @@
   window.addEventListener('beforeunload', event => { if (!storageAvailable && [...state.contexts.values()].some(ctx => ctx.draft.text || ctx.outbox.size)) { event.preventDefault(); event.returnValue = ''; } });
   C.boot(async data => {
     if (state.uid && state.uid !== data.profile.user_id) { state.stopped=true; clearTimeout(state.timer); state.contexts.forEach(ctx=>ctx.controller.abort()); if(state.listController) state.listController.abort(); location.reload(); throw new Error('تغيّر الحساب؛ نعيد فتح مساحته الخاصة.'); }
-    state.uid = data.profile.user_id; state.stopped = false; C.setCounts(data.counts); await loadThreads(false,false);
+    state.uid = data.profile.user_id; state.stopped = false; C.setCounts(data.counts);
+    /* استعادة مكالمة قائمة (رنين/جارية) بعد تحديث الصفحة — كي لا تبقى بلا زرّ إنهاء */
+    if (window.WTCalls && window.WTCalls.reconcile) window.WTCalls.reconcile();
+    await loadThreads(false,false);
     const params = new URLSearchParams(location.search), peer = params.get('with'), id = params.get('thread');
     try {
       if (peer) { if (!S.UUID.test(peer)) throw new Error('رابط الصديق غير صالح.'); const thread = await S.call('open_thread',{p_user:peer}); await selectThread(thread.id,thread); loadThreads(false,true); }

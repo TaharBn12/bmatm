@@ -6,7 +6,7 @@
    ========================================================= */
 'use strict';
 
-const VERSION = 'wt-v1.0.2';
+const VERSION = 'wt-v1.0.3';
 const SHELL = VERSION + '-shell';
 const RUNTIME = VERSION + '-runtime';
 const OFFLINE_URL = 'offline.html';

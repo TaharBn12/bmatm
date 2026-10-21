@@ -1,5 +1,5 @@
 /* =========================================================
-   WatchTogether — المكالمات الصوتية (call.css v1.0.0)
+   WatchTogether — المكالمات الصوتية (call.css v1.1.0)
    شاشة رنين، شريط مكالمة جارية، أزرار قبول/رفض/كتم.
    Midnight Gold · RTL · وصولية · بلا حركة إلزامية.
    ========================================================= */
@@ -194,7 +194,9 @@
   color: #e8dcc6;
   cursor: pointer;
 }
+.call-bar__btn[hidden] { display: none; }
 .call-bar__btn:hover { background: rgba(232, 220, 198, .14); }
+.call-bar__btn:focus-visible { outline: 2px solid rgba(197, 165, 114, .8); outline-offset: 2px; }
 .call-bar__btn[aria-pressed="true"] { border-color: rgba(232, 184, 106, .5); color: #e8b86a; }
 .call-bar__btn:disabled { opacity: .45; cursor: not-allowed; }
 .call-bar__btn--end { border-color: transparent; background: #c9605f; color: #fff; }

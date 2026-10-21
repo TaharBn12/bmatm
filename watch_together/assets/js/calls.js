@@ -33,7 +33,10 @@
     pc: null, stream: null, audio: null, cursor: 0, offerSent: false, answerSent: false,
     pollTimer: null, tickTimer: null, ringTimer: null, startedAt: 0, answeredAt: 0,
     ringer: null, audioCtx: null, muted: false, busy: false, wakeLock: null,
-    lastIncoming: 0, ui: null, note: ''
+    lastIncoming: 0, ui: null, note: '',
+    /* حراسة ضد «المكالمة العالقة»: مؤقّت إعادة الضبط، ومؤقّت انقطاع الخادم */
+    resetTimer: null, watchdog: null, lastServerAt: 0, misses: 0, adopted: false, audioBlocked: false,
+    pendingIce: []
   };
 
   /* ============================== أدوات ============================== */
@@ -197,6 +200,7 @@
     bar.innerHTML =
       '<span class="call-bar__dot" aria-hidden="true"></span>' +
       '<span class="call-bar__text"><strong id="wtCallBarName"></strong><span id="wtCallBarTime" dir="ltr">00:00</span></span>' +
+      '<button class="call-bar__btn" type="button" id="wtCallAudio" aria-label="تشغيل صوت المكالمة" hidden></button>' +
       '<button class="call-bar__btn" type="button" id="wtCallMute" aria-pressed="false" aria-label="كتم الميكروفون"></button>' +
       '<button class="call-bar__btn call-bar__btn--end" type="button" id="wtCallEnd" aria-label="إنهاء المكالمة"></button>';
     document.body.appendChild(bar);
@@ -204,6 +208,11 @@
     state.ui = { layer, bar };
     $('wtCallMute').addEventListener('click', toggleMute);
     $('wtCallEnd').addEventListener('click', () => endCall('hangup'));
+    $('wtCallAudio').addEventListener('click', () => {
+      const audio = state.audio || ensureAudio();
+      audio.play().then(() => { state.audioBlocked = false; paint(); })
+        .catch(() => toast('لم يسمح المتصفح بالصوت. اضغط زرّ الصوت مرة أخرى.', 'warn', 4000));
+    });
     return state.ui;
   }
 
@@ -248,6 +257,11 @@
       $('wtCallBarTime').textContent = state.status === CS.STATES.ACTIVE
         ? CS.formatDuration(Date.now() - state.answeredAt)
         : CS.statusText(state.status, name);
+      const audioBtn = $('wtCallAudio');
+      if (audioBtn) {
+        audioBtn.hidden = !state.audioBlocked;
+        audioBtn.innerHTML = icon('volume', 18);
+      }
       $('wtCallMute').innerHTML = icon(state.muted ? 'micOff' : 'mic', 18);
       $('wtCallMute').setAttribute('aria-pressed', String(state.muted));
       $('wtCallMute').disabled = state.status !== CS.STATES.ACTIVE;
@@ -272,15 +286,65 @@
   function stopTicker() { if (state.tickTimer) { global.clearInterval(state.tickTimer); state.tickTimer = null; } }
 
   /* ============================== الإشارات ============================== */
+  /* كل الإشارات تمرّ في طابور واحد: يمنع وصول مرشّح ICE قبل SDP
+     (وإلا يُهمَل المرشّح ويبقى الصوت صامتاً رغم أن الحالة «متصل»). */
+  let signalChain = Promise.resolve();
   function putSignal(payload) {
     if (!state.call) return Promise.resolve();
-    return S.call('call_signal_put', { p_call: state.call.id, p_payload: payload }).catch(() => null);
+    const callId = state.call.id;
+    signalChain = signalChain
+      .then(() => S.call('call_signal_put', { p_call: callId, p_payload: payload }))
+      .catch(() => null);
+    return signalChain;
   }
+
+  function queueIce(candidate) {
+    if (!candidate) return;
+    state.pendingIce.push(candidate);
+    if (state.pendingIce.length > 40) state.pendingIce.shift();
+  }
+  async function flushIce() {
+    const pc = state.pc;
+    if (!pc || !pc.remoteDescription) return;
+    const pending = state.pendingIce.splice(0);
+    for (const candidate of pending) {
+      try { await pc.addIceCandidate(candidate); } catch (e) { /* مرشّح متأخر — نتجاهله */ }
+    }
+  }
+
+  /* دورتان بلا ردّ (≈50 ثانية) = مكالمة ميتة. أقصر من ذلك قد يقطع مكالمة حقيقية
+     على شبكة بطيئة، وأطول يترك المستخدم عالقاً. */
+  const WATCHDOG_MS = 25000;
 
   function schedulePoll(delay) {
     if (state.pollTimer) { global.clearTimeout(state.pollTimer); state.pollTimer = null; }
     if (!state.call) return;
     state.pollTimer = global.setTimeout(poll, delay);
+  }
+
+  /* حارس المكالمة: إن توقّف الخادم عن الردّ 25 ثانية (شبكة مقطوعة، تبويب مُجمَّد،
+     المكالمة أُغلقت من جهاز آخر) نُنهيها محلياً — بدل أن تبقى «جارية» إلى الأبد
+     وتحجب أي مكالمة جديدة برسالة «لديك مكالمة جارية بالفعل». */
+  function armWatchdog() {
+    if (state.watchdog) global.clearTimeout(state.watchdog);
+    state.lastServerAt = Date.now();
+    state.misses = 0;
+    if (!state.call) return;
+    state.watchdog = global.setTimeout(watchdogTick, WATCHDOG_MS);
+  }
+  function watchdogTick() {
+    state.watchdog = null;
+    if (!state.call || CS.isTerminal(state.status)) return;
+    /* التبويب مخفي/الشاشة مقفلة: المتصفح يخفض المؤقّتات، فغياب الردّ ليس دليلاً على الانقطاع */
+    if (document.visibilityState === 'hidden') { state.watchdog = global.setTimeout(watchdogTick, WATCHDOG_MS); return; }
+    state.misses = (state.misses || 0) + 1;
+    if (state.misses < 2) { state.watchdog = global.setTimeout(watchdogTick, WATCHDOG_MS); return; }
+    state.note = 'انقطع الاتصال بخادم المكالمة — أنهيناها محلياً.';
+    terminate('failed');
+    toast('انقطع الاتصال؛ أُنهيت المكالمة. يمكنك الاتصال من جديد.', 'warn', 4200);
+  }
+  function clearWatchdog() {
+    if (state.watchdog) { global.clearTimeout(state.watchdog); state.watchdog = null; }
   }
 
   async function poll() {
@@ -295,6 +359,7 @@
         applyServerState(data.call);
       }
       state.cursor = Number(data && data.cursor) || state.cursor;
+      armWatchdog();                       /* الخادم ردّ: المكالمة ما زالت معروفة */
       for (const entry of (data && data.signals) || []) {
         if (!state.call) break;
         await onSignal(entry.payload);
@@ -302,6 +367,7 @@
     } catch (error) {
       if (error && error.name === 'AbortError') return;
       if (error && /المكالمة (غير متاحة|مغلقة)/.test(error.message || '')) { terminate('failed'); return; }
+      if (error && /(جارية|غير متاحة)/.test(error.message || '')) { terminate('failed'); return; }
       state.note = 'شبكة متذبذبة — نحاول المزامنة.';
       if (!$('wtCallBar').hidden || !$('wtCallLayer').hidden) paint();
     }
@@ -337,11 +403,12 @@
       const pc = state.pc;
       if (!pc || pc.signalingState === 'stable') return;
       await pc.setRemoteDescription(new RTCSessionDescription(payload.sdp)).catch(() => {});
+      await flushIce();
       state.status = CS.STATES.CONNECTING; paint();
     } else if (kind === 'ice' && payload.candidate) {
       const pc = state.pc;
-      if (!pc) return;
-      try { await pc.addIceCandidate(payload.candidate); } catch (e) { /* قد يصل قبل الوصف — نعيد المحاولة */ }
+      if (!pc || !pc.remoteDescription) { queueIce(payload.candidate); return; }
+      try { await pc.addIceCandidate(payload.candidate); } catch (e) { queueIce(payload.candidate); }
     } else if (kind === 'end') {
       endCall(payload.reason || 'hangup', true);
     }
@@ -359,16 +426,23 @@
     const servers = await iceServers();
     const pc = new global.RTCPeerConnection({ iceServers: servers, iceCandidatePoolSize: 2 });
     const stream = await mic();
+    armWatchdog();   /* انتظار إذن الميكروفون قد يطول — لا نعدّه انقطاعاً */
     stream.getAudioTracks().forEach((track) => pc.addTrack(track, stream));
     pc.ontrack = (event) => {
       const audio = ensureAudio();
       audio.srcObject = event.streams && event.streams[0] ? event.streams[0] : new global.MediaStream([event.track]);
-      audio.play().catch(() => { toast('اضغط مرة واحدة لتشغيل الصوت', 'info', 3000); });
+      audio.play().then(() => { state.audioBlocked = false; paint(); })
+        .catch(() => {
+          /* منع التشغيل التلقائي: نُظهر زرّ «تشغيل الصوت» في الشريط بدل رسالة عابرة */
+          state.audioBlocked = true; paint();
+          toast('اضغط زرّ الصوت في شريط المكالمة لتسمع الطرف الآخر.', 'info', 4200);
+        });
     };
     pc.onicecandidate = (event) => { if (event.candidate) putSignal({ k: 'ice', candidate: event.candidate.toJSON ? event.candidate.toJSON() : event.candidate }); };
     pc.onconnectionstatechange = () => {
       if (pc.connectionState === 'connected') {
         state.status = CS.STATES.ACTIVE; state.answeredAt = state.answeredAt || Date.now(); startTicker(); paint(); requestWakeLock();
+        verifyAudio(pc);
       } else if (pc.connectionState === 'failed') {
         terminate('failed');
       } else if (pc.connectionState === 'disconnected') {
@@ -383,6 +457,29 @@
     };
     state.pc = pc;
     return pc;
+  }
+
+  /* بعد الاتصال: هل يصل صوت فعلاً؟ «متصل» لا تعني «تسمع».
+     إن كان الاتصال قائماً بلا بايتات صوت واردة فالمشكلة في الشبكة/المسار (TURN). */
+  function verifyAudio(pc) {
+    if (!pc || typeof pc.getStats !== 'function') return;
+    global.setTimeout(async () => {
+      if (state.pc !== pc || state.status !== CS.STATES.ACTIVE) return;
+      try {
+        const stats = await pc.getStats();
+        let found = false, bytes = 0;
+        stats.forEach((report) => {
+          if (report.type === 'inbound-rtp' && (report.kind === 'audio' || report.mediaType === 'audio')) {
+            found = true;
+            bytes = Math.max(bytes, Number(report.bytesReceived) || 0);
+          }
+        });
+        if (found && bytes === 0) {
+          state.note = 'متصل لكن لا يصل صوت — قد تمنع الشبكة الاتصال المباشر. أضف TURN أو جرّب شبكة أخرى.';
+          paint();
+        }
+      } catch (e) { /* بعض المتصفحات تمنع getStats */ }
+    }, 6000);
   }
 
   function ensureAudio() {
@@ -411,6 +508,7 @@
     const pc = await ensurePeerConnection();
     state.status = CS.STATES.CONNECTING; paint();
     await pc.setRemoteDescription(new RTCSessionDescription(sdp));
+    await flushIce();
     const answer = await pc.createAnswer();
     await pc.setLocalDescription(answer);
     state.answerSent = true;
@@ -448,6 +546,7 @@
     catch (error) { toast(micError(error), 'error', 5200); return; }
 
     state.busy = true;
+    clearReset(); clearWatchdog();
     try {
       const data = await S.call('call_start', { p_thread: state.thread, p_media: 'audio' });
       if (!data || !data.call) throw new Error('تعذّر بدء المكالمة');
@@ -455,13 +554,37 @@
       state.peer = data.call.peer || state.peer;
       state.status = CS.STATES.RINGING_OUT;
       state.cursor = 0; state.offerSent = false; state.answerSent = false; state.muted = false;
+      state.pendingIce = []; state.adopted = false; state.audioBlocked = false;
       state.startedAt = Date.now(); state.answeredAt = 0; state.note = '';
       ensureAudio();
-      startRinger('outgoing'); startTicker(); paint();
+      startRinger('outgoing'); startTicker(); armWatchdog(); paint();
       schedulePoll(500);
       document.dispatchEvent(new CustomEvent('wt:call-started', { detail: { call: state.call } }));
     } catch (error) {
       const setup = error && (error.setup || /PGRST202|42883|does not exist|غير مفعّلة/.test(error.message || ''));
+      const stuck = /مكالمة جارية/.test(error.message || '');
+      if (stuck) {
+        /* الحالة الأشهر: مكالمة سابقة لم تُغلق (تبويب أُغلق/شبكة انقطعت) فبقيت على الخادم.
+           نعرض على المستخدم إغلاقها صراحةً ثم نحاول مرة واحدة. */
+        const clear = await C.confirm({
+          title: 'مكالمة سابقة ما زالت مفتوحة',
+          body: 'يوجد سجلّ مكالمة لم يُغلق من جلسة سابقة، وهو يمنع بدء مكالمة جديدة. إنهاؤه الآن لن يؤثر على أي مكالمة حقيقية في جهاز آخر.',
+          label: 'أنهِ المكالمة السابقة'
+        }).catch(() => false);
+        if (clear) {
+          try {
+            const done = await S.call('call_reset');
+            state.call = null; state.status = CS.STATES.IDLE;
+            paint(); syncButton();
+            toast('أُغلقت ' + ((done && done.closed) || 0) + ' مكالمة معلّقة — أعد المحاولة الآن.', 'success', 4200);
+          } catch (e) {
+            const missing = e && (e.setup || e.status === 404 || e.code === 'PGRST202' || e.code === '42883');
+            toast(missing ? 'أعد تنفيذ docs/sql/09-calls.sql لتفعيل الإصلاح.' : (e.message || 'تعذّر الإغلاق.'), 'error', 5200);
+          }
+        }
+        teardown();
+        return;
+      }
       toast(setup ? 'ميزات المكالمات غير مفعّلة بعد. نفّذ docs/sql/09-calls.sql ثم أعد المحاولة.' : (error.message || 'تعذّر بدء المكالمة'), 'error', 5600);
       teardown();
     } finally { state.busy = false; }
@@ -480,6 +603,7 @@
     if (!accept) { terminate('declined'); return; }
     state.status = CS.STATES.CONNECTING;
     state.answeredAt = Date.now();
+    armWatchdog();
     paint();
     startTicker();
     schedulePoll(300);
@@ -499,7 +623,7 @@
   function terminate(reason) {
     if (!state.call) return;
     const finalReason = reason || 'hangup';
-    stopRinger(); stopTicker(); releaseWakeLock();
+    stopRinger(); stopTicker(); clearWatchdog(); releaseWakeLock();
     state.status = ['missed', 'timeout'].includes(finalReason) ? CS.STATES.MISSED
       : finalReason === 'declined' ? CS.STATES.DECLINED
       : finalReason === 'busy' ? CS.STATES.BUSY
@@ -520,13 +644,22 @@
   }
 
   function resetSoon() {
-    global.setTimeout(() => {
+    clearReset();
+    const ended = state.call;
+    state.resetTimer = global.setTimeout(() => {
+      state.resetTimer = null;
+      /* لا نمسح مكالمة بدأت بعد هذه المهلة */
+      if (state.call && state.call !== ended) return;
       state.call = null; state.status = CS.STATES.IDLE; state.reason = '';
       state.cursor = 0; state.offerSent = false; state.answerSent = false;
       state.answeredAt = 0; state.startedAt = 0; state.note = '';
+      state.adopted = false; state.audioBlocked = false;
       stopTones();
       paint(); syncButton();
     }, 2200);
+  }
+  function clearReset() {
+    if (state.resetTimer) { global.clearTimeout(state.resetTimer); state.resetTimer = null; }
   }
 
   function teardownMedia() {
@@ -537,11 +670,14 @@
     try { if (state.audio) { state.audio.srcObject = null; state.audio.pause(); state.audio.remove(); } } catch (e) { /* تجاهل */ }
     state.audio = null;
     state.muted = false;
+    state.pendingIce = [];
   }
 
   function teardown() {
-    stopRinger(); stopTicker(); releaseWakeLock(); teardownMedia();
+    stopRinger(); stopTicker(); clearWatchdog(); clearReset(); releaseWakeLock(); teardownMedia();
     state.call = null; state.status = CS.STATES.IDLE; state.cursor = 0;
+    state.adopted = false; state.audioBlocked = false;
+    if (state.pollTimer) { global.clearTimeout(state.pollTimer); state.pollTimer = null; }
     paint(); syncButton();
   }
 
@@ -580,15 +716,53 @@
     button.classList.toggle('is-live', !!state.call);
   }
 
+  /* يعتمد مكالمة قائمة (من هذا الجهاز أو من جلسة سابقة) ويعرض واجهتها.
+     هذا ما يمنع الحالة: «المكالمة جارية ولا أجد أين أقطعها» — فالشريط يعود
+     مع زرّ الإنهاء حتّى بعد تحديث الصفحة. */
+  function adopt(call, why) {
+    if (!call || !call.id || state.call) return false;
+    state.call = call;
+    state.thread = call.thread_id || state.thread;
+    state.peer = call.peer || state.peer;
+    state.cursor = 0; state.offerSent = false; state.answerSent = false;
+    state.startedAt = Date.parse(call.created_at) || Date.now();
+    state.answeredAt = call.answered_at ? Date.parse(call.answered_at) : 0;
+    state.adopted = true;
+    state.note = why || '';
+    const me = (global.WTAuth && global.WTAuth.accountUser && global.WTAuth.accountUser()) || null;
+    state.status = CS.resumeState(call, me && me.id) || CS.STATES.ACTIVE;
+    if (state.status === CS.STATES.RINGING_OUT) startRinger('outgoing');
+    else if (state.status === CS.STATES.RINGING_IN) startRinger('incoming');
+    else state.note = 'المكالمة من جلسة سابقة — الصوت قد يكون مفصولاً. أنهِها ثم أعد الاتصال.';
+    ensureAudio(); armWatchdog(); startTicker(); paint(); syncButton();
+    schedulePoll(400);
+    return true;
+  }
+
+  async function reconcile() {
+    if (state.call || !cfg().enabled) return false;
+    try {
+      const data = await S.call('call_current');
+      const call = data && data.call;
+      if (!call || !call.id) return false;
+      return adopt(call);
+    } catch (e) {
+      return false;   /* الدالة غير منفّذة بعد — لا نُزعج المستخدم */
+    }
+  }
+
   async function pollIncoming() {
-    if (!state.thread || !state.canSend || state.call || !cfg().enabled) return;
+    if (state.call || !cfg().enabled) return;
+    /* نبحث في أي محادثة لا في المحادثة المفتوحة فقط: كانت المكالمة تفوتك
+       إن لم تكن فاتحًا محادثة الطرف المتّصل. */
     const now = Date.now();
     if (now - state.lastIncoming < 2500) return;
     state.lastIncoming = now;
     try {
-      const data = await S.call('call_incoming', { p_thread: state.thread });
+      const data = await S.call('call_incoming', { p_thread: state.thread || null });
       if (!data || !data.call || state.call) return;
       const call = data.call;
+      if (!state.thread) state.thread = call.thread_id || state.thread;
       if (call.state !== 'ringing' || CS.ringExpired(call.created_at, Date.now(), cfg().ringTimeoutMs)) return;
       state.call = call;
       state.peer = call.peer || state.peer;
@@ -606,16 +780,31 @@
   /* استئناف/إنهاء آمن عند مغادرة الصفحة */
   global.addEventListener('beforeunload', () => { if (state.call) { putSignal({ k: 'end', reason: 'hangup' }); } });
   global.addEventListener('pagehide', () => {
-    if (state.call) { try { S.call('call_end', { p_call: state.call.id, p_reason: 'hangup' }); } catch (e) { /* تجاهل */ } }
-    stopRinger(); stopTicker(); teardownMedia();
+    if (state.call) {
+      /* keepalive: يصل الطلب حتّى والع صفحة تُغلق — هذا ما كان يترك مكالمات «عالقة» */
+      try { S.call('call_end', { p_call: state.call.id, p_reason: 'hangup' }, null, { keepalive: true }).catch(() => {}); } catch (e) { /* تجاهل */ }
+    }
+    stopRinger(); stopTicker(); clearWatchdog(); teardownMedia();
   });
-  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && !state.call) pollIncoming(); });
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState !== 'visible') return;
+    if (state.call) armWatchdog(); else pollIncoming();
+  });
 
   global.WTCalls = {
-    attach, start, answer, end: endCall, syncButton, pollIncoming,
+    attach, start, answer, end: endCall, syncButton, pollIncoming, reconcile, reset: resetStuck,
     active: () => !!state.call,
     status: () => state.status,
     toggleMute,
-    _internal: { cfg, micError, isCaller, state }
+    _internal: { cfg, micError, isCaller, adopt, state }
   };
+
+  /* إنهاء أي مكالمة عالقة على الخادم (زرّ الإنقاذ) */
+  async function resetStuck() {
+    try {
+      const data = await S.call('call_reset');
+      teardown();
+      return (data && data.closed) || 0;
+    } catch (e) { return 0; }
+  }
 })(window);
