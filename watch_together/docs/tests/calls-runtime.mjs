@@ -142,6 +142,7 @@ function makeServer(clock) {
     if (server.failNext && server.failNext.method === method) {
       const error = new Error(server.failNext.message);
       error.code = server.failNext.code;
+      if (server.failNext.raw) error.raw = server.failNext.raw;
       server.failNext = null;
       throw error;
     }
@@ -535,6 +536,49 @@ async function boot(server, clock, options) {
   const flat = servers.map((entry) => [].concat(entry.urls).join(' ')).join(' ');
   t('كلمة مرور ناقصة: لا يُمرَّر TURN معطوب', !/turn:global\.relay\.metered\.ca/.test(flat), flat);
   t('كلمة مرور ناقصة: يبقى STUN للعمل', /stun:/.test(flat));
+}
+
+/* ==================== 6هـ) فشل الإعداد: لا نُخفي السبب الحقيقي ==================== */
+{
+  const clock = makeClock();
+  const server = makeServer(clock);
+  const app = await boot(server, clock, {
+    config: { supabase: { url: 'https://abcd.supabase.co' }, calls: { enabled: true } }
+  });
+  const calls = app.sandbox.WTCalls;
+  calls.attach({ id: server.thread, peer: { user_id: server.peer, display_name: 'رفيق الاختبار', allow_calls: true }, canSend: true });
+
+  server.failNext = {
+    method: 'call_start',
+    code: 'PGRST202',
+    message: 'Could not find the function public.wt_social_call_start(p_media, p_thread) in the schema cache'
+  };
+  await calls.start();
+  await settle(2);
+  let last = app.toasts[app.toasts.length - 1] || {};
+  t('إعداد ناقص: يذكر كود الخطأ', /PGRST202/.test(last.m || ''), last.m);
+  t('إعداد ناقص: يذكر اسم مشروع Supabase', /abcd\.supabase\.co/.test(last.m || ''), last.m);
+  t('إعداد ناقص: يوجّه إلى 09-calls.sql', /09-calls\.sql/.test(last.m || ''), last.m);
+  t('إعداد ناقص: يوجّه إلى ملف التشخيص', /11-calls-doctor\.sql/.test(last.m || ''), last.m);
+  t('إعداد ناقص: لا يبقى زرّ عالقاً', calls.active() === false);
+
+  server.failNext = {
+    method: 'call_start',
+    code: 'PGRST203',
+    message: 'Could not choose the best candidate function between: public.wt_social_call_start(p_thread => uuid), public.wt_social_call_start(p_thread => uuid, p_media => text)'
+  };
+  await calls.start();
+  await settle(2);
+  last = app.toasts[app.toasts.length - 1] || {};
+  t('تكرار التواقيع: يقول إنها نسخ مكرّرة', /أكثر من نسخة/.test(last.m || ''), last.m);
+  t('تكرار التواقيع: يوجّه إلى ملف التشخيص', /11-calls-doctor\.sql/.test(last.m || ''), last.m);
+
+  /* رسالة خادم عربية حقيقية (ليست خطأ إعداد) يجب أن تصل كما هي بلا تحويل */
+  server.failNext = { method: 'call_start', code: '42501', message: 'المكالمات متاحة للأصدقاء المقبولين فقط' };
+  await calls.start();
+  await settle(2);
+  last = app.toasts[app.toasts.length - 1] || {};
+  t('رسالة الخادم الحقيقية تصل بلا تحريف', last.m === 'المكالمات متاحة للأصدقاء المقبولين فقط', last.m);
 }
 
 /* ==================== 7) تشخيص «متصل بلا صوت» ==================== */

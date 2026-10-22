@@ -44,6 +44,13 @@
   const toast = (message, type, ms) => { try { U.toast(message, type, ms); } catch (e) { /* تجاهل */ } };
   const icon = (name, size) => (IC && IC.html ? IC.html(name, size || 18) : '');
   const secure = () => global.isSecureContext !== false || /^(localhost|127\.0\.0\.1)$/.test(global.location.hostname);
+  /* اسم مشروع Supabase المتصل — يظهر في رسائل الخطأ لكشف «نفّذت SQL على مشروع آخر». */
+  const projectHost = () => {
+    try {
+      const base = String((global.WT_CONFIG && global.WT_CONFIG.supabase && global.WT_CONFIG.supabase.url) || '');
+      return base ? base.replace(/^https?:\/\//, '').replace(/\/$/, '') : String(global.location.hostname || '—');
+    } catch (e) { return '—'; }
+  };
 
   function micError(error) {
     const name = (error && (error.name || error.code)) || '';
@@ -580,6 +587,32 @@
   }
 
   /* ============================== دورة المكالمة ============================== */
+  /* يصنّف فشل call_start ويحوّله إلى خطوة عملية واحدة.
+     درس من الميدان: رسالة واحدة عامة «نفّذ 09-calls.sql» أخفت السبب الحقيقي
+     (نسخة قديمة من الدالة، أو مشروع آخر، أو كاش) فصار المستخدم يعيد التنفيذ بلا نهاية. */
+  function failureHint(error) {
+    const code = String((error && error.code) || '');
+    const raw = String((error && (error.raw || error.message)) || '').trim();
+    const project = projectHost();
+    if (code === 'PGRST203' || /best candidate|ambiguous function/i.test(raw)) {
+      return {
+        text: 'على الخادم أكثر من نسخة من دوال المكالمات' + (code ? ' (' + code + ')' : '') + '.\n' +
+          'نفّذ docs/sql/11-calls-doctor.sql ثم أوامر drop في الصف 60.',
+        ms: 12000
+      };
+    }
+    if (error && (error.setup || ['PGRST202', '42883', '42P01'].includes(code) ||
+        /does not exist|غير مفعّلة/i.test(raw))) {
+      return {
+        text: 'لم أجد دوال المكالمات على هذا المشروع' + (code ? ' (' + code + ')' : '') + ' — ' + project + '.\n' +
+          '١) نفّذ docs/sql/09-calls.sql كاملاً بلا تحديد جزء من النص.\n' +
+          '٢) إن كنت فعلت: نفّذ docs/sql/11-calls-doctor.sql وأرسل الجدول.',
+        ms: 15000
+      };
+    }
+    return { text: raw || 'تعذّر بدء المكالمة', ms: 5600 };
+  }
+
   async function start() {
     const conf = cfg();
     if (!conf.enabled) { toast('المكالمات غير مفعّلة على هذا الموقع', 'warn'); return; }
@@ -613,8 +646,8 @@
       schedulePoll(500);
       document.dispatchEvent(new CustomEvent('wt:call-started', { detail: { call: state.call } }));
     } catch (error) {
-      const setup = error && (error.setup || /PGRST202|42883|does not exist|غير مفعّلة/.test(error.message || ''));
-      const stuck = /مكالمة جارية/.test(error.message || '');
+      const hint = failureHint(error);
+      const stuck = /مكالمة جارية/.test(String((error && (error.raw || error.message)) || ''));
       if (stuck) {
         /* الحالة الأشهر: مكالمة سابقة لم تُغلق (تبويب أُغلق/شبكة انقطعت) فبقيت على الخادم.
            نعرض على المستخدم إغلاقها صراحةً ثم نحاول مرة واحدة. */
@@ -637,7 +670,7 @@
         teardown();
         return;
       }
-      toast(setup ? 'ميزات المكالمات غير مفعّلة بعد. نفّذ docs/sql/09-calls.sql ثم أعد المحاولة.' : (error.message || 'تعذّر بدء المكالمة'), 'error', 5600);
+      toast(hint.text, 'error', hint.ms);
       teardown();
     } finally { state.busy = false; }
   }

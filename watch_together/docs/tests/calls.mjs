@@ -288,5 +288,24 @@ t('سجل المكالمة نصّي بلا بيانات حساسة', (() => {
   t('calls.js: الكونسول يتقدّم على الملف المحلي', /const override = turnOverride\(\);\s*\n\s*const local = turnLocal\(\);/.test(calls));
 }
 
+/* ==================== 9) تشخيص فشل الإعداد ==================== */
+{
+  const doctor = read('docs/sql/11-calls-doctor.sql');
+  t('ملف التشخيص موجود', exists('docs/sql/11-calls-doctor.sql'));
+  t('التشخيص يغطّي الدوال والجداول والصلاحيات',
+    /wt_social_call_start/.test(doctor) && /wt_dm_calls/.test(doctor) && /has_function_privilege/.test(doctor));
+  t('التشخيص يقترح drop للنسخ المكرّرة', /drop function/.test(doctor));
+
+  const social = read('assets/js/social.js');
+  t('social.js يحفظ نصّ الخطأ الأصلي', /const raw = /.test(social) && /raw\b/.test(social) && /Object\.assign\(new Error\(message\), \{[^}]*raw/.test(social));
+
+  t('calls.js يصنّف فشل الإعداد', /function failureHint\(/.test(calls));
+  t('calls.js يذكر كود الخطأ في الرسالة', /'\(\' \+ code \+ '\'\)'/.test(calls) || /\(code \? /.test(calls));
+  t('calls.js يعرض اسم مشروع Supabase', /const projectHost = /.test(calls) && /WT_CONFIG\.supabase/.test(calls));
+  t('calls.js يوجّه إلى 09 و11', /09-calls\.sql/.test(calls) && /11-calls-doctor\.sql/.test(calls));
+  t('calls.js يميّز تكرار التواقيع', /PGRST203/.test(calls));
+  t('calls.js يستعمل الفحص قبل رسالة العالقة', calls.indexOf('failureHint(error)') < calls.indexOf('call_reset'));
+}
+
 console.log(`Calls: ${pass} passed, ${fail} failed`);
 if (fail) process.exitCode = 1;
