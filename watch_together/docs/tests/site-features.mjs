@@ -165,6 +165,15 @@ try {
   t('site.js: احترام تقليل الحركة في التنقّل', /prefers-reduced-motion/.test(source), '');
   t('site.js: المناطق الحسّاسة لا تُلمس (لا تعديل على Supabase)', !/supabase/i.test(source), '');
   t('site.js: يسجّل الخدمة العاملة بمسار نسبي', /serviceWorker\.register\('sw\.js'/.test(source), '');
+  /* على الهاتف لا يوجد Ctrl+Shift+R: التحديث يُطبَّق وحده، ولا يقطع مكالمة */
+  t('site.js: يُفعّل النسخة الجديدة بـSKIP_WAITING', /SKIP_WAITING/.test(source) && /function applyUpdate/.test(source));
+  t('site.js: يعيد التحميل مرة واحدة فقط', /function reloadOnce/.test(source) && /updateState\.applied/.test(source));
+  t('site.js: لا يعيد التحميل أثناء مكالمة', /function callInProgress/.test(source) &&
+    /if \(!updateState\.ready \|\| callInProgress\(\)\) return;/.test(source));
+  t('site.js: يؤجّل التحديث حتى تنتهي المكالمة', /wt:call-logged/.test(source));
+  t('site.js: أمر «تحديث التطبيق ومسح الكاش» في لوحة الأوامر', /sys-update/.test(source) &&
+    /CLEAR_CACHES/.test(source) && /clearCachesAndReload/.test(source));
+  t('sw.js: يستجيب لـCLEAR_CACHES وSKIP_WAITING', /CLEAR_CACHES/.test(read('sw.js')) && /SKIP_WAITING/.test(read('sw.js')));
   t('site.js: زر الصعود لا يظهر داخل الغرفة عند عدم التمرير', /scrollHeight - global\.innerHeight/.test(source), '');
   t('site.js: إدارة الأخطاء محدودة التكرار', /lastErrorAt/.test(source) && /20000/.test(source), '');
   t('site.js: لا يستخدم eval أو new Function', !/\beval\s*\(|new Function\s*\(/.test(source), '');

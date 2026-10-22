@@ -7,7 +7,7 @@ window.WT_CONFIG = {
 
   /* بصمة الإصدار: تظهر في لوحة الأوامر (Ctrl+K) وفي نافذة الاختصارات (؟).
      غيّرها عند كل نشر لتتأكّد أن متصفحك يعرض النسخة الجديدة لا نسخة مخزّنة. */
-  build: '2026-10-23.2',
+  build: '2026-10-23.3',
 
   /* ---------- 1) Supabase (للاستضافة العادية: cPanel / Netlify / GitHub Pages) ----------
      Dashboard → Project Settings → API
@@ -78,6 +78,7 @@ window.WT_CONFIG = {
     signalPollMs: 900,           /* سرعة تبادل الإشارات أثناء الرنين والاتصال */
     signalPollActiveMs: 2600,    /* أثناء المكالمة: نكتفي بفحص الانتهاء */
     maxCallMs: 7200000,          /* سقف أمان للمكالمة (ساعتان) */
+    vibrate: true,               /* اهتزاز الهاتف مع الرنين والردّ والإنهاء (أندرويد) */
     iceServers: [
       { urls: 'stun:stun.l.google.com:19302' },
       { urls: 'stun:stun1.l.google.com:19302' }

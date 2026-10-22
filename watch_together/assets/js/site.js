@@ -408,6 +408,10 @@
     if (state.deferredInstall) {
       list.push({ id: 'sys-install', group: 'النظام', title: 'تثبيت التطبيق', sub: 'افتح WatchTogether كتطبيق مستقل', icon: 'download', keywords: 'تثبيت تطبيق pwa', run: promptInstall });
     }
+    /* على الهاتف هذا بديل Ctrl+Shift+R: يفرض أحدث نسخة ويمسح الكاش */
+    if (global.navigator.serviceWorker) {
+      list.push({ id: 'sys-update', group: 'النظام', title: 'تحديث التطبيق ومسح الكاش', sub: 'يفرض أحدث نسخة — بديل Ctrl+Shift+R على الهاتف', icon: 'rotate', keywords: 'تحديث كاش نسخة جديدة reload update cache', run: clearCachesAndReload });
+    }
     return list;
   }
 
@@ -995,6 +999,43 @@
   }
 
   /* ============================== 12) خدمة العمل دون اتصال ============================== */
+  /* على الهاتف لا يوجد Ctrl+Shift+R: نُفعّل النسخة الجديدة ونُعيد التحميل مرة واحدة.
+     القاعدة: لا نُعيد التحميل أثناء مكالمة — نُؤجّل حتى تنتهي. */
+  var updateState = { ready: false, applied: false, worker: null };
+
+  function callInProgress() {
+    try { return !!(global.WTCalls && global.WTCalls.active && global.WTCalls.active()); } catch (e) { return false; }
+  }
+  function reloadOnce() {
+    if (updateState.applied) return;
+    updateState.applied = true;
+    global.location.reload();
+  }
+  function applyUpdate(worker) {
+    updateState.ready = true;
+    if (worker) updateState.worker = worker;
+    if (callInProgress()) {
+      toast('تحديث جديد جاهز — سيُطبَّق وحده بعد انتهاء المكالمة', 'info', 5200);
+      return;
+    }
+    try { updateState.worker && updateState.worker.postMessage({ type: 'SKIP_WAITING' }); } catch (e) { /* تجاهل */ }
+    toast('نسخة جديدة — نُحدِّث الصفحة…', 'info', 3200);
+    global.setTimeout(reloadOnce, 1400);   /* احتياطاً إن لم يصل controllerchange */
+  }
+  /* زرّ «افرض التحديث» على الهاتف: يمسح كل الكاش ويُعيد التحميل */
+  function clearCachesAndReload() {
+    try {
+      global.navigator.serviceWorker.getRegistrations().then(function (list) {
+        list.forEach(function (reg) {
+          var worker = reg.active || reg.waiting || reg.installing;
+          try { worker && worker.postMessage({ type: 'CLEAR_CACHES' }); } catch (e) { /* تجاهل */ }
+        });
+      });
+    } catch (e) { /* تجاهل */ }
+    toast('نمسح الكاش ونُعيد التحميل…', 'info', 3200);
+    global.setTimeout(function () { updateState.applied = false; reloadOnce(); }, 1200);
+  }
+
   function registerServiceWorker() {
     if (!('serviceWorker' in global.navigator)) return;
     var protocol = global.location.protocol;
@@ -1006,17 +1047,22 @@
     global.addEventListener('load', function () {
       global.navigator.serviceWorker.register('sw.js', { scope: './', updateViaCache: 'none' })
         .then(function (registration) {
-          if (registration.waiting && global.navigator.serviceWorker.controller) {
-            toast('تحديث جديد جاهز — أعد تحميل الصفحة لتفعيله', 'info', 5200);
-          }
+          if (registration.waiting && global.navigator.serviceWorker.controller) applyUpdate(registration.waiting);
           registration.addEventListener('updatefound', function () {
             var worker = registration.installing;
             if (!worker) return;
             worker.addEventListener('statechange', function () {
-              if (worker.state === 'installed' && global.navigator.serviceWorker.controller) {
-                toast('تحديث جديد جاهز — أعد تحميل الصفحة لتفعيله', 'info', 5200);
-              }
+              if (worker.state === 'installed' && global.navigator.serviceWorker.controller) applyUpdate(worker);
             });
+          });
+          /* العامل الجديد صار متحكماً → حمّل الصفحة مرة واحدة (بعد إذننا بالتحديث) */
+          global.navigator.serviceWorker.addEventListener('controllerchange', function () {
+            if (!updateState.ready || callInProgress()) return;
+            reloadOnce();
+          });
+          /* انتهت المكالمة وكان تحديث مؤجَّل → طبِّقه الآن */
+          doc.addEventListener('wt:call-logged', function () {
+            if (updateState.ready && !updateState.applied) global.setTimeout(function () { applyUpdate(null); }, 1500);
           });
         })
         .catch(function () { /* المتصفح يمنع العمل دون اتصال — الموقع يعمل عادياً */ });

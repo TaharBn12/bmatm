@@ -20,6 +20,7 @@
       signalPollMs: Number(raw.signalPollMs) || 900,
       signalPollActiveMs: Number(raw.signalPollActiveMs) || 2600,
       maxCallMs: Number(raw.maxCallMs) || 2 * 3600 * 1000,
+      vibrate: raw.vibrate !== false,        /* اهتزاز الهاتف — يُطفأ من config.js */
       iceServers: Array.isArray(raw.iceServers) ? raw.iceServers.slice() : [],
       turn: raw.turn || null,
       turnFetchUrl: raw.turnFetchUrl || null,
@@ -207,25 +208,35 @@
     return state.audioCtx;
   }
 
+  /* اهتزاز الهاتف: يتكرّر مع دورة الرنين (كالهاتف الحقيقي) لا مرة واحدة —
+     وإلا فالهاتف في الجيب يرنّ مرّة واحدة ثم يصمت وتفوتك المكالمة. */
+  function buzz(pattern) {
+    try {
+      if (cfg().vibrate === false) return;
+      if (!global.navigator || typeof global.navigator.vibrate !== 'function') return;
+      global.navigator.vibrate(pattern);
+    } catch (e) { /* متصفح أو نظام يمنعه */ }
+  }
+
   function startRinger(kind) {
     stopRinger();
     if (!cfg().enabled) return;
     const ctx = audioCtx();
     if (ctx && ctx.state === 'suspended') ctx.resume().catch(() => {});
+    const incoming = kind === 'incoming';
     const ring = () => {
-      if (kind === 'incoming') { tone(660, 0, 0.28, 0.05); tone(880, 0.34, 0.28, 0.05); }
+      if (incoming) { tone(660, 0, 0.28, 0.05); tone(880, 0.34, 0.28, 0.05); buzz([220, 160, 220]); }
       else { tone(440, 0, 0.22, 0.035); }
     };
     ring();
-    state.ringer = global.setInterval(ring, kind === 'incoming' ? 2400 : 3200);
-    if (kind === 'incoming' && global.navigator.vibrate) {
-      try { global.navigator.vibrate([220, 160, 220, 900]); } catch (e) { /* تجاهل */ }
-    }
+    state.ringer = global.setInterval(ring, incoming ? 2400 : 3200);
+    /* الشاشة لا تُقفل أثناء الرنين: على الهاتف يعني هذا رنيناً بلا إضاءة */
+    requestWakeLock();
   }
 
   function stopRinger() {
     if (state.ringer) { global.clearInterval(state.ringer); state.ringer = null; }
-    try { if (global.navigator.vibrate) global.navigator.vibrate(0); } catch (e) { /* تجاهل */ }
+    try { if (cfg().vibrate !== false && global.navigator && global.navigator.vibrate) global.navigator.vibrate(0); } catch (e) { /* تجاهل */ }
   }
 
   function stopTones() {
@@ -847,6 +858,7 @@
       toast(error.message || 'تعذّر الرد', 'error');
       return;
     }
+    buzz(70);   /* إحساس ملموس بأن الردّ نجح */
     state.status = CS.STATES.CONNECTING;
     state.answeredAt = Date.now();
     state.offerRetries = 0;
@@ -902,6 +914,7 @@
     paint();
     teardownMedia();
     const label = CS.logLabel(finalReason, state.answeredAt ? Date.now() - state.answeredAt : 0);
+    buzz(['missed', 'timeout', 'declined', 'failed'].includes(finalReason) ? [140, 90, 140] : 50);
     if (finalReason === 'hangup' || finalReason === 'ended') toast(label, 'info', 2600);
     else if (finalReason === 'declined') toast('لم يُقبل الرد', 'warn', 2600);
     else if (finalReason === 'missed' || finalReason === 'timeout') toast('لم يرد الطرف الآخر', 'warn', 3000);
@@ -1061,7 +1074,19 @@
   });
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState !== 'visible') return;
-    if (state.call) armWatchdog(); else pollIncoming();
+    /* العودة من قفل الشاشة: المتصفح أوقف السياق الصوتي ومنع التشغيل —
+       نُعيد فتحه ونُظهر زرّ الصوت إن بقي ممنوعاً. */
+    try { if (state.audioCtx && state.audioCtx.state === 'suspended') state.audioCtx.resume(); } catch (e) { /* تجاهل */ }
+    if (state.call) {
+      if (state.remoteStream && state.audio) {
+        const playing = state.audio.play();
+        if (playing && playing.then) playing.then(() => { state.audioBlocked = false; paint(); }).catch(() => { state.audioBlocked = true; paint(); });
+      }
+      requestWakeLock();
+      armWatchdog();
+    } else {
+      pollIncoming();
+    }
   });
 
   global.WTCalls = {
