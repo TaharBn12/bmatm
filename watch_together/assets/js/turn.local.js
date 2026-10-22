@@ -18,7 +18,7 @@
 
   /* ✅ عدّل هذين السطرين فقط — اسم المستخدم موجود، وينقصك كلمة المرور */
   var USERNAME = 'c27c3311ba7a2107382e8d0e';
-  var PASSWORD = 'ضع-كلمة-المرور-هنا';   /* ← كلمة المرور من لوحة Metered */
+  var PASSWORD = 'RwGB7PD7G0WRuURM';     /* كلمة مرور Metered (Open Relay) */
 
   window.WT_TURN_LOCAL = [
     { urls: 'stun:stun.relay.metered.ca:80' },
