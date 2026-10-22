@@ -213,6 +213,18 @@ errorServer.close();
   t('Supabase: يقرأ المفتاح من البيئة فقط', /Deno\.env\.get\('METERED_KEY'\)/.test(edge) && !/apiKey=[\"'][A-Za-z0-9]{6,}/.test(edge));
   t('Supabase: حدّ معدّل', /rateLimited/.test(edge) && /429/.test(edge));
   t('Supabase: لا يخزّن استجابة', /Cache-Control/.test(edge) && /no-store/.test(edge));
+  /* ما نُشر فعلاً باسم wt-turn: قائمة أصول صارمة، وضع بديل، وخطأ صريح */
+  t('Supabase: الأصول قائمة صارمة بلا «*»', /ALLOWED_ORIGIN/.test(edge) && !/Allow-Origin': '\*'/.test(edge));
+  t('Supabase: يرفض أصلاً غير معروف بـ403', /origin not allowed/.test(edge) && /403/.test(edge));
+  t('Supabase: وضع بديل TURN_STATIC بلا مفتاح API', /TURN_STATIC/.test(edge) && /fromStatic/.test(edge));
+  t('Supabase: غير مضبوط ⇒ 503 صريح لا نجاح فارغ', /server not configured/.test(edge) && /503/.test(edge));
+  t('Supabase: كاش قصير لطلبات المزوّد', /CACHE_MS = 60000/.test(edge));
+  t('Supabase: يطبّع الصيغ كما يفعل calls.js', /Array\.isArray\(raw\.iceServers\)/.test(edge));
+  /* نفحص الكود لا التعليقات: رأس الملف يشرح TURN_STATIC بمثال يحتوي اسم المزوّد،
+     وهذا توثيق مطلوب لا تسريب. لذا تُزال التعليقات قبل الفحص. */
+  const edgeCode = edge.replace(/^\s*\/\/.*$/gm, '').replace(/\/\*[\s\S]*?\*\//g, '');
+  t('Supabase: لا بيانات اعتماد مضمّنة في الكود',
+    !/relay\.metered\.ca/.test(edgeCode) && !/username: *'[^']+'/.test(edgeCode) && !/credential: *'[^']+'/.test(edgeCode));
 
   const worker = read('tools/turn/cloudflare-worker.js');
   t('Worker: يجيب OPTIONS ويعيد 204', /status: 204/.test(worker) && /OPTIONS/.test(worker));

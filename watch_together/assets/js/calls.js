@@ -34,7 +34,7 @@
     pc: null, stream: null, audio: null, cursor: 0, offerSent: false, answerSent: false,
     pollTimer: null, tickTimer: null, ringTimer: null, startedAt: 0, answeredAt: 0,
     ringer: null, audioCtx: null, muted: false, busy: false, wakeLock: null,
-    lastIncoming: 0, ui: null, note: '',
+    lastIncoming: 0, ui: null, note: '', turnSource: 'none',
     /* حراسة ضد «المكالمة العالقة»: مؤقّت إعادة الضبط، ومؤقّت انقطاع الخادم */
     resetTimer: null, watchdog: null, lastServerAt: 0, misses: 0, adopted: false, audioBlocked: false,
     pendingIce: [],
@@ -117,6 +117,77 @@
     return cleaned.length ? cleaned : null;
   }
 
+  /* هل في القائمة خادم ترحيل فعلاً؟ STUN وحده لا يكفي على شبكات الجوال. */
+  function hasTurn(entries) {
+    return (entries || []).some((entry) => /^turns?:/i.test([].concat(entry.urls).join(' ')));
+  }
+
+  /* ترويسات طلب الوسيط: نرسل مفتاح المشروع وجلسة المستخدم **فقط** إن كان الوسيط
+     على نفس مشروع Supabase — فلا تُسرَّب مفاتيحنا إلى نطاق غريب إن غُيّر الرابط. */
+  function turnHeaders(url) {
+    const headers = { 'Content-Type': 'application/json' };
+    try {
+      const sb = (global.WT_CONFIG && global.WT_CONFIG.supabase) || {};
+      const hostOf = (value) => String(value || '').replace(/^https?:\/\//, '').split('/')[0].toLowerCase();
+      if (!sb.anonKey || !hostOf(url) || hostOf(url) !== hostOf(sb.url)) return headers;
+      headers.apikey = sb.anonKey;
+      const session = (global.WTAuth && global.WTAuth.getSession && global.WTAuth.getSession()) || null;
+      headers.Authorization = 'Bearer ' + ((session && session.access_token) || sb.anonKey);
+    } catch (e) { /* الترويسات تحسين لا شرط: لا نكسر المكالمة بسببها */ }
+    return headers;
+  }
+
+  /* طلب TURN من وسيط الخادم. يعيد {entries, note} دائماً ولا يرمي أبداً:
+     فشل الوسيط يعني فقط «جرّب المصدر التالي»، لا «أوقف المكالمة». */
+  async function fetchTurn(conf) {
+    const controller = typeof global.AbortController === 'function' ? new global.AbortController() : null;
+    const timer = controller ? global.setTimeout(() => controller.abort(), conf.turnFetchTimeoutMs) : null;
+    try {
+      const response = await global.fetch(conf.turnFetchUrl, {
+        method: 'POST',
+        headers: turnHeaders(conf.turnFetchUrl),
+        body: '{}',
+        cache: 'no-store',
+        credentials: 'omit',
+        signal: controller ? controller.signal : undefined
+      });
+      if (!response.ok) throw new Error('HTTP ' + response.status);
+      const data = await response.json();
+      /* نقبل ثلاث صيغ شائعة: {urls,...} أو [ {urls,...}, ... ] أو {iceServers:[...]} */
+      const entries = Array.isArray(data) ? data
+        : Array.isArray(data && data.iceServers) ? data.iceServers
+        : data && data.urls ? [data] : [];
+      const cleaned = entries
+        .map((entry) => {
+          const urls = entry && (entry.urls || entry.url);
+          if (!urls) return null;
+          return { urls, username: entry.username || '', credential: entry.credential || entry.password || '' };
+        })
+        .filter(Boolean);
+      if (!hasTurn(cleaned)) {
+        return { entries: cleaned, note: 'لم نستلم خادم ترحيل (TURN)؛ تنجح المكالمة على الواي فاي وقد تفشل على شبكات الجوال.' };
+      }
+      return { entries: cleaned, note: '' };
+    } catch (e) {
+      return {
+        entries: [],
+        note: e && e.name === 'AbortError'
+          ? 'تأخّر خادم TURN؛ نكمل بـSTUN (قد تفشل المكالمة على شبكات الجوال).'
+          : 'تعذّر جلب بيانات TURN؛ قد تفشل المكالمة على بعض الشبكات.'
+      };
+    } finally {
+      if (timer) global.clearTimeout(timer);
+    }
+  }
+
+  /* ترتيب مصادر TURN — الأول يُجرَّب أولاً:
+     1) تجاوز الكونسول (يدوي، لهذه الجلسة فقط)
+     2) وسيط الخادم turnFetchUrl  ← الإنتاج: المفتاح يبقى على الخادم
+     3) الملف المحلي turn.local.js ← احتياط: يعمل لكن بياناته مكشوفة لكل زائر
+     4) turn ثابت في config.js
+     5) STUN عام إن بقيت القائمة فارغة
+     كان الوسيط مشروطاً بغياب الملف المحلي، فبقي الملف المكشوف هو المستخدَم دائماً
+     ولم يُطلَب الوسيط قط. الآن الوسيط أولاً، والمحلي شبكة أمان إن تعذّر. */
   async function iceServers() {
     const conf = cfg();
     const list = conf.iceServers.slice();
@@ -125,57 +196,29 @@
     if (override) {
       list.push(...override);
       state.note = 'تُستخدم بيانات TURN مؤقتة من الكونسول (تجربة على هذا الجهاز فقط).';
-    }
-    if (local) {
-      list.push(...local);
-      if (!override) state.note = 'تُستخدم بيانات TURN من ملف محلي (turn.local.js).';
-    }
-    if (override) {
-      /* تجاوز الكونسول يعني: لا طلب من الوسيط ولا ملف محلي */
-    } else if (conf.turn && conf.turn.urls) {
-      const urls = Array.isArray(conf.turn.urls) ? conf.turn.urls : [conf.turn.urls];
-      if (urls.length) list.push({ urls, username: conf.turn.username || '', credential: conf.turn.credential || '' });
-    }
-    if (conf.turnFetchUrl && !override && !local) {
-      const controller = typeof global.AbortController === 'function' ? new global.AbortController() : null;
-      const timer = controller ? global.setTimeout(() => controller.abort(), conf.turnFetchTimeoutMs) : null;
-      try {
-        const response = await fetch(conf.turnFetchUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: '{}',
-          cache: 'no-store',
-          credentials: 'omit',
-          signal: controller ? controller.signal : undefined
-        });
-        if (!response.ok) throw new Error('HTTP ' + response.status);
-        const data = await response.json();
-        /* نقبل ثلاث صيغ شائعة: {urls,...} أو [ {urls,...}, ... ] أو {iceServers:[...]} */
-        const entries = Array.isArray(data) ? data
-          : Array.isArray(data && data.iceServers) ? data.iceServers
-          : data && data.urls ? [data] : [];
-        let gotTurn = false;
-        entries.forEach((entry) => {
-          if (!entry) return;
-          const urls = entry.urls || entry.url;
-          if (!urls) return;
-          const isTurn = Array.isArray(urls)
-            ? urls.some((u) => /^turns?:/i.test(String(u)))
-            : /^turns?:/i.test(String(urls));
-          list.push({
-            urls,
-            username: entry.username || '',
-            credential: entry.credential || entry.password || ''
-          });
-          if (isTurn) gotTurn = true;
-        });
-        if (!gotTurn) state.note = 'لم نستلم خادم ترحيل (TURN)؛ تنجح المكالمة على الواي فاي وقد تفشل على شبكات الجوال.';
-      } catch (e) {
-        state.note = e && e.name === 'AbortError'
-          ? 'تأخّر خادم TURN؛ نكمل بـSTUN (قد تفشل المكالمة على شبكات الجوال).'
-          : 'تعذّر جلب بيانات TURN؛ قد تفشل المكالمة على بعض الشبكات.';
-      } finally {
-        if (timer) global.clearTimeout(timer);
+      state.turnSource = 'override';
+    } else {
+      const fetched = conf.turnFetchUrl ? await fetchTurn(conf) : null;
+      if (fetched && hasTurn(fetched.entries)) {
+        list.push(...fetched.entries);
+        state.turnSource = 'proxy';
+      } else if (local) {
+        list.push(...local);
+        state.turnSource = 'local';
+        state.note = fetched
+          ? 'تعذّر وسيط TURN؛ رجعنا إلى بيانات ملف محلي (turn.local.js) المكشوفة للزوّار.'
+          : 'تُستخدم بيانات TURN من ملف محلي (turn.local.js).';
+      } else if (fetched && fetched.entries.length) {
+        list.push(...fetched.entries);           /* الوسيط أعطى STUN فقط */
+        state.turnSource = 'proxy';
+      } else if (conf.turn && conf.turn.urls) {
+        const urls = Array.isArray(conf.turn.urls) ? conf.turn.urls : [conf.turn.urls];
+        if (urls.length) list.push({ urls, username: conf.turn.username || '', credential: conf.turn.credential || '' });
+        state.turnSource = 'static';
+      }
+      if (fetched && fetched.note && !state.note) state.note = fetched.note;
+      if (!hasTurn(list) && !state.note) {
+        state.note = 'لم نستلم خادم ترحيل (TURN)؛ تنجح المكالمة على الواي فاي وقد تفشل على شبكات الجوال.';
       }
     }
     if (!list.length) list.push({ urls: 'stun:stun.l.google.com:19302' });
@@ -1118,6 +1161,8 @@
       answerSent: state.answerSent,
       offerRetries: state.offerRetries,
       iceServers: cfg().iceServers.length + (global.WT_TURN_LOCAL ? 1 : 0),
+      turnSource: state.turnSource,
+      turnProxyConfigured: !!cfg().turnFetchUrl,
       turnLocal: !!turnLocal(),
       note: state.note,
       lastError: state.lastError
