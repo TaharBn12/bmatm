@@ -7,7 +7,7 @@ window.WT_CONFIG = {
 
   /* بصمة الإصدار: تظهر في لوحة الأوامر (Ctrl+K) وفي نافذة الاختصارات (؟).
      غيّرها عند كل نشر لتتأكّد أن متصفحك يعرض النسخة الجديدة لا نسخة مخزّنة. */
-  build: '2026-10-23.3',
+  build: '2026-10-23.4',
 
   /* ---------- 1) Supabase (للاستضافة العادية: cPanel / Netlify / GitHub Pages) ----------
      Dashboard → Project Settings → API
@@ -84,7 +84,15 @@ window.WT_CONFIG = {
       { urls: 'stun:stun1.l.google.com:19302' }
     ],
     /* TURN — ثلاث طرق، اختر واحدة:
-       1) الإنتاج (الأفضل): turnFetchUrl إلى وسيطك (tools/turn/) فيعيد بيانات مؤقتة.
+       1) الإنتاج (الأفضل): turnFetchUrl إلى وسيطك فيعيد بيانات مؤقتة.
+          المضبوط أدناه هو دالة Supabase Edge Function المنشورة باسم wt-turn
+          (المصدر: tools/turn/supabase-edge.ts). المفتاح الحقيقي يعيش في
+          Supabase → Edge Functions → Secrets ولا يصل إلى المتصفح أبداً:
+            ALLOWED_ORIGIN  أصول موقعك مفصولة بفاصلة
+            METERED_APP + METERED_KEY   ← بيانات مؤقتة (الأفضل)
+            TURN_STATIC                 ← بديل JSON إن لم يكن عندك مفتاح API
+          قبل ضبط السرّ تعيد الدالة 503، فيرتدّ العميل تلقائياً إلى
+          turn.local.js ثم إلى STUN — لا تتعطّل المكالمة.
        2) تجربة على جهازك فقط: من كونسول المتصفح (لا يدخل المستودع):
             window.WT_TURN_OVERRIDE = [
               { urls: 'stun:stun.relay.metered.ca:80' },
@@ -94,7 +102,7 @@ window.WT_CONFIG = {
        3) turn ثابت هنا: ممنوع على موقع عام — كل زائر يقرأه ويستهلك حصّتك.
           (اختبارات المشروع تُفشل البناء إن وُجدت credential مضمّنة.) */
     turn: null,                  /* { urls, username, credential } — للتجربة المحلية فقط */
-    turnFetchUrl: null,          /* نقطة نهاية تعيد بيانات TURN مؤقتة */
+    turnFetchUrl: 'https://cazwkhcbkzhnsluuafwz.supabase.co/functions/v1/wt-turn',
     turnFetchTimeoutMs: 5000     /* لا نُبطئ بدء المكالمة إن تعطّل الخادم */
   },
 

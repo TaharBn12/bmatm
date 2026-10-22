@@ -262,6 +262,9 @@ async function boot(server, clock, options) {
   sandbox.Date = class FakeDate extends Date { static now() { return clock.now(); } };
   sandbox.AudioContext = undefined;
   if (options.config) sandbox.WT_CONFIG = options.config;
+  /* وسيط TURN: نتحكم في استجابته لنختبر الترتيب (وسيط ← ملف محلي ← STUN) */
+  sandbox.fetch = options.fetch || (async () => { throw new Error('no fetch in test'); });
+  sandbox.AbortController = AbortController;
   /* أحداث النافذة: نسجّلها كي نستطيع اختبار pagehide/visibilitychange */
   sandbox.__windowEvents = {};
   sandbox.addEventListener = (type, fn) => { (sandbox.__windowEvents[type] = sandbox.__windowEvents[type] || []).push(fn); };
@@ -282,7 +285,9 @@ async function boot(server, clock, options) {
   sandbox.WTIcons = { html: (name, size) => '<svg data-icon="' + name + '" width="' + (size || 16) + '"></svg>' };
   sandbox.WTAuth = {
     accountUser: () => ({ id: server.me }),
-    validSession: async () => ({ access_token: 't', user: { id: server.me } })
+    validSession: async () => ({ access_token: 't', user: { id: server.me } }),
+    /* جلسة المستخدم: يفضّلها calls.js على مفتاح anon عند طلب وسيط TURN */
+    getSession: () => (options.session === undefined ? { access_token: 'user-token-123' } : options.session)
   };
   sandbox.WTSocial = {
     call: (method, args) => server.rpc(method, args),
@@ -529,6 +534,113 @@ async function boot(server, clock, options) {
   t('ملف محلي: الاعتماد يُرفَق', servers.some((e) => e.credential === 'local-pass'));
   t('ملف محلي: يُعلم المستخدم بالمصدر', /ملف محلي/.test(app.sandbox.WTCalls._internal.state.note));
   t('ملف محلي: يُقدَّم على طلب الوسيط', !/turnFetchUrl/.test(flat));
+}
+
+/* ============ 6ج2) وسيط الخادم يُقدَّم على الملف المحلي ============ */
+{
+  /* هذا هو الانحدار الذي أبطل الوسيط: كان الطلب مشروطاً بـ!local، وturn.local.js
+     يُحمَّل فعلاً في messages.html، فلم يُطلَب الوسيط قط. */
+  const clock = makeClock();
+  const server = makeServer(clock);
+  const asked = [];
+  const app = await boot(server, clock, {
+    config: {
+      supabase: { url: 'https://proj.supabase.co', anonKey: 'anon-key-abc' },
+      calls: { enabled: true, turnFetchUrl: 'https://proj.supabase.co/functions/v1/wt-turn' }
+    },
+    fetch: async (url, init) => {
+      asked.push({ url, init });
+      return { ok: true, status: 200, json: async () => [{ urls: 'turn:proxy.relay.test:443', username: 'proxy-u', credential: 'proxy-p' }] };
+    }
+  });
+  app.sandbox.WT_TURN_LOCAL = [{ urls: 'turn:global.relay.metered.ca:80', username: 'local-user', credential: 'local-pass' }];
+  const calls = app.sandbox.WTCalls;
+  calls.attach({ id: server.thread, peer: { user_id: server.peer, display_name: 'رفيق الاختبار', allow_calls: true }, canSend: true });
+  await calls.start();
+  await settle(2);
+  server.live().state = 'active';
+  server.live().answered_at = new Date(clock.now()).toISOString();
+  await clock.advance(1500, 300);
+  const servers = (app.peers[0] && app.peers[0].conf.iceServers) || [];
+  const flat = servers.map((e) => [].concat(e.urls).join(' ')).join(' ');
+  const headers = (asked[0] && asked[0].init && asked[0].init.headers) || {};
+  t('وسيط: يُطلب فعلاً مع وجود ملف محلي', asked.length === 1 && /\/functions\/v1\/wt-turn$/.test(asked[0].url), JSON.stringify(asked.map(a => a.url)));
+  t('وسيط: بياناته هي التي تصل WebRTC', /turn:proxy\.relay\.test:443/.test(flat) && servers.some((e) => e.credential === 'proxy-p'), flat);
+  t('وسيط: بيانات الملف المكشوفة لا تُستعمل معه', !/relay\.metered\.ca/.test(flat) && !servers.some((e) => e.credential === 'local-pass'), flat);
+  t('وسيط: المصدر مُعلن للتشخيص', calls._internal.state.turnSource === 'proxy', calls._internal.state.turnSource);
+  t('وسيط: بلا تحذير في الواجهة', calls._internal.state.note === '', calls._internal.state.note);
+  t('وسيط: POST وبلا تخزين', asked[0].init.method === 'POST' && asked[0].init.cache === 'no-store');
+  t('وسيط: مفتاح المشروع يُرسل لمشروعنا فقط', headers.apikey === 'anon-key-abc', JSON.stringify(headers));
+  t('وسيط: جلسة المستخدم تُفضَّل على anon', headers.Authorization === 'Bearer user-token-123', headers.Authorization);
+}
+
+/* ============ 6ج3) تعذّر الوسيط ⇒ ارتداد إلى الملف المحلي ============ */
+{
+  const clock = makeClock();
+  const server = makeServer(clock);
+  const app = await boot(server, clock, {
+    config: {
+      supabase: { url: 'https://proj.supabase.co', anonKey: 'anon-key-abc' },
+      calls: { enabled: true, turnFetchUrl: 'https://proj.supabase.co/functions/v1/wt-turn' }
+    },
+    fetch: async () => ({ ok: false, status: 503, json: async () => ({ error: 'server not configured' }) })
+  });
+  app.sandbox.WT_TURN_LOCAL = [{ urls: 'turn:global.relay.metered.ca:80', username: 'local-user', credential: 'local-pass' }];
+  const calls = app.sandbox.WTCalls;
+  calls.attach({ id: server.thread, peer: { user_id: server.peer, display_name: 'رفيق الاختبار', allow_calls: true }, canSend: true });
+  await calls.start();
+  await settle(2);
+  server.live().state = 'active';
+  server.live().answered_at = new Date(clock.now()).toISOString();
+  await clock.advance(1500, 300);
+  const servers = (app.peers[0] && app.peers[0].conf.iceServers) || [];
+  const flat = servers.map((e) => [].concat(e.urls).join(' ')).join(' ');
+  t('ارتداد: المكالمة لا تتعطّل بسبب 503', /turn:global\.relay\.metered\.ca/.test(flat) && servers.some((e) => e.credential === 'local-pass'), flat);
+  t('ارتداد: المصدر local في التشخيص', calls._internal.state.turnSource === 'local', calls._internal.state.turnSource);
+  t('ارتداد: يُقال للمستخدم بلا تجميل', /تعذّر وسيط TURN؛ رجعنا/.test(calls._internal.state.note), calls._internal.state.note);
+}
+
+/* ============ 6ج4) بلا وسيط ولا ملف: لا حالة نجاح كاذبة ============ */
+{
+  const clock = makeClock();
+  const server = makeServer(clock);
+  const app = await boot(server, clock, { config: { calls: { enabled: true } } });
+  const calls = app.sandbox.WTCalls;
+  calls.attach({ id: server.thread, peer: { user_id: server.peer, display_name: 'رفيق الاختبار', allow_calls: true }, canSend: true });
+  await calls.start();
+  await settle(2);
+  server.live().state = 'active';
+  server.live().answered_at = new Date(clock.now()).toISOString();
+  await clock.advance(1500, 300);
+  const servers = (app.peers[0] && app.peers[0].conf.iceServers) || [];
+  const flat = servers.map((e) => [].concat(e.urls).join(' ')).join(' ');
+  t('بلا TURN: يبقى STUN ولا تُترك القائمة فارغة', /stun:/.test(flat) && servers.length > 0, flat);
+  t('بلا TURN: تحذير صريح لا صمت', /لم نستلم خادم ترحيل/.test(calls._internal.state.note), calls._internal.state.note);
+  t('بلا TURN: المصدر none', calls._internal.state.turnSource === 'none', calls._internal.state.turnSource);
+}
+
+/* ============ 6ج5) نطاق غريب لا يأخذ مفاتيحنا ============ */
+{
+  const clock = makeClock();
+  const server = makeServer(clock);
+  const asked = [];
+  const app = await boot(server, clock, {
+    config: {
+      supabase: { url: 'https://proj.supabase.co', anonKey: 'anon-key-abc' },
+      calls: { enabled: true, turnFetchUrl: 'https://evil.example.test/turn' }
+    },
+    fetch: async (url, init) => { asked.push({ url, init }); return { ok: true, status: 200, json: async () => [{ urls: 'turn:evil.example.test:443', username: 'e', credential: 'e' }] }; }
+  });
+  const calls = app.sandbox.WTCalls;
+  calls.attach({ id: server.thread, peer: { user_id: server.peer, display_name: 'رفيق الاختبار', allow_calls: true }, canSend: true });
+  await calls.start();
+  await settle(2);
+  server.live().state = 'active';
+  server.live().answered_at = new Date(clock.now()).toISOString();
+  await clock.advance(1500, 300);
+  const headers = (asked[0] && asked[0].init && asked[0].init.headers) || {};
+  t('نطاق غريب: لا مفتاح مشروع ولا جلسة في الترويسات',
+    !headers.apikey && !headers.Authorization && Object.keys(headers).join(',') === 'Content-Type', JSON.stringify(headers));
 }
 
 /* ==================== 6د) كلمة مرور لم تُملأ تُتجاهل ==================== */

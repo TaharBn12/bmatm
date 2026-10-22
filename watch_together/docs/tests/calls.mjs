@@ -173,8 +173,22 @@ t('social.js: الطرق الجديدة مسجّلة', ['calls_pref', 'call_star
 t('config.js: قسم المكالمات مضبوط', /calls:\s*\{/.test(config) && /enabled: true/.test(config) &&
   /ringTimeoutMs: 45000/.test(config) && /maxCallMs/.test(config));
 const configCode = config.replace(/\/\*[\s\S]*?\*\//g, '');
-t('config.js: TURN قابل للضبط بلا مفاتيح مضمّنة', /turnFetchUrl: null/.test(configCode) && /turn: null/.test(configCode) &&
-  !/credential:\s*'[^']+'/.test(configCode));
+/* الغاية: ألا يُضمَّن أي مفتاح في ملف يُشحن للمتصفح. أمّا «turnFetchUrl يجب أن
+   يكون null» فكان تثبيتاً لوضع قديم: الوسيط المنشور هو الحل المطلوب، فنفحص
+   أنه إمّا null وإمّا دالة wt-turn على نفس مشروع Supabase. */
+t('config.js: TURN بلا مفاتيح مضمّنة', /turn: null/.test(configCode) &&
+  !/credential:\s*'[^']+'/.test(configCode) && !/METERED_KEY|apiKey=/.test(configCode) &&
+  (/turnFetchUrl: null/.test(configCode) ||
+   /turnFetchUrl: 'https:\/\/[a-z0-9]+\.supabase\.co\/functions\/v1\/wt-turn'/.test(configCode)));
+/* سبب هذا الفحص: calls.js يرسل مفتاح المشروع وجلسة المستخدم مع طلب الوسيط،
+   فلو أشار الرابط إلى نطاق آخر لتسرّبت مفاتيحنا إليه. */
+t('config.js: وسيط TURN على نفس مشروع Supabase', (() => {
+  /* [^/']+ لا [^/]+ : علامة الاقتباس ليست / فبدون استثنائها يبتلع المطابق
+     بقية الملف حتى آخر اقتباس، ويقارن نصاً طويلاً بدل اسم النطاق. */
+  const project = configCode.match(/url: 'https:\/\/([^/']+)'/);
+  const proxy = configCode.match(/turnFetchUrl: 'https:\/\/([^/]+)\//);
+  return !proxy || (!!project && project[1] === proxy[1]);
+})(), (configCode.match(/turnFetchUrl: '([^']*)'/) || [, 'null'])[1]);
 t('config.js: خادم STUN افتراضي', /stun:stun\.l\.google\.com:19302/.test(config));
 t('config.js: مهلة جلب TURN مضبوطة', /turnFetchTimeoutMs: 5000/.test(config));
 t('docs/turn-setup.md: دليل TURN موجود ويشرح الخيارات', exists('docs/turn-setup.md') &&
@@ -320,6 +334,28 @@ t('سجل المكالمة نصّي بلا بيانات حساسة', (() => {
   t('calls.js: يقرأ الملف المحلي', /function turnLocal\(\)/.test(calls) && /global\.WT_TURN_LOCAL/.test(calls));
   t('calls.js: يتجاهل كلمة المرور غير المملوءة', /TURN_PLACEHOLDER/.test(calls));
   t('calls.js: الكونسول يتقدّم على الملف المحلي', /const override = turnOverride\(\);\s*\n\s*const local = turnLocal\(\);/.test(calls));
+}
+
+/* ==================== 8ب) وسيط الخادم هو المصدر الأول ==================== */
+{
+  /* كان الطلب مشروطاً بغياب الملف المحلي (!local)، وبما أن turn.local.js يُحمَّل
+     فعلاً في messages.html لم يُطلَب الوسيط قط — فبقيت البيانات المكشوفة هي
+     المستعملة دائماً. الترتيب الآن: وسيط ← ملف محلي ← ثابت ← STUN. */
+  const iProxy = calls.indexOf('await fetchTurn(conf)');
+  const iLocal = calls.indexOf('} else if (local) {');
+  const iStatic = calls.indexOf('} else if (conf.turn && conf.turn.urls) {');
+  t('calls.js: الوسيط يُجرَّب قبل الملف المحلي', iProxy > 0 && iLocal > iProxy, 'proxy=' + iProxy + ' local=' + iLocal);
+  t('calls.js: الملف المحلي قبل الثابت', iLocal > 0 && iStatic > iLocal);
+  t('calls.js: فشل الوسيط يرتدّ ولا يوقف المكالمة', /تعذّر وسيط TURN؛ رجعنا إلى/.test(calls) &&
+    /catch \(e\) \{\s*\n\s*return \{\s*\n\s*entries: \[\]/.test(calls));
+  t('calls.js: يميّز STUN وحده عن TURN', /function hasTurn\(/.test(calls));
+  t('calls.js: لا يرسل مفاتيح المشروع إلى نطاق غريب', /function turnHeaders\(/.test(calls) &&
+    /hostOf\(url\) !== hostOf\(sb\.url\)\) return headers;/.test(calls) &&
+    /headers\.apikey = sb\.anonKey;/.test(calls));
+  t('calls.js: يفضّل جلسة المستخدم على مفتاح anon', /session && session\.access_token/.test(calls));
+  t('calls.js: مصدر TURN ظاهر في لقطة التشخيص', /turnSource: state\.turnSource/.test(calls) &&
+    /turnProxyConfigured: !!cfg\(\)\.turnFetchUrl/.test(calls));
+  t('calls.js: يطلب الوسيط بـPOST ولا يخزّن', /method: 'POST'/.test(calls) && /cache: 'no-store'/.test(calls));
 }
 
 /* ==================== 9) تشخيص فشل الإعداد ==================== */

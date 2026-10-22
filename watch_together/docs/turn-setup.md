@@ -128,7 +128,7 @@ curl -s "https://<appname>.metered.live/api/v1/turn/credentials?apiKey=<API_KEY>
 
 | الخادم | الملف | الأمر |
 |--------|-------|-------|
-| Supabase Edge Function | [`tools/turn/supabase-edge.ts`](../tools/turn/supabase-edge.ts) | `supabase functions deploy turn --no-verify-jwt` ثم `supabase secrets set METERED_APP=… METERED_KEY=… ALLOWED_ORIGIN=https://موقعك` |
+| Supabase Edge Function (**منشور فعلاً** باسم `wt-turn`) | [`tools/turn/supabase-edge.ts`](../tools/turn/supabase-edge.ts) | `supabase functions deploy wt-turn --no-verify-jwt` ثم `supabase secrets set METERED_APP=… METERED_KEY=… ALLOWED_ORIGIN=https://موقعك` |
 | Cloudflare Worker | [`tools/turn/cloudflare-worker.js`](../tools/turn/cloudflare-worker.js) | `wrangler secret put METERED_KEY` … ثم `wrangler deploy` |
 | استضافة PHP/cPanel | [`tools/turn/turn.php`](../tools/turn/turn.php) | ارفعه إلى جذر الموقع واضبط `SetEnv` |
 
@@ -169,10 +169,23 @@ CGNAT، شبكات المقاهي والجامعات، بعض VPN). بدون TUR
 
 من `assets/js/calls.js`:
 
-1. عند بدء المكالمة (مرة واحدة) يجمع الخوادم:
+1. عند بدء المكالمة (مرة واحدة) يجمع الخوادم **بهذا الترتيب** — الأول الذي ينجح يُستعمل:
    - `calls.iceServers` (STUN) دائماً.
-   - `calls.turn` إن وُجد (بيانات ثابتة).
+   - `window.WT_TURN_OVERRIDE` إن وُجد (تجربة يدوية من الكونسول، تتقدّم على الكل).
    - **`calls.turnFetchUrl`:** طلب `POST` بجسم `{}`، مع مهلة `turnFetchTimeoutMs`.
+     هذا هو مسار الإنتاج: المفتاح يبقى على الخادم ولا يصل إلى المتصفح.
+   - `assets/js/turn.local.js` — **شبكة أمان** إن تعذّر الوسيط (بياناته مكشوفة للزوّار).
+   - `calls.turn` إن وُجد (بيانات ثابتة في `config.js` — ممنوعة على موقع عام).
+
+   > كان الوسيط مشروطاً بغياب `turn.local.js`، وبما أن الملف يُحمَّل فعلاً في
+   > `messages.html` فلم يُطلب الوسيط قط وبقيت البيانات المكشوفة هي المستعملة
+   > دائماً. الترتيب أعلاه هو الإصلاح؛ والمصدر المستعمَل ظاهر في
+   > `WTCalls.debug().turnSource` (`proxy` / `local` / `override` / `static` / `none`).
+
+   **الترويسات:** إن كان رابط الوسيط على نفس مشروع Supabase المضبوط في
+   `config.js` يُرسَل معه `apikey` و`Authorization: Bearer <رمز الجلسة>`. وإن أشار
+   الرابط إلى نطاق آخر تُحذف الترويسات كلها — فلا تتسرّب مفاتيح مشروعك إلى
+   وسيط غريب إن تغيّر الرابط يوماً.
 2. يقبل **ثلاث صيغ** للاستجابة:
    ```json
    { "urls": "turn:host:443", "username": "u", "credential": "p" }
@@ -184,9 +197,10 @@ CGNAT، شبكات المقاهي والجامعات، بعض VPN). بدون TUR
    { "iceServers": [ { "urls": "...", "username": "...", "credential": "..." } ] }
    ```
 3. إن فشل الطلب أو تأخّر أو لم يحتوِ أي `turn:`/`turns:`:
-   - **لا تتعطّل المكالمة** — يكمل بـSTUN فقط.
-   - تظهر في شاشة الرنين ملاحظة عربية: «تعذّر جلب بيانات TURN…» أو «لم نستلم خادم
-     ترحيل (TURN)…» — أي أن الواجهة تخبرك بالسبب بدلاً من الفشل الصامت.
+   - **لا تتعطّل المكالمة** — يرتدّ إلى `turn.local.js` ثم إلى STUN فقط.
+   - تظهر في شاشة الرنين ملاحظة عربية صريحة: «تعذّر وسيط TURN؛ رجعنا إلى بيانات
+     ملف محلي (turn.local.js) المكشوفة للزوّار.» أو «لم نستلم خادم ترحيل (TURN)…» —
+     أي أن الواجهة تخبرك بالسبب بدلاً من حالة نجاح كاذبة.
 
 **لذلك شكل الاستجابة عندك = العقد الوحيد الذي يجب أن يحترمه خادمك.**
 
@@ -259,42 +273,50 @@ wrangler secret put ALLOWED_ORIGIN  # https://your-site.com
 > «غير بسيط» ويسبقه **preflight**. إن لم يُجب خادمك عن `OPTIONS` بالفؤوس أعلاه
 > فسيفشل جلب TURN في المتصفح رغم أن `curl` يعمل.
 
-### 4.3 الخيار 2: Supabase Edge Function (أنت على Supabase أصلاً)
+### 4.3 الخيار 2: Supabase Edge Function — **هذا هو المنشور عندك الآن**
 
-```ts
-// supabase/functions/turn/index.ts
-const cors = {
-  'Access-Control-Allow-Origin': Deno.env.get('ALLOWED_ORIGIN') ?? '*',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'content-type',
-  'Cache-Control': 'no-store'
-};
+الدالة منشورة على المشروع `cazwkhcbkzhnsluuafwz` باسم **`wt-turn`**
+(`verify_jwt = false`)، ومصدرها في المستودع:
+[`tools/turn/supabase-edge.ts`](../tools/turn/supabase-edge.ts) — نفس النص المنشور،
+فلا انحراف بين الاثنين. والرابط مضبوط فعلاً في `config.js`:
 
-Deno.serve(async (req) => {
-  if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
-  if (req.method !== 'POST') return new Response('Method Not Allowed', { status: 405, headers: cors });
-
-  const app = Deno.env.get('METERED_APP');
-  const key = Deno.env.get('METERED_KEY');
-  if (!app || !key) return new Response(JSON.stringify({ error: 'missing secrets' }), { status: 500, headers: { ...cors, 'Content-Type': 'application/json' } });
-
-  const upstream = await fetch(`https://${app}.metered.live/api/v1/turn/credentials?apiKey=${key}`);
-  if (!upstream.ok) return new Response(JSON.stringify({ error: 'upstream' }), { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } });
-
-  return new Response(await upstream.text(), { headers: { ...cors, 'Content-Type': 'application/json' } });
-});
+```js
+turnFetchUrl: 'https://cazwkhcbkzhnsluuafwz.supabase.co/functions/v1/wt-turn'
 ```
+
+**ما يبقى لك خطوة واحدة: السرّ.** حتى تضبطه تعيد الدالة `503` بخطأ صريح
+(`server not configured`)، ويرتدّ العميل تلقائياً إلى `turn.local.js` — فلا
+تتعطّل المكالمات في هذه الأثناء.
+
+Supabase → Edge Functions → Secrets، اختر **أحد** الوضعين:
+
+| الوضع | الأسرار | النتيجة |
+|---|---|---|
+| 1 (الأفضل) | `METERED_APP` + `METERED_KEY` | بيانات **مؤقتة** من `<app>.metered.live` تنتهي صلاحيتها، مع كاش 60 ثانية |
+| 2 (بديل) | `TURN_STATIC` | JSON ثابت، مثال: `[{"urls":"turn:global.relay.metered.ca:80","username":"…","credential":"…"}]` — يناسب Open Relay إن لم يكن عندك مفتاح API |
+
+و`ALLOWED_ORIGIN` مضبوط مسبقاً على `https://taharbn12.github.io` (أضف إليه أي أصل
+تعاينة مؤقت بفاصلة). **قائمة فارغة = رفض الكل** — لا `*` في الإنتاج.
+
+إعادة النشر بعد أي تعديل على المصدر:
 
 ```bash
-supabase secrets set METERED_APP=yourapp METERED_KEY=xxxx ALLOWED_ORIGIN=https://your-site.com
-supabase functions deploy turn --no-verify-jwt   # ← مهم: عميلنا لا يرسل JWT لهذا الطلب
+supabase functions deploy wt-turn --no-verify-jwt
+supabase secrets set METERED_APP=yourapp METERED_KEY=xxxx ALLOWED_ORIGIN=https://taharbn12.github.io
 ```
 
-`turnFetchUrl: 'https://<project-ref>.supabase.co/functions/v1/turn'`.
+أو عبر API (موصل Supabase): `update_edge_function` + `create_secrets` — وهذا ما
+نفّذه الوكيل فعلياً.
 
-> ⚠️ بدون `--no-verify-jwt` ستحصل على **401** ولن يُجلب TURN. إن أردت حماية أقوى:
-> أرسل رمز جلسة Supabase من العميل وأزل `--no-verify-jwt` (أستطيع إضافة هذا الخيار
-> لكود `calls.js` إن رغبت).
+> ⚠️ بدون `--no-verify-jwt` ستحصل على **401** ولن يُجلب TURN.
+> الحماية الحالية: أصل مسموح + حدّ 30 طلباً/دقيقة لكل IP + `no-store`.
+> إن أردت حماية أقوى (رمز جلسة المستخدم إلزامي) فالعميل يرسله فعلاً في
+> `Authorization` — يلزم فقط إعادة النشر بـ`verify_jwt = true` وفحص الدور داخل
+> الدالة؛ قل لي وأنفّذها.
+
+**بعد ضبط السرّ:** اجعل `window.WT_TURN_LOCAL = null` في
+`assets/js/turn.local.js` حتى تتوقف بيانات الاعتماد عن الظهور لكل زائر، ثم
+تأكّد من `WTCalls.debug().turnSource === 'proxy'`.
 
 ### 4.4 الخيار 3: PHP على استضافة cPanel (المشروع يدعمها)
 
