@@ -63,9 +63,13 @@ const run = async () => {
   const mainSlice = html.slice(html.indexOf('id="roomMain"'), html.indexOf('<!-- ===== سكربتات'));
   const chatTag = mainSlice.indexOf('<section class="chat');           /* بداية بطاقة الرسائل نفسها */
   const between = mainSlice.slice(mainSlice.indexOf('id="mediaShell"'), chatTag);
+  /* كل ما داخل بطاقة المشغّل مسموح — بما فيه «شريط اللحظات» (momentsRail):
+     تفاعلات مثبتة على خط زمني منفصل، وهي جزء من المشغّل لا فاصلاً بينه وبين الرسائل.
+     (features.js يبنيها وfeatures.css ينسّقها؛ كانت غائبة هنا فكسر الاختبارَ إضافةُ ميزة.) */
   const allowedIds = new Set(['mediaShell', 'stage', 'player', 'playerPlaceholder', 'centerPlayBtn', 'videoFullscreenBtn', 'clickLayer',
     'ctrlbar', 'videoFullscreenBtn', 'iconPlay', 'iconPause', 'curTime', 'durTime', 'progressBar', 'progressBuffer',
-    'progressFill', 'progressKnob', 'progressTip', 'muteBtn', 'iconSound', 'iconMuted']);
+    'progressFill', 'progressKnob', 'progressTip', 'muteBtn', 'iconSound', 'iconMuted',
+    'momentsRail', 'momentsTrack', 'momentsHead', 'momentsAdd']);
   const strayIds = [...between.matchAll(/id="([^"]+)"/g)].map(m => m[1]).filter(id => !allowedIds.has(id));
   const strayClasses = [...between.matchAll(/class="([^"]+)"/g)].map(m => m[1])
     .flatMap(c => c.split(/\s+/)).filter(c => ['room-bar', 'player-actions', 'change-bar', 'chat', 'player-action', 'rtopbar', 'drawer-open'].includes(c));
