@@ -275,6 +275,17 @@ t('سجل المكالمة نصّي بلا بيانات حساسة', (() => {
   t('calls.js: مؤقّت اتصال بدل «يُفتح المسار» إلى الأبد', /function armConnect/.test(calls) && /تعذّر إيصال الصوت/.test(calls));
   t('calls.js: لقطة تشخيص WTCalls.debug()', /function debug\(\)/.test(calls) && /toggleMute, debug,/.test(calls));
 
+  /* ---- الهاتف: اهتزاز، شاشة لا تُقفل، وعودة من قفل الشاشة ---- */
+  t('calls.js: الاهتزاز يتكرّر مع دورة الرنين', /function buzz\(/.test(calls) &&
+    /buzz\(\[220, 160, 220\]\)/.test(calls));
+  t('calls.js: الاهتزاز يُطفأ من الإعداد', /vibrate: raw\.vibrate !== false/.test(calls) &&
+    /if \(cfg\(\)\.vibrate === false\) return;/.test(calls));
+  t('calls.js: اهتزاز عند الردّ وعند الإنهاء', /buzz\(70\)/.test(calls) && /buzz\(\['missed'/.test(calls));
+  t('calls.js: الشاشة لا تُقفل أثناء الرنين', /startRinger[\s\S]{0,900}requestWakeLock\(\)/.test(calls));
+  t('calls.js: العودة من قفل الشاشة تُعيد الصوت', /visibilitychange/.test(calls) &&
+    /state\.audioCtx\.state === 'suspended'/.test(calls) && /state\.remoteStream && state\.audio/.test(calls));
+  t('config.js: مفتاح الاهتزاز موثّق', /vibrate: true/.test(read('assets/js/config.js')));
+
   const sqlNow = read('docs/sql/09-calls.sql');
   t('SQL: نبضة آخر نشاط', /last_seen_at/.test(sqlNow) && /create or replace function wt_social_private\.call_touch/.test(sqlNow));
   t('SQL: يُغلق المكالمة النشطة المهجورة', /state = 'active'[\s\S]{0,240}interval '10 minutes'/.test(sqlNow));

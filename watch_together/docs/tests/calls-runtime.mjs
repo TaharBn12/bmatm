@@ -247,8 +247,8 @@ async function boot(server, clock, options) {
         });
       }
     },
-    vibrate: () => true,
-    wakeLock: null
+    vibrate: (pattern) => { vibrations.push(pattern); return true; },
+    wakeLock: { request: async () => { wakeRequests++; return { addEventListener() {}, release() {} }; } }
   };
   sandbox.location = { hostname: 'example.com', protocol: 'https:', search: '', href: 'https://example.com/messages.html' };
   sandbox.isSecureContext = true;
@@ -270,6 +270,8 @@ async function boot(server, clock, options) {
 
   const toasts = [];
   const confirms = [];
+  const vibrations = [];
+  let wakeRequests = 0;
   let confirmAnswer = true;
 
   sandbox.WTUtil = { esc: (v) => String(v == null ? '' : v), toast: (m, type, ms) => toasts.push({ m, type, ms }), copyText: async () => true };
@@ -321,7 +323,8 @@ async function boot(server, clock, options) {
   vm.runInContext(read('assets/js/calls.js'), sandbox, { filename: 'calls.js' });
 
   return {
-    sandbox, dom, doc, toasts, confirms, server, clock,
+    sandbox, dom, doc, toasts, confirms, server, clock, vibrations,
+    wakeRequests: () => wakeRequests,
     setConfirm(value) { confirmAnswer = value; },
     setStatsBytes(value) { statsBytes = value; },
     peers,
@@ -801,6 +804,51 @@ async function boot(server, clock, options) {
   await clock.advance(2600, 300);
   await settle(4);
   t('إعادة المحاولة: الواجهة نظيفة بعد التصفير', calls.active() === false);
+}
+
+/* ==================== 6س) الهاتف: اهتزاز وشاشة لا تُقفل ==================== */
+{
+  const clock = makeClock();
+  const server = makeServer(clock);
+  const app = await boot(server, clock);
+  const calls = app.sandbox.WTCalls;
+  server.calls.push({
+    id: 'phone-1', thread_id: server.thread, caller_id: server.peer, callee_id: server.me,
+    media: 'audio', state: 'ringing', created_at: new Date(clock.now()).toISOString(),
+    answered_at: null, ended_at: null, end_reason: null, duration_s: 0, last_seen_at: clock.now()
+  });
+  calls.attach({ id: server.thread, peer: { user_id: server.peer, display_name: 'رفيق الاختبار', allow_calls: true }, canSend: true });
+  await calls.pollIncoming();
+  await settle(2);
+  t('هاتف: يهتزّ عند وصول مكالمة', app.vibrations.some((pattern) => Array.isArray(pattern) && pattern.length > 1),
+    JSON.stringify(app.vibrations));
+  const first = app.vibrations.length;
+  t('هاتف: الشاشة لا تُقفل أثناء الرنين', app.wakeRequests() >= 1, String(app.wakeRequests()));
+  /* الرنين يتكرّر كل 2.4 ثانية — والاهتزاز يجب أن يتكرّر معه لا مرة واحدة */
+  await clock.advance(5200, 400);
+  await settle(3);
+  t('هاتف: الاهتزاز يتكرّر مع دورة الرنين', app.vibrations.length >= first + 2,
+    first + ' → ' + app.vibrations.length);
+  await calls.answer(true);
+  await settle(2);
+  t('هاتف: اهتزاز قصير عند الردّ', app.vibrations.some((pattern) => pattern === 70), JSON.stringify(app.vibrations.slice(-3)));
+  calls.end('hangup');
+  await settle(2);
+  t('هاتف: إيقاف الاهتزاز عند الإنهاء', app.vibrations.includes(0), JSON.stringify(app.vibrations.slice(-3)));
+}
+
+/* ==================== 6ش) الهاتف: يمكن إيقاف الاهتزاز من الإعداد ==================== */
+{
+  const clock = makeClock();
+  const server = makeServer(clock);
+  const app = await boot(server, clock, { config: { calls: { enabled: true, vibrate: false } } });
+  const calls = app.sandbox.WTCalls;
+  calls.attach({ id: server.thread, peer: { user_id: server.peer, display_name: 'رفيق الاختبار', allow_calls: true }, canSend: true });
+  await calls.start();
+  await settle(2);
+  calls.end('hangup');
+  await settle(2);
+  t('هاتف: vibrate:false يلغي الاهتزاز كلياً', app.vibrations.length === 0, JSON.stringify(app.vibrations));
 }
 
 /* ==================== 7) تشخيص «متصل بلا صوت» ==================== */
