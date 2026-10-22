@@ -16,7 +16,7 @@
 (function () {
   'use strict';
 
-  /* ✅ عدّل هذين السطرين فقط — اسم المستخدم موجود، وينقصك كلمة المرور */
+  /* بيانات الاعتماد من لوحة Metered. لتغييرها: عدّل السطرين فقط. */
   var USERNAME = 'c27c3311ba7a2107382e8d0e';
   var PASSWORD = 'RwGB7PD7G0WRuURM';     /* كلمة مرور Metered (Open Relay) */
 
