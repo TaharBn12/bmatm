@@ -93,6 +93,24 @@ for (const rule of RULES) {
   t('لا مفاتيح سرّية داخل أي صفحة HTML', inline.length === 0, inline.join(', '));
 }
 
+/* ---------------- 4ب) بيانات TURN الثابتة مسموحة في ملف واحد فقط ---------------- */
+{
+  const CRED = /credential\s*:\s*'[^']{4,}'/;
+  const offenders = files.filter((file) => {
+    if (file === 'assets/js/turn.local.js') return false;     /* الملف المخصّص، معلَّم بتحذير */
+    if (file.startsWith('docs/')) return false;               /* الأمثلة في التوثيق */
+    return CRED.test(read(file)) || /WT_TURN_LOCAL\s*=\s*\[/.test(read(file));
+  });
+  t('لا بيانات اعتماد TURN مضمّنة خارج turn.local.js', offenders.length === 0, offenders.join(', '));
+
+  const config = read('assets/js/config.js');
+  t('config.js: تعليمات النقل مكتوبة', /WT_TURN_OVERRIDE/.test(config) && /turnFetchUrl/.test(config));
+
+  const local = read('assets/js/turn.local.js');
+  t('turn.local.js: تحذير عام قبل البيانات', local.indexOf('يُقرأ من المتصفح') < local.indexOf('WT_TURN_LOCAL'));
+  t('turn.local.js: يشرح كيف يُوقف', /احذف الملف/.test(local));
+}
+
 /* ---------------- 5) دليل المفاتيح موجود ويغطّي الحالات ---------------- */
 {
   const doc = read('docs/credentials.md');

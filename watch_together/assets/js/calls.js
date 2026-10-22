@@ -85,18 +85,48 @@
     return cleaned.length ? cleaned : null;
   }
 
+  /* بيانات TURN من ملف محلّي (assets/js/turn.local.js):
+     مريحة للتجربة، لكنها مرئية لكل زائر — تُفضّل بيانات الوسيط في الإنتاج.
+     نتجاهل أي قيمة لم تُملأ بعد (مكان كلمة المرور). */
+  const TURN_PLACEHOLDER = /ضع-كلمة|PASSWORD|<|your|TODO|xxx/i;
+  function turnLocal() {
+    const raw = global.WT_TURN_LOCAL;
+    if (!raw) return null;
+    const entries = Array.isArray(raw) ? raw : Array.isArray(raw.iceServers) ? raw.iceServers : [raw];
+    const cleaned = entries
+      .map((entry) => {
+        const urls = entry && (entry.urls || entry.url);
+        if (!urls) return null;
+        const isTurn = /^turns?:/i.test([].concat(urls).join(' '));
+        const credential = entry.credential || entry.password || '';
+        if (isTurn && (!credential || TURN_PLACEHOLDER.test(credential))) return null;  /* كلمة المرور لم تُملأ */
+        if (isTurn && (!entry.username || TURN_PLACEHOLDER.test(entry.username))) return null;
+        return { urls, username: entry.username || '', credential };
+      })
+      .filter(Boolean);
+    return cleaned.length ? cleaned : null;
+  }
+
   async function iceServers() {
     const conf = cfg();
     const list = conf.iceServers.slice();
     const override = turnOverride();
+    const local = turnLocal();
     if (override) {
       list.push(...override);
       state.note = 'تُستخدم بيانات TURN مؤقتة من الكونسول (تجربة على هذا الجهاز فقط).';
+    }
+    if (local) {
+      list.push(...local);
+      if (!override) state.note = 'تُستخدم بيانات TURN من ملف محلي (turn.local.js).';
+    }
+    if (override) {
+      /* تجاوز الكونسول يعني: لا طلب من الوسيط ولا ملف محلي */
     } else if (conf.turn && conf.turn.urls) {
       const urls = Array.isArray(conf.turn.urls) ? conf.turn.urls : [conf.turn.urls];
       if (urls.length) list.push({ urls, username: conf.turn.username || '', credential: conf.turn.credential || '' });
     }
-    if (conf.turnFetchUrl && !override) {
+    if (conf.turnFetchUrl && !override && !local) {
       const controller = typeof global.AbortController === 'function' ? new global.AbortController() : null;
       const timer = controller ? global.setTimeout(() => controller.abort(), conf.turnFetchTimeoutMs) : null;
       try {

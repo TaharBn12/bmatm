@@ -273,5 +273,20 @@ t('سجل المكالمة نصّي بلا بيانات حساسة', (() => {
   t('messages.js: يستعيد المكالمة عند الإقلاع', /WTCalls\.reconcile\(\)/.test(messagesNow));
 }
 
+/* ==================== 8) ملف TURN المحلي ==================== */
+{
+  const local = read('assets/js/turn.local.js');
+  const page = read('messages.html');
+  t('turn.local.js موجود ويحمّل WT_TURN_LOCAL', exists('assets/js/turn.local.js') && /window\.WT_TURN_LOCAL\s*=/.test(local));
+  t('turn.local.js: عناوين Metered الأربعة', (local.match(/relay\.metered\.ca/g) || []).length >= 5);
+  t('turn.local.js: يحمل تحذيراً واضحاً', /يُقرأ من المتصفح/.test(local) && /20 غ\.ب/.test(local));
+  t('turn.local.js: لا يحتوي مفتاح API', !/apiKey|METERED_KEY|secretKey/.test(local));
+  t('messages.html: يُحمَّل قبل calls.js', page.indexOf('turn.local.js') > 0 &&
+    page.indexOf('turn.local.js') < page.indexOf('assets/js/calls.js'));
+  t('calls.js: يقرأ الملف المحلي', /function turnLocal\(\)/.test(calls) && /global\.WT_TURN_LOCAL/.test(calls));
+  t('calls.js: يتجاهل كلمة المرور غير المملوءة', /TURN_PLACEHOLDER/.test(calls));
+  t('calls.js: الكونسول يتقدّم على الملف المحلي', /const override = turnOverride\(\);\s*\n\s*const local = turnLocal\(\);/.test(calls));
+}
+
 console.log(`Calls: ${pass} passed, ${fail} failed`);
 if (fail) process.exitCode = 1;

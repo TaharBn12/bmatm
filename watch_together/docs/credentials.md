@@ -138,6 +138,13 @@ SetEnv METERED_KEY xxxxxxxx
 SetEnv ALLOWED_ORIGIN https://your-site.com
 ```
 
+### ب.١) أو بملف محلّي: `assets/js/turn.local.js`
+
+للتجربة السريعة يمكن وضع بيانات Metered في `assets/js/turn.local.js`
+(الملف موجود، ومربوط في `messages.html`). يُقرأ هذا الملف من المتصفح، لذا
+**لا تستخدمه في الإنتاج** إن كان لديك وسيط: أي زائر يستطيع نسخ الاعتماد واستهلاك
+حصّتك (20 غ.ب/شهر). راجع [turn-setup.md](turn-setup.md#ب١-الطريقة-في-ملف--assetsjsturnlocaljs).
+
 ### ج) ما يدخل `config.js` هو **الرابط فقط**
 
 ```js
