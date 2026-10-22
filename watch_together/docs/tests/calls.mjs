@@ -305,6 +305,11 @@ t('سجل المكالمة نصّي بلا بيانات حساسة', (() => {
   t('calls.js يوجّه إلى 09 و11', /09-calls\.sql/.test(calls) && /11-calls-doctor\.sql/.test(calls));
   t('calls.js يميّز تكرار التواقيع', /PGRST203/.test(calls));
   t('calls.js يستعمل الفحص قبل رسالة العالقة', calls.indexOf('failureHint(error)') < calls.indexOf('call_reset'));
+
+  /* الانحدار الذي أوقف المكالمات: pgcrypto في مخطط extensions لا يراه search_path */
+  t('09 لا يستدعي gen_random_bytes (pgcrypto خارج المسار)', !/encode\(gen_random_bytes/.test(sql));
+  t('09 يولّد nonce بدوال مدمجة', /sha256\(convert_to\(gen_random_uuid/.test(sql));
+  t('التشخيص يكشف اعتماد pgcrypto', /gen_random_bytes/.test(doctor) && /pgcrypto/.test(doctor));
 }
 
 console.log(`Calls: ${pass} passed, ${fail} failed`);

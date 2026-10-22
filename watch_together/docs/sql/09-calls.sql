@@ -151,8 +151,15 @@ begin
       else floor(dur/60)::text || ':' || lpad((dur % 60)::text,2,'0') end
   end;
 
+  /* nonce عشوائي 64 حرفاً hex — بـsha256 المدمجة في PostgreSQL.
+     لا تستخدم gen_random_bytes: هي من pgcrypto وتُثبَّت في مخطط extensions،
+     ودوالنا تعمل بـsearch_path = pg_catalog, public → تفشل بـ42883
+     «function gen_random_bytes(integer) does not exist» وهي رسالة لا تشبه
+     سببها إطلاقاً (تظهر للمستخدم كأن 09 لم يُنفَّذ). */
   insert into public.wt_dm_messages(thread_id, sender_id, nonce, body, kind)
-  values (c.thread_id, c.caller_id, encode(gen_random_bytes(32),'hex'), body, 'call');
+  values (c.thread_id, c.caller_id,
+    encode(sha256(convert_to(gen_random_uuid()::text || clock_timestamp()::text,'UTF8')),'hex'),
+    body, 'call');
 
   delete from public.wt_call_signals where call_id = c.id;
   return jsonb_build_object('ok',true,'state',c.state,'end_reason',c.end_reason,'duration_s',c.duration_s,'body',body);

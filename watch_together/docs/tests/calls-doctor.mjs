@@ -144,6 +144,75 @@ await db.exec('drop function public.wt_social_call_end(uuid,text)');
 }
 await db.close();
 
+/* ---------------- 6) دورة مكالمة كاملة على قاعدة حقيقية ---------------- */
+/* يكشف أعطالاً لا يراها أي فحص نصّي: دوال pgcrypto غير المتاحة (42883)،
+   أو منع «مكالمة عالقة» يوقف كل المكالمات، أو nonce لا يطابق قيد الجدول. */
+db = await database();
+await db.exec(SQL('09-calls.sql'));
+{
+  const as = (user, sql, params = []) => db.transaction(async (tx) => {
+    await tx.exec('set local role authenticated');
+    await tx.query("select set_config('request.jwt.claim.sub',$1,true)", [user]);
+    return tx.query(sql, params);
+  });
+  const call = async (user, name, args = {}) => {
+    const keys = Object.keys(args);
+    const result = await as(user, 'select public.' + name + '(' +
+      keys.map((key, i) => key + ' => $' + (i + 1)).join(',') + ') as r',
+      keys.map((key) => typeof args[key] === 'object' && args[key] !== null ? JSON.stringify(args[key]) : args[key]));
+    return result.rows[0].r;
+  };
+
+  /* أي استثناء غير متوقّع يصبح فحصاً فاشلاً واضحاً لا أثراً مكدّساً */
+  let hard = '';
+  try {
+    await call(A, 'wt_social_bootstrap');
+    await call(B, 'wt_social_bootstrap');
+    /* user_low/user_high أعمدة مولّدة — لا تُدرَج */
+    await db.exec(`insert into public.wt_friendships(requester, recipient, status)
+      values ('${A}', '${B}', 'accepted')`);
+    const opened = await call(A, 'wt_social_open_thread', { p_user: B });
+    const thread = { id: opened.id };
+    let started = null, failure = '';
+    try { started = await call(A, 'wt_social_call_start', { p_thread: thread.id, p_media: 'audio' }); }
+    catch (error) { failure = error.code + ' ' + error.message; }
+    t('مكالمة: البدء ينجح بين صديقين', !!started && started.ok === true, failure);
+    t('مكالمة: الحالة رنين صادر', started && started.call.state === 'ringing', started && started.call.state);
+
+    if (started) {
+      const answered = await call(B, 'wt_social_call_answer', { p_call: started.call.id, p_accept: true });
+      t('مكالمة: الرد ينقلها إلى جارية', answered.call.state === 'active', answered.call.state);
+      const put = await call(A, 'wt_social_call_signal_put', { p_call: started.call.id, p_payload: { k: 'offer', sdp: 'v=0' } });
+      t('مكالمة: إشارة WebRTC تُحفظ', put.ok === true);
+      const got = await call(B, 'wt_social_call_signal_get', { p_call: started.call.id, p_after: 0 });
+      t('مكالمة: الإشارة تصل للطرف الآخر', Array.isArray(got.signals) && got.signals.length === 1);
+      const ended = await call(A, 'wt_social_call_end', { p_call: started.call.id, p_reason: 'hangup' });
+      t('مكالمة: الإنهاء يُغلقها', ended.call.state === 'ended', ended.call.state);
+
+      const logged = await db.query("select nonce, kind, body from public.wt_dm_messages where kind='call' order by id desc limit 1");
+      t('مكالمة: سطر السجل يُكتب في المحادثة', logged.rows.length === 1);
+      t('مكالمة: nonce يطابق قيد الجدول (48–128 hex)', /^[a-f0-9]{64}$/.test(logged.rows[0] ? logged.rows[0].nonce : ''), logged.rows[0] && logged.rows[0].nonce);
+      const current = await call(A, 'wt_social_call_current');
+      t('مكالمة: لا شيء معلّق بعد الإنهاء', !current.call);
+    }
+
+    /* الانحدار الشهير: مكالمة قديمة عالقة كانت تُفشل كل مكالمة جديدة بـ42883 */
+    await db.exec(`insert into public.wt_dm_calls(thread_id, caller_id, callee_id, media, state, created_at, last_seen_at)
+      values ('${thread.id}', '${B}', '${A}', 'audio', 'ringing', now() - interval '2 days', now() - interval '2 days')`);
+    let second = null, err2 = '';
+    try { second = await call(B, 'wt_social_call_start', { p_thread: thread.id, p_media: 'audio' }); }
+    catch (error) { err2 = error.code + ' ' + error.message; }
+    t('انحدار: مكالمة عالقة قديمة لا تمنع مكالمة جديدة', !!second && second.ok === true, err2);
+    const stale = await db.query("select state from public.wt_dm_calls where created_at < now() - interval '1 day'");
+    t('انحدار: العالقة القديمة أُغلقت تلقائياً', stale.rows.every((row) => row.state !== 'ringing'),
+      stale.rows.map((row) => row.state).join(','));
+  } catch (error) {
+    hard = (error && (error.code || '')) + ' ' + (error && error.message ? error.message : String(error));
+    t('مكالمة: الدورة كاملة بلا استثناء', false, hard);
+  }
+}
+await db.close();
+
 if (errors.length) console.log(errors.join('\n'));
 console.log(`Calls doctor: ${pass} passed, ${fail} failed`);
 process.exitCode = fail ? 1 : 0;

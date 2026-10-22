@@ -50,6 +50,30 @@
 | ⚠️ «مكالمات ما زالت مفتوحة» | سجلّ عالق يمنع مكالمة جديدة | افتح المحادثة → «أنهِ المكالمة السابقة» |
 | ❌ `wt_social_private` | `07-social.sql` نفسه ناقص | نفّذ `07` ثم `09` |
 
+### 2ب) الحالة التي أوقفت المكالمات فعلاً: `gen_random_bytes` (‏42883) 🧨
+
+كان `call_finalize` في نسخة قديمة من **09** يستخدم `gen_random_bytes(32)`
+وهي من إضافة **pgcrypto**. Supabase يثبّتها في مخطط `extensions`، ودوالنا تعمل بـ
+`search_path = pg_catalog, public` — فلا يراها الخادم:
+
+```
+ERROR: 42883: function gen_random_bytes(integer) does not exist
+```
+
+والأسوأ: `call_start` ينادي `call_expire` في كل مرة، فبمجرد أن تبقى **مكالمة عالقة
+واحدة** تبدأ كل مكالماتك الجديدة بالفشل، ويعرض العميل رسالة «نفّذ 09-calls.sql».
+لهذا كان تنفيذ الملف يبدو بلا أثر.
+
+**الحل** (في النسخة الحالية من 09): يُولَّد `nonce` بدوال PostgreSQL المدمجة:
+
+```sql
+encode(sha256(convert_to(gen_random_uuid()::text || clock_timestamp()::text,'UTF8')),'hex')
+```
+
+أعد تنفيذ `09-calls.sql` (آمن ومتكرر)، ثم `notify pgrst, 'reload schema';`.
+ويمكنك التأكد من أن النسخة المثبّتة لم تعد تعتمد على pgcrypto من الصف **40** في
+[`11-calls-doctor.sql`](sql/11-calls-doctor.sql).
+
 ### 3) تأكّد أنك نفّذت الملف **كاملاً**
 في SQL Editor إن كان هناك **نص محدَّد** ينفّذ ما حُدِّد فقط. اضغط `Ctrl+A` أولاً ثم Run.
 الملف ينتهي بالسطر `notify pgrst, 'reload schema';` — إن لم يظهر «Success. No rows returned»
