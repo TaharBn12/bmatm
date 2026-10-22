@@ -16,6 +16,7 @@
 - **قاعدة البيانات:** نفّذ [`docs/sql/09-calls.sql`](docs/sql/09-calls.sql) بعد `07`. لا يمسّ الغرف ولا الرسائل السابقة.
 - **قبل الإطلاق:** أضف **TURN** (خدمة مُدارة مثل Metered/Twilio أو coturn) في `calls.turnFetchUrl` أو `calls.turn` داخل `config.js` — بدونه تنجح المكالمات على الواي فاي وتفشل على شبكات جوال كثيرة.
 - **التصميم والحدود كاملة:** [docs/voice-call.md](docs/voice-call.md) · **إعداد TURN خطوة بخطوة:** [docs/turn-setup.md](docs/turn-setup.md) · اختبارات: `node docs/tests/calls.mjs` (116 فحصاً).
+- **من أين أجيب المفاتيح وأين أضعها بالضبط؟** [docs/credentials.md](docs/credentials.md) — خريطة كاملة: Supabase · TURN · الدفع، وما يجب ألّا يدخل `config.js` أبداً.
 - **تبحث فقط عن: كيف أسجّل وأجلب مفتاح TURN؟** ابدأ من قسم **«0.5 كيف أسجّل وأجلب البيانات؟»** في [docs/turn-setup.md](docs/turn-setup.md) — وفيه وسيط جاهز لـ Supabase / Cloudflare / PHP في `tools/turn/` مع فاحص `node tools/turn/check.mjs`.
 
 ### ✨ طبقة الموقع الاحترافية — ميزات لكل الصفحات (جديد 4.4.0)
