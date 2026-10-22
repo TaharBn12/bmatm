@@ -7,7 +7,7 @@ window.WT_CONFIG = {
 
   /* بصمة الإصدار: تظهر في لوحة الأوامر (Ctrl+K) وفي نافذة الاختصارات (؟).
      غيّرها عند كل نشر لتتأكّد أن متصفحك يعرض النسخة الجديدة لا نسخة مخزّنة. */
-  build: '2026-10-22.1',
+  build: '2026-10-22.5',
 
   /* ---------- 1) Supabase (للاستضافة العادية: cPanel / Netlify / GitHub Pages) ----------
      Dashboard → Project Settings → API
@@ -82,7 +82,17 @@ window.WT_CONFIG = {
       { urls: 'stun:stun.l.google.com:19302' },
       { urls: 'stun:stun1.l.google.com:19302' }
     ],
-    turn: null,                  /* { urls, username, credential } */
+    /* TURN — ثلاث طرق، اختر واحدة:
+       1) الإنتاج (الأفضل): turnFetchUrl إلى وسيطك (tools/turn/) فيعيد بيانات مؤقتة.
+       2) تجربة على جهازك فقط: من كونسول المتصفح (لا يدخل المستودع):
+            window.WT_TURN_OVERRIDE = [
+              { urls: 'stun:stun.relay.metered.ca:80' },
+              { urls: 'turn:global.relay.metered.ca:80', username: '...', credential: '...' },
+              { urls: 'turns:global.relay.metered.ca:443?transport=tcp', username: '...', credential: '...' }
+            ];
+       3) turn ثابت هنا: ممنوع على موقع عام — كل زائر يقرأه ويستهلك حصّتك.
+          (اختبارات المشروع تُفشل البناء إن وُجدت credential مضمّنة.) */
+    turn: null,                  /* { urls, username, credential } — للتجربة المحلية فقط */
     turnFetchUrl: null,          /* نقطة نهاية تعيد بيانات TURN مؤقتة */
     turnFetchTimeoutMs: 5000     /* لا نُبطئ بدء المكالمة إن تعطّل الخادم */
   },

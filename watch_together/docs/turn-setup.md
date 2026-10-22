@@ -47,6 +47,57 @@ calls: {
 > ⚠️ **المفتاح لا يدخل `config.js`** — كل زائر يقرأ الملف. المفتاح يبقى في
 > Supabase Secrets / Cloudflare Secrets / متغيّرات بيئة PHP.
 
+### ب.١) الطريقة في ملف — `assets/js/turn.local.js`
+
+الملف موجود في المشروع ومربوط في `messages.html` **قبل** `calls.js`:
+
+```js
+window.WT_TURN_LOCAL = [
+  { urls: 'stun:stun.relay.metered.ca:80' },
+  { urls: 'turn:global.relay.metered.ca:80', username: '…', credential: '…' },
+  …
+];
+```
+
+1. افتح `assets/js/turn.local.js` وضع **كلمة المرور** مكان `ضع-كلمة-المرور-هنا`
+   (اسم المستخدم موضوع مسبقاً).
+2. ارفع الملف، ثم امسح بيانات الموقع مرة وأعد التحميل.
+3. ابدأ مكالمة — ستظهر في شاشة الرنين ملاحظة «تُستخدم بيانات TURN من ملف محلي».
+
+**التفاصيل المهمة:**
+- إن تركت كلمة المرور كما هي (أو كتبت `PASSWORD`/`x`)، **يتجاهل الكود التمرير
+  تلقائياً** ويستمر بالـSTUN وحده — لا مكالمات معطوبة.
+- الأولوية: تجاوز الكونسول (`WT_TURN_OVERRIDE`) ← **الملف المحلي** ← `calls.turn` ←
+  `turnFetchUrl`. وأي وجود لملف محلي يُلغي طلب الوسيط (لا فائدة من الاثنين).
+- الملف **مرئي لكل زائر** للموقع المنشور. راقب `Usage` في لوحة Metered،
+  وبدّل الاعتماد عند الشكّ. للإيقاف: اجعل `window.WT_TURN_LOCAL = null;` أو احذف الملف.
+- الاختبارات تحرس هذا: `docs/tests/calls.mjs` يرفض أي `credential` خارج
+  `turn.local.js`، و`secrets-guard.mjs` يمنع مفاتيح الدفع/الإدارة في أي ملف.
+
+### ب.٢) أسرع طريق للتجربة الآن — بلا لمس المستودع
+
+بيانات Metered الجاهزة (Open Relay) تُلصق في **كونسول المتصفح** مرة واحدة:
+
+```js
+// F12 → Console، ثم الصق بياناتك الحقيقية
+window.WT_TURN_OVERRIDE = [
+  { urls: 'stun:stun.relay.metered.ca:80' },
+  { urls: 'turn:global.relay.metered.ca:80', username: 'USERNAME', credential: 'PASSWORD' },
+  { urls: 'turn:global.relay.metered.ca:80?transport=tcp', username: 'USERNAME', credential: 'PASSWORD' },
+  { urls: 'turn:global.relay.metered.ca:443', username: 'USERNAME', credential: 'PASSWORD' },
+  { urls: 'turns:global.relay.metered.ca:443?transport=tcp', username: 'USERNAME', credential: 'PASSWORD' }
+];
+location.reload();   // ثم أعد لصق السطرين بعد التحديث (لا يُحفظ شيء)
+```
+
+- **لا يُكتب في أي ملف** ولا يُرسل لأي خادم ولا يُخزَّن (يُنسى عند تحديث الصفحة).
+- يتجاوز `turnFetchUrl` و`calls.turn` مؤقتاً، ويظهر في شاشة الرنين تنبيه بذلك.
+- للتحقّق أن المسار يعمل: في `chrome://webrtc-internals` يجب أن يظهر مرشّح **`relay`**.
+
+> ⚠️ لا تضع هذه القيم في `config.js` على موقع عام: كل زائر يقرأ الملف ويستهلك
+> حصّتك (20 غ.ب/شهر). اختبار المشروع `docs/tests/calls.mjs` يفشل إن وُجدت
+> `credential` مضمّنة في `config.js`.
+
 ### ج) كيف تجلب البيانات؟ (طريقتان)
 
 **1) تجربة سريعة — بيانات ثابتة (10 دقائق، لجهازك فقط):**

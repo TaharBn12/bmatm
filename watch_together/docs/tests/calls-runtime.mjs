@@ -274,7 +274,8 @@ async function boot(server, clock, options) {
     UUID: /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i
   };
   sandbox.RTCPeerConnection = class FakePeerConnection {
-    constructor() {
+    constructor(config) {
+      this.conf = config || {};
       this.connectionState = 'new';
       this.iceConnectionState = 'new';
       this.remoteDescription = null;
@@ -460,6 +461,80 @@ async function boot(server, clock, options) {
   await clock.advance(2000, 400);
   t('الصوت: أُرسل جواب SDP بعد العرض', server.signals.some((s) => s.payload.k === 'answer'));
   t('الصوت: المرشّح المبكر لم يُسقط الاتصال', app.peers.length >= 1 && app.peers[0].remoteDescription !== null);
+}
+
+/* ==================== 6ب) TURN من الكونسول بلا لمس المستودع ==================== */
+{
+  const clock = makeClock();
+  const server = makeServer(clock);
+  const turn = [
+    { urls: 'stun:stun.relay.metered.ca:80' },
+    { urls: 'turn:global.relay.metered.ca:80', username: 'u-test', credential: 'p-test' },
+    { urls: 'turns:global.relay.metered.ca:443?transport=tcp', username: 'u-test', credential: 'p-test' }
+  ];
+  const app = await boot(server, clock, { config: { calls: { enabled: true, turnFetchUrl: 'https://example.test/turn' } } });
+  app.sandbox.WT_TURN_OVERRIDE = turn;      /* كما يفعل المستخدم من الكونسول */
+  const calls = app.sandbox.WTCalls;
+  calls.attach({ id: server.thread, peer: { user_id: server.peer, display_name: 'رفيق الاختبار', allow_calls: true }, canSend: true });
+  await calls.start();
+  await settle(2);
+  server.live().state = 'active';                 /* الطرف الآخر ردّ ⇒ يُنشأ اتصال WebRTC */
+  server.live().answered_at = new Date(clock.now()).toISOString();
+  await clock.advance(1500, 300);
+  const conf = app.peers[0] && app.peers[0].conf;
+  const servers = (conf && conf.iceServers) || [];
+  const flat = servers.map((entry) => [].concat(entry.urls).join(' ')).join(' ');
+  t('TURN مؤقت: تُمرَّر عناوين Relay إلى WebRTC', /turn:global\.relay\.metered\.ca/.test(flat), flat);
+  t('TURN مؤقت: TURNS/TCP موجود', /turns:global\.relay\.metered\.ca:443/.test(flat));
+  t('TURN مؤقت: بيانات الاعتماد تُرفَق', servers.some((entry) => entry.username === 'u-test' && entry.credential === 'p-test'));
+  t('TURN مؤقت: لا يُطلب الوسيط الخادم عند وجود تجاوز', app.sandbox.WTCalls._internal.state.note.includes('مؤقتة'));
+}
+
+/* ==================== 6ج) TURN من ملف محلي (turn.local.js) ==================== */
+{
+  const clock = makeClock();
+  const server = makeServer(clock);
+  const app = await boot(server, clock);
+  app.sandbox.WT_TURN_LOCAL = [
+    { urls: 'stun:stun.relay.metered.ca:80' },
+    { urls: 'turn:global.relay.metered.ca:80', username: 'local-user', credential: 'local-pass' },
+    { urls: 'turns:global.relay.metered.ca:443?transport=tcp', username: 'local-user', credential: 'local-pass' }
+  ];
+  const calls = app.sandbox.WTCalls;
+  calls.attach({ id: server.thread, peer: { user_id: server.peer, display_name: 'رفيق الاختبار', allow_calls: true }, canSend: true });
+  await calls.start();
+  await settle(2);
+  server.live().state = 'active';
+  server.live().answered_at = new Date(clock.now()).toISOString();
+  await clock.advance(1500, 300);
+  const servers = (app.peers[0] && app.peers[0].conf.iceServers) || [];
+  const flat = servers.map((entry) => [].concat(entry.urls).join(' ')).join(' ');
+  t('ملف محلي: عناوين Relay تصل إلى WebRTC', /turn:global\.relay\.metered\.ca/.test(flat), flat);
+  t('ملف محلي: الاعتماد يُرفَق', servers.some((e) => e.credential === 'local-pass'));
+  t('ملف محلي: يُعلم المستخدم بالمصدر', /ملف محلي/.test(app.sandbox.WTCalls._internal.state.note));
+  t('ملف محلي: يُقدَّم على طلب الوسيط', !/turnFetchUrl/.test(flat));
+}
+
+/* ==================== 6د) كلمة مرور لم تُملأ تُتجاهل ==================== */
+{
+  const clock = makeClock();
+  const server = makeServer(clock);
+  const app = await boot(server, clock);
+  app.sandbox.WT_TURN_LOCAL = [
+    { urls: 'stun:stun.relay.metered.ca:80' },
+    { urls: 'turn:global.relay.metered.ca:80', username: 'u', credential: 'ضع-كلمة-المرور-هنا' }
+  ];
+  const calls = app.sandbox.WTCalls;
+  calls.attach({ id: server.thread, peer: { user_id: server.peer, display_name: 'رفيق الاختبار', allow_calls: true }, canSend: true });
+  await calls.start();
+  await settle(2);
+  server.live().state = 'active';
+  server.live().answered_at = new Date(clock.now()).toISOString();
+  await clock.advance(1500, 300);
+  const servers = (app.peers[0] && app.peers[0].conf.iceServers) || [];
+  const flat = servers.map((entry) => [].concat(entry.urls).join(' ')).join(' ');
+  t('كلمة مرور ناقصة: لا يُمرَّر TURN معطوب', !/turn:global\.relay\.metered\.ca/.test(flat), flat);
+  t('كلمة مرور ناقصة: يبقى STUN للعمل', /stun:/.test(flat));
 }
 
 /* ==================== 7) تشخيص «متصل بلا صوت» ==================== */
