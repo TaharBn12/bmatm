@@ -96,13 +96,21 @@ const posOf = (idOrClass) => siblings.findIndex(c => c.id === idOrClass || c.cla
   const chatIdx = siblings.findIndex(c => c.classes.includes('chat'));
   const barIdx = siblings.findIndex(c => c.classes.includes('room-bar'));
   const changeIdx = siblings.findIndex(c => c.classes.includes('change-bar'));
+  const featureIdx = siblings.findIndex(c => c.classes.includes('feature-bar'));
+  const names = siblings.map(c => c.id || c.classes.join('.'));
+  /* الأشرطة المعروفة فوق المشغّل: رأس الغرفة، تغيير الرابط، وشريط الميزات
+     (feature-bar «ميزات السهرة» — أُضيف لاحقاً فكسر اختباراً كان يعدّ 4 عناصر).
+     القائمة صريحة بدل رقم ثابت: أي قسم غريب جديد يسقط في الاختبار فوراً. */
+  const KNOWN_BARS = ['room-bar', 'change-bar', 'feature-bar'];
   t('الرسائل هي العنصر التالي للمشغّل مباشرة داخل #roomMain',
     mediaIdx >= 0 && chatIdx === mediaIdx + 1,
     siblings.map(c => (c.tag + (c.id ? '#' + c.id : '.' + c.classes.join('.')))).join(' → '));
   t('لا يوجد أي عنصر آخر بين المشغّل والرسائل',
-    chatIdx === mediaIdx + 1 && siblings.length === 4);
+    chatIdx === mediaIdx + 1 &&
+    siblings.slice(0, mediaIdx).every(c => KNOWN_BARS.some(k => c.classes.includes(k))) &&
+    siblings.length === mediaIdx + 2, names.join(','));
   t('رأس الغرفة (الاسم · الأدوات · القائمة) قبل المشغّل',
-    barIdx === 0 && mediaIdx === 2, siblings.map(c => c.id || c.classes.join('.')).join(','));
+    barIdx === 0 && changeIdx === 1 && featureIdx === 2 && mediaIdx === 3, names.join(','));
   t('نموذج إضافة الرابط بين الرأس والمشغّل (يظهر عند الطلب فقط)',
     changeIdx === 1 && 'hidden' in (siblings[changeIdx].attrs || {}));
 }

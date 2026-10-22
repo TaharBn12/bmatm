@@ -184,10 +184,24 @@ const run = async () => {
   t('مسرح العارض بارتفاع محدّد حتى لا تُقصّ الصورة المكبّرة',
     /\.media-lightbox__frame[\s\S]*?grid-template-rows:\s*minmax\(0,\s*1fr\)/.test(mediaCss) &&
     /\.media-lightbox__stage[\s\S]*?align-self:\s*stretch/.test(mediaCss));
+  /* الغاية من هذا الفحص: ألا يُحمّل المتصفح نسخة قديمة. أمّا تثبيت رقم نسخة
+     بعينه فكان يكسر الاختبار عند كل رفع نسخة (وهذا ليس خطأً في الكود).
+     لذلك: «أرضية دنيا» + بصمة موجودة على كل أصل. */
+  const roomHtml = fs.readFileSync(path.join(base, 'room.html'), 'utf8');
+  const stamp = (file) => {
+    const m = roomHtml.match(new RegExp(file.replace(/\./g, '\\.') + '\\?v=(\\d+)\\.(\\d+)\\.(\\d+)'));
+    return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
+  };
+  const atLeast = (v, min) => !!v && (v[0] !== min[0] ? v[0] > min[0]
+    : v[1] !== min[1] ? v[1] > min[1] : v[2] >= min[2]);
+  const FLOOR = { 'media.css': [3, 2, 0], 'media.js': [3, 1, 5], 'room.js': [3, 3, 1] };
   t('نسخ الملفات محدّثة (تفادياً لنسخة المتصفح القديمة)',
-    /media\.css\?v=3\.1\.5/.test(fs.readFileSync(path.join(base, 'room.html'), 'utf8')) &&
-    /media\.js\?v=3\.1\.5/.test(fs.readFileSync(path.join(base, 'room.html'), 'utf8')) &&
-    /room\.js\?v=3\.2\.1/.test(fs.readFileSync(path.join(base, 'room.html'), 'utf8')));
+    Object.keys(FLOOR).every((file) => atLeast(stamp(file), FLOOR[file])),
+    Object.keys(FLOOR).map((file) => file + '=' + ((stamp(file) || ['بلا', '?v=']).join('.'))).join(' '));
+  /* الكود فقط (js/css): الأيقونات والصور لا تتغيّر ولا تحتاج بصمة،
+     أمّا ملف كود بلا ?v= فهو بالضبط ما يترك المتصفح على نسخة قديمة. */
+  const unversioned = [...roomHtml.matchAll(/(?:href|src)="(assets\/[^"?]+\.(?:js|css))"/g)].map((m) => m[1]);
+  t('كل ملف كود في room.html يحمل بصمة نسخة ?v=', unversioned.length === 0, unversioned.join(' '));
   t('تنسيق بديل واضح عند فشل تحميل الصورة بدلاً من أيقونة Safari المكسورة',
     /\.media-lightbox__img\[hidden\][\s\S]*?display:\s*none\s*!important/.test(mediaCss) &&
     /\.media-lightbox__error\[hidden\][\s\S]*?display:\s*none\s*!important/.test(mediaCss) &&
