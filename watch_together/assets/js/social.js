@@ -22,13 +22,16 @@
   }
   function failure(data, status) {
     const code = data && (data.code || data.errorCode);
-    let message = String((data && (data.message || data.msg || data.error)) || '');
+    /* نحتفظ بالنصّ الأصلي من الخادم: بدونه يتحوّل كل خطأ إعداد إلى نفس
+       الرسالة العامة ويستحيل تشخيصه (راجع calls.js → failureHint). */
+    const raw = String((data && (data.message || data.msg || data.error)) || '').trim();
+    let message = raw;
     const setup = status === 404 || ['PGRST202', '42P01', '42883'].includes(code);
     if (setup) message = 'الميزات الاجتماعية غير مفعّلة على الخادم. نفّذ docs/sql/07-social.sql ثم أعد المحاولة.';
     else if (status === 401) message = 'انتهت جلسة الحساب. سجّل الدخول مجددًا.';
     else if (code === '23505') message = 'المعرّف مستخدم بالفعل؛ اختر معرّفًا آخر.';
     else if (!/[\u0600-\u06ff]/.test(message)) message = status === 403 ? 'لا يُسمح بهذا الإجراء. تحقّق من الصداقة والخصوصية.' : 'تعذّر تنفيذ الطلب. تحقّق من الاتصال ثم أعد المحاولة.';
-    return Object.assign(new Error(message), { status, code, setup, signIn: status === 401 });
+    return Object.assign(new Error(message), { status, code, setup, signIn: status === 401, raw });
   }
   async function session() {
     const s = await Auth.validSession();

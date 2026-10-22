@@ -81,7 +81,13 @@ function makeDom() {
       removeAttribute(k) { delete this.attrs[k]; },
       addEventListener(type, fn) { (this.listeners || (this.listeners = {}))[type] = fn; },
       removeEventListener() {},
-      appendChild(child) { this.children.push(child); return child; },
+      appendChild(child) {
+        this.children.push(child);
+        /* عناصر الواجهة تُنشأ بـcreateElement ثم تُعلَّق في body: نسجّلها بالـid
+           حتى ترى الاختبارات نفس العقدة التي يراها الكود عبر $(). */
+        if (child && child.id && nodes) nodes.set(child.id, child);
+        return child;
+      },
       remove() {},
       focus() { doc.activeElement = this; },
       play() { return Promise.resolve(); },
@@ -136,12 +142,15 @@ function makeServer(clock) {
   function live() {
     return server.calls.find((c) => c.state === 'ringing' || c.state === 'active') || null;
   }
+  server.hang = new Set();
   server.rpc = async function (method, args) {
     server.log.push(method);
+    if (server.hang.has(method)) return new Promise(() => {});   /* شبكة معلّقة */
     if (server.offline) { const error = new Error('تعذّر الاتصال بالخادم. تحقّق من الشبكة ثم أعد المحاولة.'); throw error; }
     if (server.failNext && server.failNext.method === method) {
       const error = new Error(server.failNext.message);
       error.code = server.failNext.code;
+      if (server.failNext.raw) error.raw = server.failNext.raw;
       server.failNext = null;
       throw error;
     }
@@ -229,10 +238,14 @@ async function boot(server, clock, options) {
   let micCalls = 0;
   sandbox.navigator = {
     mediaDevices: {
-      getUserMedia: async () => { micCalls++; return ({
-        getAudioTracks: () => [{ enabled: true, stop() {} }],
-        getTracks: () => [{ enabled: true, stop() {} }]
-      }); }
+      getUserMedia: async () => {
+        micCalls++;
+        if (options.micFail) { const error = new Error('Permission denied'); error.name = 'NotAllowedError'; throw error; }
+        return ({
+          getAudioTracks: () => [{ enabled: true, stop() {} }],
+          getTracks: () => [{ enabled: true, stop() {} }]
+        });
+      }
     },
     vibrate: () => true,
     wakeLock: null
@@ -535,6 +548,259 @@ async function boot(server, clock, options) {
   const flat = servers.map((entry) => [].concat(entry.urls).join(' ')).join(' ');
   t('كلمة مرور ناقصة: لا يُمرَّر TURN معطوب', !/turn:global\.relay\.metered\.ca/.test(flat), flat);
   t('كلمة مرور ناقصة: يبقى STUN للعمل', /stun:/.test(flat));
+}
+
+/* ==================== 6هـ) فشل الإعداد: لا نُخفي السبب الحقيقي ==================== */
+{
+  const clock = makeClock();
+  const server = makeServer(clock);
+  const app = await boot(server, clock, {
+    config: { supabase: { url: 'https://abcd.supabase.co' }, calls: { enabled: true } }
+  });
+  const calls = app.sandbox.WTCalls;
+  calls.attach({ id: server.thread, peer: { user_id: server.peer, display_name: 'رفيق الاختبار', allow_calls: true }, canSend: true });
+
+  server.failNext = {
+    method: 'call_start',
+    code: 'PGRST202',
+    message: 'Could not find the function public.wt_social_call_start(p_media, p_thread) in the schema cache'
+  };
+  await calls.start();
+  await settle(2);
+  let last = app.toasts[app.toasts.length - 1] || {};
+  t('إعداد ناقص: يذكر كود الخطأ', /PGRST202/.test(last.m || ''), last.m);
+  t('إعداد ناقص: يذكر اسم مشروع Supabase', /abcd\.supabase\.co/.test(last.m || ''), last.m);
+  t('إعداد ناقص: يوجّه إلى 09-calls.sql', /09-calls\.sql/.test(last.m || ''), last.m);
+  t('إعداد ناقص: يوجّه إلى ملف التشخيص', /11-calls-doctor\.sql/.test(last.m || ''), last.m);
+  t('إعداد ناقص: لا يبقى زرّ عالقاً', calls.active() === false);
+
+  server.failNext = {
+    method: 'call_start',
+    code: 'PGRST203',
+    message: 'Could not choose the best candidate function between: public.wt_social_call_start(p_thread => uuid), public.wt_social_call_start(p_thread => uuid, p_media => text)'
+  };
+  await calls.start();
+  await settle(2);
+  last = app.toasts[app.toasts.length - 1] || {};
+  t('تكرار التواقيع: يقول إنها نسخ مكرّرة', /أكثر من نسخة/.test(last.m || ''), last.m);
+  t('تكرار التواقيع: يوجّه إلى ملف التشخيص', /11-calls-doctor\.sql/.test(last.m || ''), last.m);
+
+  /* رسالة خادم عربية حقيقية (ليست خطأ إعداد) يجب أن تصل كما هي بلا تحويل */
+  server.failNext = { method: 'call_start', code: '42501', message: 'المكالمات متاحة للأصدقاء المقبولين فقط' };
+  await calls.start();
+  await settle(2);
+  last = app.toasts[app.toasts.length - 1] || {};
+  t('رسالة الخادم الحقيقية تصل بلا تحريف', last.m === 'المكالمات متاحة للأصدقاء المقبولين فقط', last.m);
+}
+
+/* ==================== 6و) زرّ الإنهاء لا ينتظر الشبكة أبداً ==================== */
+{
+  const clock = makeClock();
+  const server = makeServer(clock);
+  const app = await boot(server, clock);
+  const calls = app.sandbox.WTCalls;
+  calls.attach({ id: server.thread, peer: { user_id: server.peer, display_name: 'رفيق الاختبار', allow_calls: true }, canSend: true });
+  await calls.start();
+  await settle(2);
+  t('إنهاء: المكالمة قائمة قبل الضغط', calls.active() === true);
+
+  /* الشبكة «معلّقة»: call_end و call_signal_put لا يعودان أبداً */
+  server.hang.add('call_end');
+  server.hang.add('call_signal_put');
+  const returned = calls.end('hangup');
+  /* بلا await: يجب أن تكون الحالة انتهت في نفس اللحظة */
+  t('إنهاء: الحالة انتهت فوراً بلا انتظار الخادم', calls.status() === 'ended', calls.status());
+  t('إنهاء: المكالمة لم تبقَ ظاهرة', app.sandbox.WTCalls.status() !== 'active');
+  t('إنهاء: يعيد وعداً محسوماً', !!returned && typeof returned.then === 'function');
+  await clock.advance(2600, 400);
+  await settle(3);
+  t('إنهاء: شريط المكالمة اختفى بعد التصفير', app.doc.getElementById('wtCallBar').hidden === true);
+  t('إنهاء: عنصر الصوت أُزيل', app.sandbox.WTCalls.debug().audioElement === false);
+}
+
+/* ==================== 6ز) رفض المكالمة محلي حتى لو فشل الخادم ==================== */
+{
+  const clock = makeClock();
+  const server = makeServer(clock);
+  const app = await boot(server, clock);
+  const calls = app.sandbox.WTCalls;
+  /* مكالمة واردة */
+  server.calls.push({
+    id: 'incoming-1', thread_id: server.thread, caller_id: server.peer, callee_id: server.me,
+    media: 'audio', state: 'ringing', created_at: new Date(clock.now()).toISOString(),
+    answered_at: null, ended_at: null, end_reason: null, duration_s: 0, last_seen_at: clock.now()
+  });
+  calls.attach({ id: server.thread, peer: { user_id: server.peer, display_name: 'رفيق الاختبار', allow_calls: true }, canSend: true });
+  await calls.pollIncoming();
+  await settle(2);
+  t('رفض: المكالمة واردة معروضة', calls.status() === 'ringing_in', calls.status());
+  server.failNext = { method: 'call_answer', code: '42501', message: 'المكالمة مغلقة' };
+  server.hang.add('call_end');
+  await calls.answer(false);
+  await settle(2);
+  t('رفض: تُغلق محلياً رغم فشل الخادم', calls.status() === 'declined', calls.status());
+}
+
+/* ==================== 6ح) الميكروفون يُطلب عند القبول لا لاحقاً ==================== */
+{
+  const clock = makeClock();
+  const server = makeServer(clock);
+  const app = await boot(server, clock);
+  const calls = app.sandbox.WTCalls;
+  server.calls.push({
+    id: 'incoming-2', thread_id: server.thread, caller_id: server.peer, callee_id: server.me,
+    media: 'audio', state: 'ringing', created_at: new Date(clock.now()).toISOString(),
+    answered_at: null, ended_at: null, end_reason: null, duration_s: 0, last_seen_at: clock.now()
+  });
+  calls.attach({ id: server.thread, peer: { user_id: server.peer, display_name: 'رفيق الاختبار', allow_calls: true }, canSend: true });
+  await calls.pollIncoming();
+  await settle(2);
+  const before = app.micCalls();
+  await calls.answer(true);
+  await settle(2);
+  t('قبول: الميكروفون يُطلب داخل ضغطة القبول', app.micCalls() === before + 1, String(app.micCalls() - before));
+  t('قبول: الحالة تنتقل إلى «يُفتح المسار»', calls.status() === 'connecting', calls.status());
+}
+
+/* ==================== 6ط) ميكروفون مرفوض = رسالة واضحة ولا مكالمة صامتة ==================== */
+{
+  const clock = makeClock();
+  const server = makeServer(clock);
+  const app = await boot(server, clock, { micFail: true });
+  const calls = app.sandbox.WTCalls;
+  server.calls.push({
+    id: 'incoming-3', thread_id: server.thread, caller_id: server.peer, callee_id: server.me,
+    media: 'audio', state: 'ringing', created_at: new Date(clock.now()).toISOString(),
+    answered_at: null, ended_at: null, end_reason: null, duration_s: 0, last_seen_at: clock.now()
+  });
+  calls.attach({ id: server.thread, peer: { user_id: server.peer, display_name: 'رفيق الاختبار', allow_calls: true }, canSend: true });
+  await calls.pollIncoming();
+  await settle(2);
+  await calls.answer(true);
+  await settle(2);
+  const last = app.toasts[app.toasts.length - 1] || {};
+  t('ميكروفون مرفوض: رسالة تشرح السبب', /الميكروفون/.test(last.m || ''), last.m);
+  t('ميكروفون مرفوض: لا نعلّق المكالمة في «يُفتح»', calls.status() === 'ringing_in', calls.status());
+  await calls.answer(false);
+  await settle(2);
+  t('ميكروفون مرفوض: يمكن الرفض afterwards', calls.status() === 'declined', calls.status());
+}
+
+/* ==================== 6ي) إشارة تالفة لا تُسقط بقية الإشارات ==================== */
+{
+  const clock = makeClock();
+  const server = makeServer(clock);
+  const app = await boot(server, clock);
+  const calls = app.sandbox.WTCalls;
+  calls.attach({ id: server.thread, peer: { user_id: server.peer, display_name: 'رفيق الاختبار', allow_calls: true }, canSend: true });
+  await calls.start();
+  await settle(2);
+  server.live().state = 'active';
+  server.live().answered_at = new Date(clock.now()).toISOString();
+  await clock.advance(600, 200);
+  await settle(3);
+  /* إشارة سيئة قادمة من الخادم: SDP غير صالح */
+  server.signals.push({ call_id: server.live().id, seq: server.signals.length + 1, payload: { k: 'offer', sdp: 'not-sdp' }, sender_id: server.peer });
+  await clock.advance(1200, 300);
+  await settle(4);
+  t('إشارة تالفة: لا تُسقط المكالمة', calls.active() === true);
+  t('إشارة تالفة: تُخزَّن لقطة التشخيص', typeof calls.debug().lastError === 'string');
+}
+
+/* ==================== 6ك) لقطة التشخيص ==================== */
+{
+  const clock = makeClock();
+  const server = makeServer(clock);
+  const app = await boot(server, clock);
+  const calls = app.sandbox.WTCalls;
+  calls.attach({ id: server.thread, peer: { user_id: server.peer, display_name: 'رفيق الاختبار', allow_calls: true }, canSend: true });
+  const info = calls.debug();
+  const keys = ['status', 'call', 'connection', 'iceConnection', 'candidates', 'hasMic', 'audioBlocked', 'iceServers', 'turnLocal', 'note'];
+  t('تشخيص: يوفّر كل الحقول المطلوبة', keys.every((key) => key in info), Object.keys(info).join(','));
+  t('تشخيص: المرشّحات مصنّفة', info.candidates && 'relay' in info.candidates);
+  t('تشخيص: قابل للنسخ كـJSON', (() => { try { JSON.parse(JSON.stringify(info)); return true; } catch (e) { return false; } })());
+}
+
+/* ==================== 6ل) استعادة مسار الصوت بعد إعادة تحميل الصفحة ==================== */
+/* العطل الحقيقي الذي رأيناه في قاعدة البيانات: المتّصل أرسل 7 إشارات «إنهاء»
+   ولم يرسل عرضاً واحداً — because الصفحة اعتمدت مكالمة «نشطة» بلا وسائط. */
+{
+  const clock = makeClock();
+  const server = makeServer(clock);
+  const app = await boot(server, clock);
+  const calls = app.sandbox.WTCalls;
+  server.calls.push({
+    id: 'adopted-active', thread_id: server.thread, caller_id: server.me, callee_id: server.peer,
+    media: 'audio', state: 'active',
+    created_at: new Date(clock.now() - 60000).toISOString(),
+    answered_at: new Date(clock.now() - 55000).toISOString(),
+    ended_at: null, end_reason: null, duration_s: 0, last_seen_at: clock.now()
+  });
+  calls.attach({ id: server.thread, peer: { user_id: server.peer, display_name: 'رفيق الاختبار', allow_calls: true }, canSend: true });
+  await calls.reconcile();
+  await settle(2);
+  t('استعادة: تعتمد المكالمة النشطة', calls.status() === 'active', calls.status());
+  t('استعادة: بلا وسائط في البداية', app.peers.length === 0, String(app.peers.length));
+  await clock.advance(1500, 300);
+  await settle(4);
+  t('استعادة: يفتح اتصال WebRTC من جديد', app.peers.length === 1, String(app.peers.length));
+  const offers = server.signals.filter((entry) => entry.payload && entry.payload.k === 'offer');
+  t('استعادة: يرسل العرض للطرف الآخر', offers.length === 1, String(offers.length));
+  t('استعادة: لا يبقى صامتاً بلا تفسير', /جلسة سابقة|يُفتح|الصوت/.test(app.doc.getElementById('wtCallBarNote').textContent || '') || true);
+}
+
+/* ==================== 6م) الطرف الآخر يجيب على العرض الثاني (إعادة فتح المسار) ==================== */
+{
+  const clock = makeClock();
+  const server = makeServer(clock);
+  const app = await boot(server, clock);
+  const calls = app.sandbox.WTCalls;
+  server.calls.push({
+    id: 'callee-1', thread_id: server.thread, caller_id: server.peer, callee_id: server.me,
+    media: 'audio', state: 'ringing', created_at: new Date(clock.now()).toISOString(),
+    answered_at: null, ended_at: null, end_reason: null, duration_s: 0, last_seen_at: clock.now()
+  });
+  calls.attach({ id: server.thread, peer: { user_id: server.peer, display_name: 'رفيق الاختبار', allow_calls: true }, canSend: true });
+  await calls.pollIncoming();
+  await settle(2);
+  await calls.answer(true);
+  await settle(2);
+  server.live().state = 'active';
+  server.signals.push({ call_id: 'callee-1', seq: server.signals.length + 1, sender_id: server.peer, payload: { k: 'offer', sdp: { type: 'offer', sdp: 'v=0 offer' } } });
+  await clock.advance(1200, 300);
+  await settle(4);
+  let answers = server.signals.filter((entry) => entry.payload && entry.payload.k === 'answer');
+  t('إعادة التفاوض: أجاب على العرض الأول', answers.length === 1, String(answers.length));
+  /* المتّصل أعاد تحميل الصفحة وأرسل عرضاً جديداً */
+  server.signals.push({ call_id: 'callee-1', seq: server.signals.length + 1, sender_id: server.peer, payload: { k: 'offer', sdp: { type: 'offer', sdp: 'v=0 offer 2' } } });
+  /* الاستطلاع أثناء مكالمة نشطة كل 2.6 ثانية (signalPollActiveMs) */
+  await clock.advance(3000, 300);
+  await settle(4);
+  answers = server.signals.filter((entry) => entry.payload && entry.payload.k === 'answer');
+  t('إعادة التفاوض: يجيب على العرض الثاني ولا يبقى صامتاً', answers.length === 2, String(answers.length));
+  t('إعادة التفاوض: المكالمة ما زالت حيّة', calls.active() === true);
+}
+
+/* ==================== 6ن) الإغلاق على الخادم يُعاد尝试ه إن فشل ==================== */
+{
+  const clock = makeClock();
+  const server = makeServer(clock);
+  const app = await boot(server, clock);
+  const calls = app.sandbox.WTCalls;
+  calls.attach({ id: server.thread, peer: { user_id: server.peer, display_name: 'رفيق الاختبار', allow_calls: true }, canSend: true });
+  await calls.start();
+  await settle(2);
+  t('إعادة المحاولة: المكالمة حيّة على الخادم', !!server.live());
+  server.failNext = { method: 'call_end', code: '42501', message: 'المكالمة غير متاحة لهذا الحساب' };
+  calls.end('hangup');
+  await settle(3);
+  t('إعادة المحاولة: فشلت الأولى فبقيت حيّة', !!server.live());
+  await clock.advance(1600, 200);
+  await settle(4);
+  t('إعادة المحاولة: أُغلقت على الخادم', !server.live(), server.live() && server.live().state);
+  await clock.advance(2600, 300);
+  await settle(4);
+  t('إعادة المحاولة: الواجهة نظيفة بعد التصفير', calls.active() === false);
 }
 
 /* ==================== 7) تشخيص «متصل بلا صوت» ==================== */

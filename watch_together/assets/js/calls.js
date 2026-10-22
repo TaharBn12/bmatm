@@ -36,7 +36,9 @@
     lastIncoming: 0, ui: null, note: '',
     /* حراسة ضد «المكالمة العالقة»: مؤقّت إعادة الضبط، ومؤقّت انقطاع الخادم */
     resetTimer: null, watchdog: null, lastServerAt: 0, misses: 0, adopted: false, audioBlocked: false,
-    pendingIce: []
+    pendingIce: [],
+    /* تشخيص الصوت: نوع المرشّحات، حالة ICE، وآخر سبب فشل — لعرضه للمستخدم عند الحاجة */
+    connectTimer: null, offerRetries: 0, ice: { host: 0, srflx: 0, relay: 0 }, lastError: '', remoteStream: null
   };
 
   /* ============================== أدوات ============================== */
@@ -44,6 +46,13 @@
   const toast = (message, type, ms) => { try { U.toast(message, type, ms); } catch (e) { /* تجاهل */ } };
   const icon = (name, size) => (IC && IC.html ? IC.html(name, size || 18) : '');
   const secure = () => global.isSecureContext !== false || /^(localhost|127\.0\.0\.1)$/.test(global.location.hostname);
+  /* اسم مشروع Supabase المتصل — يظهر في رسائل الخطأ لكشف «نفّذت SQL على مشروع آخر». */
+  const projectHost = () => {
+    try {
+      const base = String((global.WT_CONFIG && global.WT_CONFIG.supabase && global.WT_CONFIG.supabase.url) || '');
+      return base ? base.replace(/^https?:\/\//, '').replace(/\/$/, '') : String(global.location.hostname || '—');
+    } catch (e) { return '—'; }
+  };
 
   function micError(error) {
     const name = (error && (error.name || error.code)) || '';
@@ -251,7 +260,8 @@
     bar.setAttribute('role', 'status');
     bar.innerHTML =
       '<span class="call-bar__dot" aria-hidden="true"></span>' +
-      '<span class="call-bar__text"><strong id="wtCallBarName"></strong><span id="wtCallBarTime" dir="ltr">00:00</span></span>' +
+      '<span class="call-bar__text"><strong id="wtCallBarName"></strong><span id="wtCallBarTime" dir="ltr">00:00</span>' +
+        '<span class="call-bar__note" id="wtCallBarNote" hidden></span></span>' +
       '<button class="call-bar__btn" type="button" id="wtCallAudio" aria-label="تشغيل صوت المكالمة" hidden></button>' +
       '<button class="call-bar__btn" type="button" id="wtCallMute" aria-pressed="false" aria-label="كتم الميكروفون"></button>' +
       '<button class="call-bar__btn call-bar__btn--end" type="button" id="wtCallEnd" aria-label="إنهاء المكالمة"></button>';
@@ -313,6 +323,12 @@
       if (audioBtn) {
         audioBtn.hidden = !state.audioBlocked;
         audioBtn.innerHTML = icon('volume', 18);
+      }
+      const barNote = $('wtCallBarNote');
+      if (barNote) {
+        const text = state.note || '';
+        barNote.hidden = !text;
+        barNote.textContent = text;
       }
       $('wtCallMute').innerHTML = icon(state.muted ? 'micOff' : 'mic', 18);
       $('wtCallMute').setAttribute('aria-pressed', String(state.muted));
@@ -395,6 +411,31 @@
     terminate('failed');
     toast('انقطع الاتصال؛ أُنهيت المكالمة. يمكنك الاتصال من جديد.', 'warn', 4200);
   }
+  /* مؤقّت الاتصال: من اللحظة التي يُفترض أن يبدأ فيها الصوت. بلا هذا يبقى المستخدم
+     أمام «يُفتح مسار الصوت…» بلا نهاية. نعيد إرسال العرض مرة واحدة ثم نُظهر السبب. */
+  function armConnect(ms) {
+    if (state.connectTimer) global.clearTimeout(state.connectTimer);
+    state.connectTimer = global.setTimeout(connectTick, ms || 14000);
+  }
+  function clearConnect() { if (state.connectTimer) { global.clearTimeout(state.connectTimer); state.connectTimer = null; } }
+  async function connectTick() {
+    state.connectTimer = null;
+    if (!state.call || state.status !== CS.STATES.CONNECTING) return;
+    if (state.pc && state.pc.connectionState === 'connected') return;
+    if (isCaller() && !state.answerSent && state.offerRetries < 2) {
+      state.offerRetries++;
+      state.offerSent = false;
+      state.note = 'نعيد محاولة فتح مسار الصوت… (' + state.offerRetries + '/2)';
+      paint();
+      try { await sendOffer(); } catch (error) { state.lastError = String(error && error.message || error); }
+      armConnect(14000);
+      return;
+    }
+    const ice = state.pc ? state.pc.iceConnectionState : '—';
+    state.note = 'تعذّر إيصال الصوت (' + ice + (state.ice.relay ? ' · TURN متاح' : ' · لا مرشّح TURN') + '). '
+      + 'جرّب شبكة أخرى أو أعد الاتصال.';
+    paint();
+  }
   function clearWatchdog() {
     if (state.watchdog) { global.clearTimeout(state.watchdog); state.watchdog = null; }
   }
@@ -406,6 +447,7 @@
     try {
       const data = await S.call('call_signal_get', { p_call: call.id, p_after: state.cursor });
       if (!state.call || state.call.id !== call.id) return;
+      if (CS.isTerminal(state.status)) return;   /* انتهت أثناء الطلب — لا نعيد إحياءها */
       if (data && data.call) {
         state.call = Object.assign({}, state.call, data.call);
         applyServerState(data.call);
@@ -414,7 +456,18 @@
       armWatchdog();                       /* الخادم ردّ: المكالمة ما زالت معروفة */
       for (const entry of (data && data.signals) || []) {
         if (!state.call) break;
-        await onSignal(entry.payload);
+        /* خطأ في إشارة واحدة (ميكروفون مرفوض، SDP غير صالح) لا يجب أن يُسقط
+           بقية الإشارات — كان يترك المكالمة «تُفتح» إلى الأبد. */
+        try { await onSignal(entry.payload); }
+        catch (error) {
+          state.lastError = String((error && (error.name ? error.name + ': ' : '') + (error.message || error)) || '');
+          if (/NotAllowed|Permission/i.test(state.lastError)) {
+            state.note = 'لم يُسمح بالميكروفون — اسمح به من إعدادات المتصفح ثم أعد الاتصال.';
+          } else {
+            state.note = 'تعذّر تفعيل الصوت (' + state.lastError.slice(0, 60) + ').';
+          }
+          paint();
+        }
       }
     } catch (error) {
       if (error && error.name === 'AbortError') return;
@@ -429,10 +482,21 @@
   function applyServerState(remote) {
     const next = CS.next(state.status, eventForRemote(remote));
     if (next !== state.status) state.status = next;
-    if (remote.state === 'active' && state.status === CS.STATES.CONNECTING && !state.offerSent && isCaller()) sendOffer();
     if (['ended', 'missed', 'declined', 'busy', 'failed'].includes(remote.state)) {
       terminate(remote.end_reason || remote.state);
+      return;
     }
+    if (remote.state !== 'active' || !isCaller() || state.offerSent || state.pc) return;
+    /* الخادم يقول «نشطة» ولا يوجد عندنا اتصال ولا عرض مُرسل:
+       • الحالة العادية: الطرف الآخر قبل للتوّ → نرسل العرض.
+       • الحالة المنسيّة: الصفحة أُعيد تحميلها فاعتمدنا المكالمة بلا وسائط —
+         كنّا نبقى صامتين إلى الأبد. الآن نفتح المسار من جديد. */
+    if (state.status !== CS.STATES.CONNECTING) { state.status = CS.STATES.CONNECTING; paint(); }
+    sendOffer().catch((error) => {
+      state.lastError = String((error && error.message) || error);
+      state.note = 'تعذّر فتح مسار الصوت (' + state.lastError.slice(0, 60) + '). أنهِ المكالمة وأعد الاتصال.';
+      paint();
+    });
   }
 
   function eventForRemote(remote) {
@@ -449,12 +513,26 @@
     if (!payload || typeof payload !== 'object') return;
     const kind = payload.k;
     if (kind === 'offer' && payload.sdp) {
+      const pc = state.pc;
+      /* عرض ثانٍ بعد أن أجبنا = الطرف الآخر أعاد تحميل الصفحة ويطلب فتح المسار
+         من جديد. نعيد الإجابة بدل تجاهلها (كان يُترك صامتاً إلى الأبد). */
+      if (state.answerSent && pc && pc.signalingState === 'stable') {
+        state.note = 'الطرف الآخر يعيد فتح مسار الصوت…';
+        paint();
+        await pc.setRemoteDescription(new RTCSessionDescription(payload.sdp));
+        await flushIce();
+        const answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+        await putSignal({ k: 'answer', sdp: pc.localDescription });
+        armConnect(14000);
+        return;
+      }
       if (state.answerSent) return;
       await acceptRemoteOffer(payload.sdp);
     } else if (kind === 'answer' && payload.sdp) {
       const pc = state.pc;
       if (!pc || pc.signalingState === 'stable') return;
-      await pc.setRemoteDescription(new RTCSessionDescription(payload.sdp)).catch(() => {});
+      if (!pc.remoteDescription) await pc.setRemoteDescription(new RTCSessionDescription(payload.sdp));
       await flushIce();
       state.status = CS.STATES.CONNECTING; paint();
     } else if (kind === 'ice' && payload.candidate) {
@@ -482,23 +560,44 @@
     stream.getAudioTracks().forEach((track) => pc.addTrack(track, stream));
     pc.ontrack = (event) => {
       const audio = ensureAudio();
-      audio.srcObject = event.streams && event.streams[0] ? event.streams[0] : new global.MediaStream([event.track]);
-      audio.play().then(() => { state.audioBlocked = false; paint(); })
-        .catch(() => {
-          /* منع التشغيل التلقائي: نُظهر زرّ «تشغيل الصوت» في الشريط بدل رسالة عابرة */
-          state.audioBlocked = true; paint();
-          toast('اضغط زرّ الصوت في شريط المكالمة لتسمع الطرف الآخر.', 'info', 4200);
-        });
+      const stream = (event.streams && event.streams[0]) || new global.MediaStream([event.track]);
+      state.remoteStream = stream;
+      try { audio.removeAttribute('src'); } catch (e) { /* تجاهل */ }
+      audio.srcObject = stream;
+      audio.muted = false; audio.volume = 1;
+      const play = audio.play();
+      if (play && play.then) {
+        play.then(() => { state.audioBlocked = false; state.note = ''; paint(); })
+          .catch(() => {
+            /* منع التشغيل التلقائي: نُظهر زرّ «تشغيل الصوت» في الشريط بدل رسالة عابرة */
+            state.audioBlocked = true; paint();
+            toast('اضغط زرّ الصوت في شريط المكالمة لتسمع الطرف الآخر.', 'info', 4200);
+          });
+      }
     };
-    pc.onicecandidate = (event) => { if (event.candidate) putSignal({ k: 'ice', candidate: event.candidate.toJSON ? event.candidate.toJSON() : event.candidate }); };
+    pc.onicecandidate = (event) => {
+      if (!event.candidate) return;
+      const plain = event.candidate.toJSON ? event.candidate.toJSON() : event.candidate;
+      const raw = String((plain && plain.candidate) || '');
+      const kind = / typ (relay|srflx|prflx|host)\b/.exec(raw);
+      if (kind && state.ice[kind[1]] !== undefined) state.ice[kind[1]]++;
+      putSignal({ k: 'ice', candidate: plain });
+    };
     pc.onconnectionstatechange = () => {
       if (pc.connectionState === 'connected') {
-        state.status = CS.STATES.ACTIVE; state.answeredAt = state.answeredAt || Date.now(); startTicker(); paint(); requestWakeLock();
+        clearConnect();
+        state.status = CS.STATES.ACTIVE; state.answeredAt = state.answeredAt || Date.now();
+        state.note = ''; startTicker(); paint(); requestWakeLock();
         verifyAudio(pc);
       } else if (pc.connectionState === 'failed') {
-        terminate('failed');
+        state.lastError = 'ICE failed (' + pc.iceConnectionState + ')';
+        if (!state.offerRetries && isCaller()) { connectTick(); }
+        else terminate('failed');
       } else if (pc.connectionState === 'disconnected') {
         state.note = 'انقطع الصوت لحظياً — نحاول الاستعادة…'; paint();
+        global.setTimeout(() => {
+          if (state.pc === pc && pc.connectionState === 'disconnected') { try { pc.restartIce(); } catch (e) { /* تجاهل */ } }
+        }, 8000);
       }
     };
     pc.oniceconnectionstatechange = () => {
@@ -527,8 +626,10 @@
           }
         });
         if (found && bytes === 0) {
-          state.note = 'متصل لكن لا يصل صوت — قد تمنع الشبكة الاتصال المباشر. أضف TURN أو جرّب شبكة أخرى.';
+          state.note = 'متصل لكن لا يصل صوت' + (state.ice.relay ? ' (TURN يعمل — المشكلة في الجهاز أو كتم الصوت).' : ' — الشبكة تمنع الاتصال المباشر ولا مرشّح TURN.');
           paint();
+        } else if (found) {
+          state.note = ''; paint();
         }
       } catch (e) { /* بعض المتصفحات تمنع getStats */ }
     }, 6000);
@@ -539,13 +640,63 @@
     const audio = document.createElement('audio');
     audio.autoplay = true;
     audio.playsInline = true;
+    audio.muted = false;
+    audio.volume = 1;
+    audio.setAttribute('autoplay', '');
     audio.setAttribute('playsinline', '');
+    audio.setAttribute('webkit-playsinline', '');
     audio.className = 'call-audio';
     audio.setAttribute('aria-hidden', 'true');
     document.body.appendChild(audio);
     state.audio = audio;
     return audio;
   }
+
+  /* iOS/Safari: عنصر <audio> لا يُشغَّل إلا بعد أن يعمل مرة واحدة داخل «لمسة مستخدم».
+     نشغّل صمتاً قصيراً لحظة الضغط على الاتصال/القبول، فيصبح العنصر مفتوحاً
+     ويستطيع استقبال صوت الطرف الآخر لاحقاً بلا رفض. */
+  function silentWavUrl() {
+    if (state.silentUrl !== undefined) return state.silentUrl;
+    try {
+      const bytes = new Uint8Array(44 + 160);
+      const view = new DataView(bytes.buffer);
+      const write = (at, text) => { for (let i = 0; i < text.length; i++) view.setUint8(at + i, text.charCodeAt(i)); };
+      write(0, 'RIFF'); view.setUint32(4, 36 + 160, true); write(8, 'WAVE');
+      write(12, 'fmt '); view.setUint32(16, 16, true); view.setUint16(20, 1, true); view.setUint16(22, 1, true);
+      view.setUint32(24, 8000, true); view.setUint32(28, 16000, true); view.setUint16(32, 2, true); view.setUint16(34, 16, true);
+      write(36, 'data'); view.setUint32(40, 160, true);
+      state.silentUrl = global.URL.createObjectURL(new global.Blob([bytes], { type: 'audio/wav' }));
+    } catch (e) { state.silentUrl = null; }
+    return state.silentUrl;
+  }
+  function primeAudio() {
+    const audio = ensureAudio();
+    const url = silentWavUrl();
+    if (!url) return;
+    try {
+      if (!audio.srcObject) { audio.src = url; audio.load && audio.load(); }
+      const playing = audio.play();
+      if (playing && playing.then) playing.then(() => { state.audioBlocked = false; }).catch(() => {});
+    } catch (e) { /* تجاهل */ }
+  }
+
+  /* iOS/كروم: تشغيل الصوت يحتاج «لمسة مستخدم». أوّل لمسة في الصفحة تفتح القفل
+     ونشغّل عنصر الصوت من جديد إن كان قد مُنع. */
+  function unlockAudio() {
+    const audio = state.audio;
+    if (!audio) return;
+    const replay = () => {
+      const playing = audio.play();
+      if (playing && playing.then) playing.then(() => { state.audioBlocked = false; paint(); }).catch(() => {});
+    };
+    replay();
+    try {
+      if (state.audioCtx && state.audioCtx.state === 'suspended') state.audioCtx.resume();
+    } catch (e) { /* تجاهل */ }
+  }
+  document.addEventListener('pointerdown', unlockAudio, true);
+  document.addEventListener('touchstart', unlockAudio, true);
+  document.addEventListener('keydown', unlockAudio, true);
 
   async function sendOffer() {
     const pc = await ensurePeerConnection();
@@ -554,6 +705,7 @@
     const offer = await pc.createOffer({ offerToReceiveAudio: true });
     await pc.setLocalDescription(offer);
     await putSignal({ k: 'offer', sdp: pc.localDescription });
+    armConnect(14000);
   }
 
   async function acceptRemoteOffer(sdp) {
@@ -565,6 +717,7 @@
     await pc.setLocalDescription(answer);
     state.answerSent = true;
     await putSignal({ k: 'answer', sdp: pc.localDescription });
+    armConnect(14000);
   }
 
   async function requestWakeLock() {
@@ -580,6 +733,32 @@
   }
 
   /* ============================== دورة المكالمة ============================== */
+  /* يصنّف فشل call_start ويحوّله إلى خطوة عملية واحدة.
+     درس من الميدان: رسالة واحدة عامة «نفّذ 09-calls.sql» أخفت السبب الحقيقي
+     (نسخة قديمة من الدالة، أو مشروع آخر، أو كاش) فصار المستخدم يعيد التنفيذ بلا نهاية. */
+  function failureHint(error) {
+    const code = String((error && error.code) || '');
+    const raw = String((error && (error.raw || error.message)) || '').trim();
+    const project = projectHost();
+    if (code === 'PGRST203' || /best candidate|ambiguous function/i.test(raw)) {
+      return {
+        text: 'على الخادم أكثر من نسخة من دوال المكالمات' + (code ? ' (' + code + ')' : '') + '.\n' +
+          'نفّذ docs/sql/11-calls-doctor.sql ثم أوامر drop في الصف 60.',
+        ms: 12000
+      };
+    }
+    if (error && (error.setup || ['PGRST202', '42883', '42P01'].includes(code) ||
+        /does not exist|غير مفعّلة/i.test(raw))) {
+      return {
+        text: 'لم أجد دوال المكالمات على هذا المشروع' + (code ? ' (' + code + ')' : '') + ' — ' + project + '.\n' +
+          '١) نفّذ docs/sql/09-calls.sql كاملاً بلا تحديد جزء من النص.\n' +
+          '٢) إن كنت فعلت: نفّذ docs/sql/11-calls-doctor.sql وأرسل الجدول.',
+        ms: 15000
+      };
+    }
+    return { text: raw || 'تعذّر بدء المكالمة', ms: 5600 };
+  }
+
   async function start() {
     const conf = cfg();
     if (!conf.enabled) { toast('المكالمات غير مفعّلة على هذا الموقع', 'warn'); return; }
@@ -608,13 +787,13 @@
       state.cursor = 0; state.offerSent = false; state.answerSent = false; state.muted = false;
       state.pendingIce = []; state.adopted = false; state.audioBlocked = false;
       state.startedAt = Date.now(); state.answeredAt = 0; state.note = '';
-      ensureAudio();
+      primeAudio();
       startRinger('outgoing'); startTicker(); armWatchdog(); paint();
       schedulePoll(500);
       document.dispatchEvent(new CustomEvent('wt:call-started', { detail: { call: state.call } }));
     } catch (error) {
-      const setup = error && (error.setup || /PGRST202|42883|does not exist|غير مفعّلة/.test(error.message || ''));
-      const stuck = /مكالمة جارية/.test(error.message || '');
+      const hint = failureHint(error);
+      const stuck = /مكالمة جارية/.test(String((error && (error.raw || error.message)) || ''));
       if (stuck) {
         /* الحالة الأشهر: مكالمة سابقة لم تُغلق (تبويب أُغلق/شبكة انقطعت) فبقيت على الخادم.
            نعرض على المستخدم إغلاقها صراحةً ثم نحاول مرة واحدة. */
@@ -637,7 +816,7 @@
         teardown();
         return;
       }
-      toast(setup ? 'ميزات المكالمات غير مفعّلة بعد. نفّذ docs/sql/09-calls.sql ثم أعد المحاولة.' : (error.message || 'تعذّر بدء المكالمة'), 'error', 5600);
+      toast(hint.text, 'error', hint.ms);
       teardown();
     } finally { state.busy = false; }
   }
@@ -646,36 +825,74 @@
     const call = state.call;
     if (!call) return;
     stopRinger();
+
+    /* الرفض ينهي المكالمة محلياً فوراً — لا نترك المستخدم عالقاً إن فشلت الشبكة */
+    if (!accept) {
+      const id = call.id;
+      try { S.call('call_answer', { p_call: id, p_accept: false }).catch(() => {}); } catch (e) { /* تجاهل */ }
+      try { S.call('call_end', { p_call: id, p_reason: 'declined' }).catch(() => {}); } catch (e) { /* تجاهل */ }
+      terminate('declined');
+      return;
+    }
+
+    /* إذن الميكروفون يجب أن يُطلب في نفس «لمسة» المستخدم على iOS،
+       وإلا يأتي الطلب لاحقاً من الاستطلاع فيرفضه النظام وتبقى المكالمة صامتة. */
+    primeAudio();
+    try { await mic(); }
+    catch (error) { toast(micError(error), 'error', 5200); return; }
+
     try {
-      await S.call('call_answer', { p_call: call.id, p_accept: !!accept });
+      await S.call('call_answer', { p_call: call.id, p_accept: true });
     } catch (error) {
       toast(error.message || 'تعذّر الرد', 'error');
       return;
     }
-    if (!accept) { terminate('declined'); return; }
     state.status = CS.STATES.CONNECTING;
     state.answeredAt = Date.now();
+    state.offerRetries = 0;
+    state.note = '';
     armWatchdog();
+    armConnect(14000);
     paint();
     startTicker();
     schedulePoll(300);
   }
 
-  async function endCall(reason, remote) {
+  /* الإنهاء محلي أولاً وبلا await: كان انتظار الخادم (حتى 8.5 ثانية) يجعل زرّ
+     الإنهاء يبدو ميتاً — وهذا أسوأ عطل يمكن أن يراه المستخدم في مكالمة. */
+  function endCall(reason, remote) {
+    const finalReason = reason || 'hangup';
     const call = state.call;
-    if (!call) return;
     stopRinger();
+
+    /* لا مكالمة معروفة لكن الواجهة ظاهرة؟ نُغلق كل شيء بدل تجاهل الضغطة */
+    if (!call) { teardown(); return Promise.resolve(false); }
+
+    const id = call.id;
+    terminate(finalReason);
+
     if (!remote) {
-      putSignal({ k: 'end', reason: reason || 'hangup' });
-      try { await S.call('call_end', { p_call: call.id, p_reason: reason || 'hangup' }); } catch (e) { /* الشبكة */ }
+      try { S.call('call_signal_put', { p_call: id, p_payload: { k: 'end', reason: finalReason } }).catch(() => {}); } catch (e) { /* تجاهل */ }
+      closeOnServer(id, finalReason, 0);
     }
-    terminate(reason || 'hangup');
+    return Promise.resolve(true);
+  }
+
+  /* إغلاق المكالمة على الخادم مع محاولتين: إن بقيت «نشطة» هناك حجبت مكالمة
+     جديدة («لديك مكالمة جارية بالفعل») بينما الواجهة عندنا نظيفة. */
+  function closeOnServer(id, reason, attempt) {
+    S.call('call_end', { p_call: id, p_reason: reason }, null, { keepalive: true })
+      .catch(() => {
+        if (attempt >= 2) return;
+        global.setTimeout(() => closeOnServer(id, reason, attempt + 1), 1200 * (attempt + 1));
+      });
   }
 
   function terminate(reason) {
     if (!state.call) return;
     const finalReason = reason || 'hangup';
-    stopRinger(); stopTicker(); clearWatchdog(); releaseWakeLock();
+    stopRinger(); stopTicker(); clearWatchdog(); clearConnect(); releaseWakeLock();
+    if (state.pollTimer) { global.clearTimeout(state.pollTimer); state.pollTimer = null; }
     state.status = ['missed', 'timeout'].includes(finalReason) ? CS.STATES.MISSED
       : finalReason === 'declined' ? CS.STATES.DECLINED
       : finalReason === 'busy' ? CS.STATES.BUSY
@@ -700,8 +917,9 @@
     const ended = state.call;
     state.resetTimer = global.setTimeout(() => {
       state.resetTimer = null;
-      /* لا نمسح مكالمة بدأت بعد هذه المهلة */
-      if (state.call && state.call !== ended) return;
+      /* لا نمسح مكالمة بدأت بعد هذه المهلة — نقارن المعرّف لا الكائن،
+         لأن الاستطلاع يُنشئ كائناً جديداً لنفس المكالمة. */
+      if (state.call && (!ended || state.call.id !== ended.id)) return;
       state.call = null; state.status = CS.STATES.IDLE; state.reason = '';
       state.cursor = 0; state.offerSent = false; state.answerSent = false;
       state.answeredAt = 0; state.startedAt = 0; state.note = '';
@@ -723,10 +941,13 @@
     state.audio = null;
     state.muted = false;
     state.pendingIce = [];
+    state.remoteStream = null;
+    state.ice = { host: 0, srflx: 0, relay: 0 };
   }
 
   function teardown() {
-    stopRinger(); stopTicker(); clearWatchdog(); clearReset(); releaseWakeLock(); teardownMedia();
+    stopRinger(); stopTicker(); clearWatchdog(); clearConnect(); clearReset(); releaseWakeLock(); teardownMedia();
+    state.ice = { host: 0, srflx: 0, relay: 0 }; state.offerRetries = 0; state.lastError = '';
     state.call = null; state.status = CS.STATES.IDLE; state.cursor = 0;
     state.adopted = false; state.audioBlocked = false;
     if (state.pollTimer) { global.clearTimeout(state.pollTimer); state.pollTimer = null; }
@@ -847,9 +1068,36 @@
     attach, start, answer, end: endCall, syncButton, pollIncoming, reconcile, reset: resetStuck,
     active: () => !!state.call,
     status: () => state.status,
-    toggleMute,
-    _internal: { cfg, micError, isCaller, adopt, state }
+    toggleMute, debug,
+    _internal: { cfg, micError, isCaller, adopt, state, failureHint, connectTick }
   };
+
+  /* لقطة تشخيص واحدة: تُنسخ من الكونسول وتُرسَل بدل «الصوت لا يعمل». */
+  function debug() {
+    const pc = state.pc;
+    return {
+      status: state.status,
+      call: state.call && { id: state.call.id, state: state.call.state, thread: state.call.thread_id },
+      peer: state.peer && state.peer.user_id,
+      connection: pc ? pc.connectionState : null,
+      iceConnection: pc ? pc.iceConnectionState : null,
+      signaling: pc ? pc.signalingState : null,
+      candidates: Object.assign({}, state.ice),
+      hasMic: !!state.stream,
+      micTracks: state.stream ? state.stream.getAudioTracks().map((t) => ({ enabled: t.enabled, muted: t.muted, state: t.readyState })) : [],
+      remoteStream: !!state.remoteStream,
+      audioElement: !!state.audio,
+      audioBlocked: state.audioBlocked,
+      muted: state.muted,
+      offerSent: state.offerSent,
+      answerSent: state.answerSent,
+      offerRetries: state.offerRetries,
+      iceServers: cfg().iceServers.length + (global.WT_TURN_LOCAL ? 1 : 0),
+      turnLocal: !!turnLocal(),
+      note: state.note,
+      lastError: state.lastError
+    };
+  }
 
   /* إنهاء أي مكالمة عالقة على الخادم (زرّ الإنقاذ) */
   async function resetStuck() {

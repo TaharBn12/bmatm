@@ -16,6 +16,8 @@
 | **07** | [`07-social.sql`](07-social.sql) | ملفات شخصية + صورة Storage + بحث اختياري + صداقة/حظر + مراسلة خاصة وRLS/RPC | بعد 01/02، لتفعيل مساحة الأعضاء 3.0؛ إضافة آمنة دون حذف بيانات |
 | **09** | [`09-calls.sql`](09-calls.sql) | المكالمات الصوتية: جدول حالة المكالمة + إشارات WebRTC مؤقتة مغلقة + 10 RPC محمية + سجل مكالمة في المحادثة + تفضيل `allow_calls` + نبضة `last_seen_at` تُغلق المكالمات المهجورة (`call_current` / `call_reset`) | بعد **07**، لتفعيل زر 📞 ومفتاح «استقبال المكالمات»؛ آمن للتكرار ولا يحذف بيانات — **أعد تنفيذه** إن كنت نفّذت نسخة أقدم (يصلح المكالمة العالقة) |
 
+| **11** | [`11-calls-doctor.sql`](11-calls-doctor.sql) | 🔍 **تشخيص للقراءة فقط**: يفحص الدوال العشر + الجدولين + العمود `allow_calls` + الصلاحيات + التواقيع المكرّرة + المكالمات العالقة + **أي اعتماد على pgcrypto (صف 40)** + **مسح المكالمة المهجورة داخل `call_start` (صف 41)**، ويطبع أمر `drop` الجاهز لكل نسخة زائدة | عندما تقول الواجهة «ميزات المكالمات غير مفعّلة» رغم تنفيذ **09** — **لا يعدّل شيئاً** |
+
 | **10** | [`10-dm-realtime.sql`](10-dm-realtime.sql) | البثّ الحيّ للرسائل: مشغّلات على `wt_dm_messages`/`wt_dm_reads`/`wt_dm_typing` + `realtime.send` إلى قناة خاصة `wt:user:<uuid>` + سياسة RLS على `realtime.messages` + عرض فحص `wt_realtime_health` | بعد **09**، لتحديث فوري بدل انتظار الاستطلاع (4 ثوانٍ). **البثّ إشارات معرّفات فقط بلا نصوص**؛ لو لم تُنفّذه يعمل الموقع بالاستطلاع كما اليوم |
 
 > ℹ️ **01 و 02 و 03 متطابقة في المتن تماماً** (الفرق في الترويسة فقط). نفّذ **واحداً** منها فقط.
@@ -40,6 +42,37 @@
 
 > 🔒 **الصوت لا يُخزَّن ولا يُرفع ولا يمر بخادمنا.** ما يُحفظ هو الحالة النصية فقط.
 > ⚠️ لا تمنح `anon` أي تنفيذ على دوال المكالمات، ولا تضع مفاتيح `service_role` في المتصفح.
+### هل قاعدة البيانات مطابقة للمستودع فعلاً؟
+
+`tools/sql-drift.mjs` يقارن **نصّ كل دالة** في ملفات SQL بنسخة قاعدة البيانات
+(بصمة md5 بعد تسوية المسافات)، فيقول لك: مطابق / مختلف / ناقص / زائد.
+
+1. في SQL Editor نفّذ هذا واجمع النتيجة:
+
+```sql
+select json_agg(json_build_object(
+  'schema', n.nspname, 'name', p.proname,
+  'args', pg_get_function_identity_arguments(p.oid),
+  'hash', md5(regexp_replace(p.prosrc,'\s+','','g'))) order by 2) as fns
+from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+where (n.nspname='public' and p.proname like 'wt\_social\_%')
+   or n.nspname='wt_social_private';
+```
+
+2. احفظ `fns` في ملف `live.json` (مصفوفة كائنات) ثم:
+
+```bash
+node tools/sql-drift.mjs live.json 07-social.sql,09-calls.sql,10-dm-realtime.sql
+```
+
+النتيجة المتوقّعة: `match: 46` و`missing/different/extra: 0`.
+أي `DIFFER` يعني أن نسخة قديمة من الدالة ما زالت مثبّتة — أعد تنفيذ الملف.
+
+### ماذا لو قالت الواجهة «غير مفعّلة» بعد تنفيذ 09؟
+نفّذ [`11-calls-doctor.sql`](11-calls-doctor.sql) (قراءة فقط) — يخبرك بالكائن الناقص بالضبط:
+دالة، أو جدول، أو صلاحية، أو **توقيع قديم مكرّر** (سبب `PGRST203`)، أو سجلّ مكالمة عالق.
+التفاصيل في [troubleshooting.md § المكالمات](../troubleshooting.md#نفّذت-09-callssql-وما-زالت-المكالمات-معطّلة-).
+
 > 🌐 للشبكات المقيّدة أضف TURN (خدمة مُدارة أو coturn) عبر `calls.turnFetchUrl` في `assets/js/config.js`.
 > 🧹 اختياري: جدولة `select public.wt_calls_cleanup();` يومياً مع مهام 06.
 
