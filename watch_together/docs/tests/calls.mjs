@@ -242,7 +242,10 @@ t('سجل المكالمة نصّي بلا بيانات حساسة', (() => {
 
   const calls = read('assets/js/calls.js');
   t('calls.js: يوقف المؤقّتات عند الإنهاء', /clearWatchdog\(\)/.test(calls) && /clearReset\(\)/.test(calls));
-  t('calls.js: إعادة الضبط لا تمسح مكالمة جديدة', /if \(state\.call && state\.call !== ended\) return;/.test(calls));
+  /* المقارنة بالمعرّف لا بهوية الكائن: الاستطلاع يستبدل state.call بكائن جديد
+     (Object.assign) فمقارنة `!== ended` كانت تمنع التصفير إلى الأبد — الشريط يبقى. */
+  t('calls.js: إعادة الضبط لا تمسح مكالمة جديدة', /state\.call\.id !== ended\.id/.test(calls));
+  t('calls.js: إعادة الضبط تقارن بالمعرّف لا بهوية الكائن', !/state\.call !== ended/.test(calls));
   t('calls.js: حارس بدورتين بلا ردّ', /const WATCHDOG_MS = 25000;/.test(calls) &&
     /state\.misses < 2/.test(calls) && /watchdogTick/.test(calls));
   t('calls.js: يستعيد المكالمة القائمة', /async function reconcile/.test(calls) && /S\.call\('call_current'\)/.test(calls));
@@ -254,10 +257,30 @@ t('سجل المكالمة نصّي بلا بيانات حساسة', (() => {
     /لا يصل صوت/.test(calls));
   t('calls.js: زرّ تشغيل الصوت عند منع التشغيل التلقائي', /wtCallAudio/.test(calls) && /audioBlocked/.test(calls));
 
+  /* ---- أعطال الميدان: «الصوت لا يعمل ولا أستطيع إنهاء المكالمة» ---- */
+  const css = read('assets/css/call.css');
+  t('calls.js: الإنهاء محلي أولاً ولا ينتظر الخادم',
+    !/async function endCall/.test(calls) && !/await S\.call\('call_end'/.test(calls));
+  t('calls.js: يعيد محاولة الإغلاق على الخادم', /function closeOnServer/.test(calls) && /attempt \+ 1/.test(calls));
+  t('calls.js: إشارة تالفة لا تُسقط بقية الإشارات', /try \{ await onSignal\(entry\.payload\); \}/.test(calls));
+  t('calls.js: لا يُحيي مكالمة منتهية من استطلاع متأخّر', /if \(CS\.isTerminal\(state\.status\)\) return;/.test(calls));
+  t('calls.js: يفتح المسار من جديد إذا لا يوجد اتصال', /state\.offerSent \|\| state\.pc\) return;/.test(calls));
+  t('calls.js: يجيب على عرض ثانٍ (الطرف الآخر أعاد التحميل)', /pc\.signalingState === 'stable'/.test(calls) &&
+    /createAnswer\(\)/.test(calls));
+  t('calls.js: ملاحظة التشخيص داخل شريط المكالمة', /wtCallBarNote/.test(calls) && /call-bar__note/.test(css));
+  t('calls.js: التنبيهات لا تغطّي شريط المكالمة', /body\.has-call \.toast-host/.test(css));
+  t('calls.js: يطلب الميكروفون داخل ضغطة القبول', /async function answer\(accept\)[\s\S]{0,1200}await mic\(\)/.test(calls));
+  t('calls.js: يهيّئ عنصر الصوت داخل اللمسة (iOS)', /function primeAudio/.test(calls) && /silentWavUrl/.test(calls));
+  t('calls.js: يفتح قفل الصوت عند أي لمسة', /addEventListener\('pointerdown', unlockAudio/.test(calls));
+  t('calls.js: مؤقّت اتصال بدل «يُفتح المسار» إلى الأبد', /function armConnect/.test(calls) && /تعذّر إيصال الصوت/.test(calls));
+  t('calls.js: لقطة تشخيص WTCalls.debug()', /function debug\(\)/.test(calls) && /toggleMute, debug,/.test(calls));
+
   const sqlNow = read('docs/sql/09-calls.sql');
   t('SQL: نبضة آخر نشاط', /last_seen_at/.test(sqlNow) && /create or replace function wt_social_private\.call_touch/.test(sqlNow));
   t('SQL: يُغلق المكالمة النشطة المهجورة', /state = 'active'[\s\S]{0,240}interval '10 minutes'/.test(sqlNow));
   t('SQL: مسح شامل عند بدء مكالمة', /perform wt_social_private\.call_expire\(null\);/.test(sqlNow));
+  t('SQL: يغلق المكالمة المهجورة (45 ثانية بلا نبضة) قبل رفض مكالمة جديدة',
+    /interval '45 seconds'/.test(sqlNow) && /call_finalize\(r\.id,'failed'\)/.test(sqlNow));
   t('SQL: يستطيع الاستماع لكل المحادثات', /wt_social_call_incoming\(p_thread uuid default null\)/.test(sqlNow));
   t('SQL: دوال الاستعادة والإصلاح', /wt_social_call_current\(\)/.test(sqlNow) && /wt_social_call_reset\(\)/.test(sqlNow));
   t('SQL: صلاحيات الدوال الجديدة للمسجّلين فقط', /revoke all on function public\.wt_social_call_reset\(\) from public, anon/.test(sqlNow) &&

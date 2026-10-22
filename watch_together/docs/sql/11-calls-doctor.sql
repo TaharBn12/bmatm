@@ -96,7 +96,9 @@ report as (
   ) internal_fn
 
   union all
-  /* ---- 6ب) دوال pgcrypto غير المتاحة (سبب 42883 الشائع جداً) ---- */
+  /* ---- 6ب) دوال pgcrypto غير المتاحة (سبب 42883 الشائع جداً) ----
+     نفحص كل دوالنا (public.wt_* و wt_social_private.*) بعد حذف التعليقات:
+     التعليق داخل الدالة يذكر الاسم الممنوع ولا يعني اعتماداً حقيقياً. */
   select 40, 'اعتماد على pgcrypto داخل دوالنا',
     case when count(*) = 0 then '✅ لا اعتماد'
          else '❌ ' || count(*) || ' دالة معطوبة' end,
@@ -105,9 +107,23 @@ report as (
          else 'أعد تنفيذ 09-calls.sql (النسخة الحالية تستخدم sha256 بدل gen_random_bytes)' end
   from pg_proc p
   join pg_namespace n on n.oid = p.pronamespace
-  where n.nspname in ('public', 'wt_social_private')
-    and p.proname like 'wt%'
-    and p.prosrc ~ '(gen_random_bytes|gen_salt|uuid_generate|digest\()'
+  where (n.nspname = 'wt_social_private' or (n.nspname = 'public' and p.proname like 'wt%'))
+    and regexp_replace(regexp_replace(p.prosrc, '/\*.*?\*/', '', 'gs'), '--[^\n]*', '', 'g')
+        ~ '(gen_random_bytes|gen_salt|uuid_generate|digest\()'
+
+  union all
+  /* ---- 6ج) هل يُغلق call_start المكالمة المهجورة؟ ----
+     بدونه يبقى المستخدم محبوساً 10 دقائق برسالة «لديك مكالمة جارية بالفعل»
+     بعد أن يُغلق تبويباً أو يفشل طلب الإنهاء. */
+  select 41, 'مسح المكالمة المهجورة داخل call_start',
+    case when count(*) = 1 then '✅ موجود' else '❌ مفقود' end,
+    case when count(*) = 1 then 'يُغلق أي مكالمة بلا نبضة منذ 45 ثانية'
+         else 'call_start لا يُغلق المكالمات المهجورة' end,
+    case when count(*) = 1 then '—' else 'أعد تنفيذ 09-calls.sql (النسخة الحالية)' end
+  from pg_proc p
+  join pg_namespace n on n.oid = p.pronamespace
+  where n.nspname = 'public' and p.proname = 'wt_social_call_start'
+    and p.prosrc ~ 'last_seen_at, created_at\) < clock_timestamp\(\) - interval ''45 seconds'''
 
   union all
   /* ---- 7) نسخ مكرّرة بتوقيع قديم (سبب PGRST202/PGRST203 الشائع) ---- */

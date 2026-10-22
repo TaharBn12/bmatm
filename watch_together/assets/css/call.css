@@ -152,6 +152,7 @@
   inset-block-start: calc(10px + env(safe-area-inset-top));
   z-index: 8700;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 10px;
   max-width: 520px;
@@ -182,6 +183,22 @@
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 #wtCallBarTime { font-size: 12px; font-weight: 700; color: #9aa8b8; flex: none; }
+
+/* ملاحظة التشخيص داخل الشريط: أثناء المكالمة تكون البطاقة مخفية، فأي سبب
+   («لا يصل صوت»، «لم يُسمح بالميكروفون») كان يُكتب في مكان لا يراه أحد. */
+.call-bar__note {
+  display: block;
+  flex: 1 1 100%;
+  margin-top: 2px;
+  font-size: 10.5px;
+  font-weight: 700;
+  line-height: 1.6;
+  color: #e8b86a;
+}
+.call-bar__note[hidden] { display: none; }
+
+/* التنبيهات تغطّي شريط المكالمة (كلاهما أعلى الشاشة): نُنزلها أثناء المكالمة */
+body.has-call .toast-host { top: calc(78px + env(safe-area-inset-top)); }
 #wtCallBarTime.is-time { color: #a9d8c1; font-variant-numeric: tabular-nums; }
 
 .call-bar__btn {

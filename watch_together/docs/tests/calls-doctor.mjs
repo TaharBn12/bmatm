@@ -75,6 +75,11 @@ const statusOf = (byCheck, fragment) => {
   const key = Object.keys(byCheck).find((name) => name.includes(fragment));
   return key ? byCheck[key]['النتيجة'] : '—';
 };
+/* الصف كاملاً (النتيجة + التفصيل + الإصلاح المقترح) */
+const rowTextOf = (byCheck, fragment) => {
+  const key = Object.keys(byCheck).find((name) => name.includes(fragment));
+  return key ? Object.values(byCheck[key]).join(' | ') : '—';
+};
 
 /* ---------------- 1) التقرير نفسه: للقراءة فقط ---------------- */
 {
@@ -100,6 +105,10 @@ await db.exec(SQL('09-calls.sql'));
   t('سليم: عمود allow_calls', /✅/.test(statusOf(byCheck, 'allow_calls')));
   t('سليم: كل الدوال العشر جاهزة', rows.filter((r) => /الدالة /.test(r['الفحص']) && /✅/.test(r['النتيجة'])).length === 10);
   t('سليم: لا نسخ مكرّرة', /✅/.test(statusOf(byCheck, 'مكرّرة')));
+  t('سليم: لا اعتماد على pgcrypto (والتعليق لا يُحتسب)', /✅/.test(statusOf(byCheck, 'pgcrypto')),
+    rowTextOf(byCheck, 'pgcrypto'));
+  t('سليم: call_start يمسح المكالمة المهجورة', /✅/.test(statusOf(byCheck, 'المهجورة')),
+    rowTextOf(byCheck, 'المهجورة'));
   t('سليم: لا مكالمات معلّقة', /✅/.test(statusOf(byCheck, 'مفتوحة')));
   t('سليم: خلاصة إيجابية', /✅/.test(summary['النتيجة']), summary['النتيجة']);
   t('سليم: لا يوصي بحذف أي دالة', !/drop function/.test(summary['ما تفعله'] || ''));
@@ -129,6 +138,34 @@ await db.exec("create function public.wt_social_call_start(p_thread uuid) return
   t('تكرار: الخلاصة تطلب الحذف', /احذفها/.test(summary['النتيجة'] || ''), summary['النتيجة']);
   t('تكرار: لا يحذف شيئاً بنفسه (التوقيع ما زال موجوداً)',
     (await db.query("select 1 from pg_proc where proname='wt_social_call_start'")).rows.length === 2);
+}
+await db.close();
+
+/* ---------------- 4ب) اعتماد حقيقي على pgcrypto يُكتشف ---------------- */
+/* العطل الذي أوقف المكالمات فعلاً: دالة تستدعي gen_random_bytes بينما pgcrypto
+   في مخطط extensions. نفحص أن التشخيص يمسكه — وأن تعليقاً يذكر الاسم لا يخيفه. */
+db = await database();
+await db.exec(SQL('09-calls.sql'));
+await db.exec(`create function public.wt_social_probe_bytes() returns text
+  language plpgsql as $$ begin return encode(gen_random_bytes(4),'hex'); end $$`);
+{
+  const { byCheck } = await report(db);
+  const row = rowTextOf(byCheck, 'pgcrypto');
+  t('pgcrypto: يكشف الدالة المعتمدة فعلاً', /❌/.test(row), row);
+  t('pgcrypto: يسمّي الدالة المخالفة', /wt_social_probe_bytes/.test(row), row);
+  t('pgcrypto: لا يتّهم call_finalize (ذكر الاسم في تعليق فقط)', !/call_finalize/.test(row), row);
+  t('pgcrypto: يوجّه إلى إعادة تنفيذ 09', /09-calls\.sql/.test(row), row);
+}
+await db.close();
+
+/* ---------------- 4ج) call_start بلا مسح للمكالمات المهجورة ---------------- */
+db = await database();
+await db.exec(SQL('09-calls.sql'));
+await db.exec(`create or replace function public.wt_social_call_start(p_thread uuid, p_media text default 'audio')
+  returns jsonb language plpgsql as $$ begin return '{}'::jsonb; end $$`);
+{
+  const { byCheck } = await report(db);
+  t('مسح المهجورة: يُكتشف غيابه', /❌/.test(statusOf(byCheck, 'المهجورة')), rowTextOf(byCheck, 'المهجورة'));
 }
 await db.close();
 
@@ -206,6 +243,23 @@ await db.exec(SQL('09-calls.sql'));
     const stale = await db.query("select state from public.wt_dm_calls where created_at < now() - interval '1 day'");
     t('انحدار: العالقة القديمة أُغلقت تلقائياً', stale.rows.every((row) => row.state !== 'ringing'),
       stale.rows.map((row) => row.state).join(','));
+
+    /* الانحدار الثاني من الميدان: مكالمة «نشطة» هجرها صاحبها (تبويب أُغلق وفشل
+       طلب الإنهاء) كانت تحجب أي مكالمة جديدة 10 دقائق برسالة «لديك مكالمة جارية». */
+    const before = await db.query(`select id from public.wt_dm_calls where state in ('ringing','active') order by created_at desc limit 1`);
+    const abandoned = before.rows[0] ? before.rows[0].id : null;
+    if (abandoned) {
+      await db.exec(`update public.wt_dm_calls set last_seen_at = now() - interval '2 minutes' where id = '${abandoned}'`);
+      let fresh = null, errAb = '';
+      try { fresh = await call(A, 'wt_social_call_start', { p_thread: thread.id, p_media: 'audio' }); }
+      catch (error) { errAb = error.code + ' ' + error.message; }
+      t('مهجورة: مكالمة نشطة بلا نبضة لا تحجب مكالمة جديدة', !!fresh && fresh.ok === true, errAb);
+      const closedRow = await db.query(`select state, end_reason from public.wt_dm_calls where id = '${abandoned}'`);
+      t('مهجورة: أُغلقت كـ«تعذّرت» لا كمكالمة جارية',
+        closedRow.rows[0] && closedRow.rows[0].state === 'failed', closedRow.rows[0] && closedRow.rows[0].state);
+    } else {
+      t('مهجورة: مكالمة نشطة بلا نبضة لا تحجب مكالمة جديدة', false, 'لا مكالمة حيّة للاختبار');
+    }
   } catch (error) {
     hard = (error && (error.code || '')) + ' ' + (error && error.message ? error.message : String(error));
     t('مكالمة: الدورة كاملة بلا استثناء', false, hard);

@@ -201,7 +201,7 @@ end $$;
 -- ---------------------------------------------------------------------
 create or replace function public.wt_social_call_start(p_thread uuid, p_media text default 'audio') returns jsonb
 language plpgsql security definer set search_path = pg_catalog, public as $$
-declare u uuid := wt_social_private.actor(); peer uuid; c public.wt_dm_calls; allowed boolean; text_body jsonb;
+declare u uuid := wt_social_private.actor(); peer uuid; c public.wt_dm_calls; allowed boolean; text_body jsonb; r record;
 begin
   if coalesce(p_media,'audio') <> 'audio' then raise exception 'المكالمات الصوتية فقط متاحة حالياً' using errcode='22023'; end if;
   perform wt_social_private.ensure_profile(u);
@@ -211,6 +211,17 @@ begin
   select allow_calls into allowed from public.wt_profiles where user_id = peer;
   if coalesce(allowed,true) is false then raise exception 'هذا العضو أوقف استقبال المكالمات' using errcode='42501'; end if;
   perform wt_social_private.call_expire(null);   /* مسح شامل: لا تحبسك مكالمة مهجورة في محادثة أخرى */
+  /* مكالمة «حيّة» بلا نبضة منذ 45 ثانية = مهجورة فعلاً (تبويب أُغلق، جهاز نام،
+     أو إنهاء لم يصل للخادم). الطرفان يستطلعان كل 0.9–2.6 ثانية ما داما في
+     المكالمة، وكل استطلاع يلمس last_seen_at — فالنبضة الطازجة تعني أن أحداً
+     ما زال فيها. بدون هذا كان المستخدم يُحبس 10 دقائق برسالة «لديك مكالمة جارية». */
+  for r in select id from public.wt_dm_calls
+            where state in ('ringing','active') and ended_at is null
+              and u in (caller_id, callee_id)
+              and coalesce(last_seen_at, created_at) < clock_timestamp() - interval '45 seconds'
+  loop
+    perform wt_social_private.call_finalize(r.id,'failed');
+  end loop;
   if exists (select 1 from public.wt_dm_calls
              where state in ('ringing','active')
                and created_at > clock_timestamp() - interval '3 hours'
