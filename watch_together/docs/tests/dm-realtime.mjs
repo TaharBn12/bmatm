@@ -208,10 +208,16 @@ const UID = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
   t('messages.js: يقيّد التحديث السريع (throttle)', /liveChatTimer/.test(messages) && /liveListTimer/.test(messages));
   t('messages.js: مؤشّر الكتابة ينتهي وحده', /typingTimer/.test(messages) && /header\(ctx\)/.test(messages));
   t('messages.js: الاستطلاع الدوري باقٍ كشبكة أمان', /state\.timer = setTimeout\(tick,4000\)/.test(messages));
-  t('messages.js: يتحقّق من الحساب قبل应用到 سياق محمّل', /ownsContext\(ctx\)/.test(messages));
+  t('messages.js: يتحقّق من الحساب قبل تطبيق سياق محمّل', /ownsContext\(ctx\)/.test(messages));
 
   t('sw.js: يخزّن dm-realtime مسبقاً', /'assets\/js\/dm-realtime\.js'/.test(sw));
-  t('sw.js: نسخة الكاش مرتفعة', /const VERSION = 'wt-v1\.0\.[4-9]'/.test(sw));
+  /* الغاية: أن ترتفع نسخة الكاش مع كل تغيير حتى يتخلّى المتصفح عن الكاش القديم.
+     تثبيت رقم بعينه (wt-v1.0.[4-9]) كان ينكسر عند كل رفع نسخة، وهذا ليس خطأً في الكود؛
+     لذا نفحص «أرضية دنيا» تُرفع مع كل تغيير يُبطل الكاش. */
+  const swVer = (sw.match(/const VERSION = 'wt-v(\d+)\.(\d+)\.(\d+)'/) || []).slice(1).map(Number);
+  const verAtLeast = (v, min) => v.length === 3 && (v[0] !== min[0] ? v[0] > min[0]
+    : v[1] !== min[1] ? v[1] > min[1] : v[2] >= min[2]);
+  t('sw.js: نسخة الكاش مرتفعة', verAtLeast(swVer, [1, 1, 0]), 'wt-v' + swVer.join('.'));
 
   const client = read('assets/js/dm-realtime.js');
   t('العميل لا يخزّن نصوص رسائل', !/body/.test(client) && !/localStorage/.test(client));

@@ -6,7 +6,7 @@
    ========================================================= */
 'use strict';
 
-const VERSION = 'wt-v1.0.9';
+const VERSION = 'wt-v1.1.0';
 const SHELL = VERSION + '-shell';
 const RUNTIME = VERSION + '-runtime';
 const OFFLINE_URL = 'offline.html';
@@ -25,7 +25,6 @@ const PRECACHE = [
   'assets/css/home.css',
   'assets/css/social.css',
   'assets/css/media.css',
-  'assets/css/features.css',
   'assets/js/prefs.js',
   'assets/js/site.js',
   'assets/js/config.js',

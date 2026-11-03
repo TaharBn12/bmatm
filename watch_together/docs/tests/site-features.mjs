@@ -263,7 +263,11 @@ try {
   t('sw.js: الكاش بديل فقط عند انقطاع الشبكة', /await caches\.match\(request, \{ ignoreSearch: true \}\)/.test(sw) &&
     /status: 504/.test(sw), '');
   t('sw.js: الصور ما زالت من الكاش أولاً', /const cached = await caches\.match\(request\);/.test(sw), '');
-  t('sw.js: نسخة الكاش مرفوعة مع هذا التغيير', /VERSION = 'wt-v1\.0\.[2-9]'/.test(sw), '');
+  /* أرضية دنيا بدل رقم متحجّر: أي رفع نسخة لاحق يبقى أخضر، وأي تخفيض يسقط. */
+  t('sw.js: نسخة الكاش مرفوعة مع هذا التغيير', (() => {
+    const v = (sw.match(/VERSION = 'wt-v(\d+)\.(\d+)\.(\d+)'/) || []).slice(1).map(Number);
+    return v.length === 3 && (v[0] > 1 || (v[0] === 1 && (v[1] > 1 || (v[1] === 1 && v[2] >= 0))));
+  })(), (sw.match(/VERSION = '(wt-v[\d.]+)'/) || [])[1]);
   t('config.js: بصمة نشر قابلة للقراءة', /build:\s*'20\d\d-\d\d-\d\d/.test(config), '');
   t('site.js: يعرض بصمة النشر للمستخدم', /buildTag\(\)/.test(site) && /WT_CONFIG\.build/.test(site), '');
   t('لا صفحات تشير إلى نسخة قديمة من config.js', pages.every(name => !read(name).includes('config.js?v=3.1.2')), '');
