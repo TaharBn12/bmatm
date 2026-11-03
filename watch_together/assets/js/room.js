@@ -1170,7 +1170,7 @@
           action: o.a === 'reaction' ? 'reaction' : '',
           reaction: typeof o.e === 'string' && typeof o.u === 'string'
             ? { emoji: o.e, actor: o.u, version: o.v } : null,
-          /* الغلاف الخام كما هو — تقرأ منه وحدة features.js أحداث الميزات */
+          /* الغلاف الخام كما هو — تُقرأ منه أنواع الأحداث القديمة (مزاج/لحظة/…) */
           meta: o
         };
       } catch (e) {
@@ -1196,6 +1196,9 @@
     return one ? [one] : [];
   }
 
+  /* أنواع رسائل كانت تحملها وحدة الميزات المحذوفة (features.js) */
+  const FEATURE_KINDS = ['mood', 'note', 'note-del', 'pin', 'vote'];
+
   function addChatMessage(m, opts) {
     opts = opts || {};
     if (!m) return;
@@ -1204,9 +1207,10 @@
     /* The envelope also identifies reactions on legacy tables without a kind column. */
     if (m.kind === 'reaction' || d.action === 'reaction') return applyMessageReaction(m);
     if (m.kind === 'edit' || m.kind === 'del') return applyChatAction(m, m.kind);
-    /* أحداث الميزات (مزاج/لحظة/ملاحظة/تصويت) — تُسلّم لوحدة features.js بلا فقاعة */
-    if (window.WTFeatures && typeof window.WTFeatures.onMessage === 'function' &&
-      window.WTFeatures.onMessage(m, d, opts)) return null;
+    /* أحداث الميزات (مزاج/لحظة/ملاحظة/تصويت): أُزيلت وحدة الميزات كلها، لكن
+       متصفحاً لم يُحدَّث بعد قد يرسلها من غرفة مشتركة. نُسقطها بهدوء بدل رسم
+       فقاعة فارغة (نصّها الأصلي فارغ لأن الحمولة كلها في الغلاف). */
+    if (FEATURE_KINDS.indexOf(m.kind) >= 0 || FEATURE_KINDS.indexOf(d && d.action) >= 0) return null;
 
     const text = d.text;
     const cid = d.cid || String(m.id || '') || U.uid('m');
