@@ -6,7 +6,6 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URI;
-import java.net.URL;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -261,13 +260,14 @@ public final class SearchResolver {
     private static Object httpJson(String url, int seconds) {
         HttpURLConnection c = null;
         try {
-            c = (HttpURLConnection) new URL(url).openConnection();
+            /* URI أولاً: بانية URL المباشرة مهملة في Java 20+ */
+            c = (HttpURLConnection) new java.net.URI(url).toURL().openConnection();
             c.setInstanceFollowRedirects(true);
             c.setConnectTimeout(seconds * 1000);
             c.setReadTimeout(seconds * 1000);
             c.setRequestProperty("Accept", "application/json");
             c.setRequestProperty("User-Agent", "WatchTogether/1.0 (+java-server)");
-            int code = c.getCode();
+            int code = c.getResponseCode();
             if (code != 200) return null;
             java.io.InputStream in = c.getInputStream();
             java.io.ByteArrayOutputStream buf = new java.io.ByteArrayOutputStream();
