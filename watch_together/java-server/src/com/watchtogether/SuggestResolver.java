@@ -54,8 +54,7 @@ public final class SuggestResolver {
         Path out = Files.createTempFile("wt-suggest-", ".tsv");
         Process p = null;
         try {
-            List<String> cmd = new ArrayList<>(Arrays.asList(
-                System.getenv().getOrDefault("WT_PYTHON", "python3"), "-m", "yt_dlp",
+            List<String> cmd = Py.ytDlp(Arrays.asList(
                 "--ignore-config", "--no-warnings", "--socket-timeout", "8", "--retries", "0",
                 "--use-extractors", "default,-generic", "--flat-playlist",
                 "--print", FIELDS));
