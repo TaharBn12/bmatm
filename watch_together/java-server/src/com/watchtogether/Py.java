@@ -47,10 +47,29 @@ final class Py {
         return cmd;
     }
 
+    /**
+     * سطر تشخيصي يُطبع عند إقلاع السيرفر: أي مترجم سيُستخدم، وهل yt-dlp متاح.
+     * الهدف: أن يعرف المشغّل من اللحظة الأولى إن كانت /api/resolve و /api/suggest
+     * ستعملان، بدل أن يكتشف ذلك بعد تجربة فاشلة.
+     */
+    static String report() {
+        String exe = String.join(" ", cmd());
+        boolean ok = runs(ytDlp(Arrays.asList("--version")));
+        return "  Python      : " + exe +
+            (ok ? "  ✓ yt-dlp متاح"
+                : "  ⚠ yt-dlp غير مثبت — /api/resolve و /api/suggest لن يعملا" +
+                  System.lineSeparator() + "                 ثبّته: python -m pip install -U yt-dlp" +
+                  "  (أو اضبط WT_PYTHON)");
+    }
+
     private static boolean works(String[] c) {
+        List<String> args = new ArrayList<>(Arrays.asList(c));
+        args.add("--version");
+        return runs(args);
+    }
+
+    private static boolean runs(List<String> args) {
         try {
-            List<String> args = new ArrayList<>(Arrays.asList(c));
-            args.add("--version");
             Process p = new ProcessBuilder(args)
                 .redirectOutput(ProcessBuilder.Redirect.DISCARD)
                 .redirectError(ProcessBuilder.Redirect.DISCARD)
