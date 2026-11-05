@@ -63,6 +63,11 @@ build.bat
 run.bat
 ```
 
+> الرسائل داخل `build.bat` و`run.bat` بالإنجليزية **عمداً**، لأن موجه الأوامر
+> يشوّه العربية المكتوبة بترميز UTF-8 داخل ملفات `.bat`. أما رسائل السيرفر
+> نفسها (اللافتة، حالة Python) فتبقى عربية — السكربت يبدّل ترميز النافذة
+> إلى UTF-8 قبل تشغيل Java.
+
 سيطبع السيرفر قائمة الروابط، منها:
 ```
 مجلة الموقع  : …\watch_together
@@ -79,6 +84,9 @@ WebSocket    : /ws
 set PORT=3000
 run.bat
 ```
+> السيرفر يحل المشكلة تلقائياً أيضاً: إن كان 8080 مشغولاً يجرّب 8081 ف8082 …
+> ويطبع `المنفذ 8080 مشغول — تم التشغيل على 8081 بدلاً منه`. لمعرفة من
+> يشغل المنفذ: `netstat -ano | findstr :8080` ثم `tasklist /fi "PID eq الرقم"`.
 
 **الإيقاف:** <kbd>Ctrl</kbd> + <kbd>C</kbd>
 
@@ -87,16 +95,27 @@ run.bat
 ## 4) Python و yt-dlp (مطلوبان للاقتراحات والاستخراج)
 
 ```bat
+py --version
 python --version
 ```
-إن لم يكن مثبتاً: `winget install Python.Python.3.12` (ثم نافذة جديدة)، أو من
-https://www.python.org/downloads — وفعّل **Add python.exe to PATH**.
+- إن عمل `py` ولم يعمل `python` فلا مشكلة — **السيرفر يجرب الاثنين تلقائياً**
+  (`python3` ← `python` ← `py -3` ← `py`).
+- إن لم يعمل أيٌّ منهما ثبّت Python:
+  ```bat
+  winget install Python.Python.3.12
+  ```
+  أو من https://www.python.org/downloads — وفعّل **Add python.exe to PATH**.
+  ⚠️ بعد التثبيت **أغلق نافذة CMD وافتح نافذة جديدة**.
 
-ثم ثبّت yt-dlp وحدّثه:
+ثم ثبّت yt-dlp وحدّثه (بالمترجم الذي يعمل عندك):
+```bat
+py -m pip install -U yt-dlp
+```
+أو:
 ```bat
 python -m pip install -U yt-dlp
-yt-dlp --version
 ```
+للتأكد: `py -m yt_dlp --version`
 
 > السيرفر يبحث عن المترجم تلقائياً بالترتيب:
 > `WT_PYTHON` (إن ضبطته) ← `python3` ← `python` ← `py -3`
@@ -137,7 +156,8 @@ curl -X POST http://localhost:8080/api/suggest -H "Content-Type: application/jso
 | العَرَض | السبب | الحل |
 |---|---|---|
 | `javac ليس أمراً…` | JDK غير مثبّت أو ليس في PATH | خطوة 1 |
-| `Address already in use` | المنفذ 8080 مشغول | `set PORT=3000` ثم `run.bat` |
+| `Address already in use` | المنفذ 8080 مشغول | السيرفر يتقدّم تلقائياً إلى 8081…؛ أو `set PORT=3000` ثم `run.bat` |
+| الرسائل العربية تظهر كرموز `╪¬╪▒` | ترميز النافذة ليس UTF-8 | شغّل `chcp 65001` قبل أي أمر، والسكربتات تفعلها تلقائياً قبل Java |
 | الصفحة تفتح لكن المزامنة لا تعمل | فتحت الملفات مباشرة بدل السيرفر | افتح `http://localhost:8080` لا `file://` |
 | `خدمة الاستخراج غير متاحة` | yt-dlp أو Python غير مثبت | خطوة 4 |
 | `/api/suggest` يرجع قائمة فارغة | الرابط موقع غير مدعوم أو خاص | جرّب رابطاً عاماً، وحدّث yt-dlp |

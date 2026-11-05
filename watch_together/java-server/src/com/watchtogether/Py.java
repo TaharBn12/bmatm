@@ -30,6 +30,7 @@ final class Py {
             candidates.add(new String[] { "python3" });
             candidates.add(new String[] { "python" });
             candidates.add(new String[] { "py", "-3" });
+            candidates.add(new String[] { "py" });
             for (String[] c : candidates) {
                 if (works(c)) { chosen = c; return chosen; }
             }
@@ -55,11 +56,17 @@ final class Py {
     static String report() {
         String exe = String.join(" ", cmd());
         boolean ok = runs(ytDlp(Arrays.asList("--version")));
-        return "  Python      : " + exe +
-            (ok ? "  ✓ yt-dlp متاح"
-                : "  ⚠ yt-dlp غير مثبت — /api/resolve و /api/suggest لن يعملا" +
-                  System.lineSeparator() + "                 ثبّته: python -m pip install -U yt-dlp" +
-                  "  (أو اضبط WT_PYTHON)");
+        if (ok) return "  Python      : " + exe + "  ✓ yt-dlp متاح";
+        boolean hasPython = works(cmd());
+        String nl = System.lineSeparator();
+        if (!hasPython) {
+            return "  Python      : ✗ لم أجد مترجم Python على هذا الجهاز" + nl +
+                   "                 /api/resolve و /api/suggest لن يعملا (بقية الموقع يعمل)" + nl +
+                   "                 ثبّته: winget install Python.Python.3.12  ثم نافذة CMD جديدة" + nl +
+                   "                 أو اضبط المتغير: set WT_PYTHON=المسار\\python.exe";
+        }
+        return "  Python      : " + exe + "  ⚠ yt-dlp غير مثبت — /api/resolve و /api/suggest لن يعملا" + nl +
+               "                 ثبّته: " + exe + " -m pip install -U yt-dlp";
     }
 
     private static boolean works(String[] c) {

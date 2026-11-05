@@ -56,7 +56,29 @@ public final class Main {
         wsServer = new WebSocketServer(roomStore);
         StaticFileServer files = new StaticFileServer(root);
 
-        HttpServer server = HttpServer.create(new InetSocketAddress(host, port), 0);
+        /* إن كان المنفذ مشغولاً نجرّب الذي بعده تلقائياً بدل السقوط بخطأ BindException */
+        HttpServer server = null;
+        IOException bindError = null;
+        for (int i = 0; i < 20 && server == null; i++) {
+            int candidate = port + i;
+            try {
+                server = HttpServer.create(new InetSocketAddress(host, candidate), 0);
+                if (i > 0) {
+                    System.out.println("  [!] المنفذ " + port + " مشغول — تم التشغيل على " + candidate + " بدلاً منه.");
+                    port = candidate;
+                }
+            } catch (java.net.BindException e) {
+                bindError = e;
+            }
+        }
+        if (server == null) {
+            System.out.println("\n  [X] لم أستطع فتح أي منفذ بين " + port + " و " + (port + 19) + ".");
+            System.out.println("      السبب: " + bindError);
+            System.out.println("      أغلق البرنامج الذي يشغل المنفذ، أو شغّل:  set PORT=" + (port + 100) + "  ثم run.bat");
+            System.out.println("      لمعرفة من يشغله:  netstat -ano | findstr :" + port);
+            System.exit(1);
+            return;
+        }
         server.setExecutor((ThreadPoolExecutor) Executors.newFixedThreadPool(
                 Math.max(16, Runtime.getRuntime().availableProcessors() * 4), r -> {
                     Thread t = new Thread(r, "http-worker");
@@ -78,6 +100,7 @@ public final class Main {
                 if (path.equals("/api/rooms/report")) { handleRoomReport(ex); return; }
                 if (path.equals("/api/resolve")) { VideoResolver.handle(ex); return; }
                 if (path.equals("/api/suggest")) { SuggestResolver.handle(ex); return; }
+                if (path.equals("/healthz")) { sendText(ex, 200, "OK", "ok\n"); return; }
                 if (path.equals("/api/stats")) { sendJson(ex, 200, stats()); return; }
                 files.handle(ex);
             } catch (IOException e) {
