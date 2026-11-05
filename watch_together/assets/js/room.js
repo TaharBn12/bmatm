@@ -165,6 +165,10 @@
       updatePlayIcon();
     },
     onStateChange: (d) => {
+      /* انتهاء الفيديو → طبقة «التالي»: تظهر للجميع، والتنفيذ للمتحكم فقط */
+      if (d.ended && window.WTUpNext && window.WTUpNext.onEnded) {
+        try { window.WTUpNext.onEnded(); } catch (err) { console.error(err); }
+      }
       if (session.applyingRemote) return;
       if (!canControl()) {
         applyState(st, { initial: false });
@@ -463,6 +467,8 @@
       session.transport = transport;
       session.mode = transport.label;
       session.role = (result && result.role) || (transport.kind === 'local' && ownerToken ? 'owner' : 'viewer');
+      /* وضع العرض (?local=1&demo=1) تجربة وحيدة المتصفح: صاحبها هو المتحكم */
+      if (demoMode) session.role = 'owner';
       session.isOwner = session.role === 'owner';
       session.controlMode = (result && (result.controlMode || (result.room && result.room.controlMode))) === 'everyone' ? 'everyone' : 'owner';
       session.queue = Array.isArray(result && result.queue) ? result.queue : [];
@@ -834,6 +840,10 @@
     session.videoParsed = parsed;
     st.url = parsed.src;
     st.kind = parsed.kind;
+    /* فيديو جديد → أخفِ طبقة «التالي» وأوقف أي معاينة سابقة */
+    if (window.WTUpNext && window.WTUpNext.onVideoChanged) {
+      try { window.WTUpNext.onVideoChanged(parsed); } catch (err) { console.error(err); }
+    }
 
     try {
       el.ctrlbar.hidden = parsed.kind === 'embed';
@@ -1001,7 +1011,8 @@
     });
     session.roles = roles;
     Object.values(session.members).forEach(m => { m.role = roles[m.id] || 'viewer'; });
-    const role = roles[session.clientId];
+    /* في وضع العرض نثبّت دور المنشئ: لا أحد آخر في الغرفة ليقود المشاهدة */
+    const role = demoMode ? 'owner' : roles[session.clientId];
     if (role) {
       session.role = role;
       session.isOwner = role === 'owner';
@@ -2285,6 +2296,12 @@
   }
 
   async function addQueueItem() {
+    /* رابط قائمة يوتيوب (…?list=PL…) → نافذة استيراد بدل إضافة رابط واحد */
+    if (window.WTSuggest && window.WTUpNext && window.WTSuggest.parseListUrl(el.newUrl.value)) {
+      try {
+        if (await window.WTUpNext.importFromUrl(el.newUrl.value)) return;
+      } catch (err) { console.error(err); }   /* فشل الاستيراد → نكمل بالإضافة العادية */
+    }
     const parsed = U.parseWatchUrl(el.newUrl.value);
     if (!parsed) { U.toast('الرابط غير صالح — أدخل رابط يوتيوب أو mp4 أو m3u8', 'error'); el.newUrl.focus(); return; }
     if (!session.transport || typeof session.transport.addQueueItem !== 'function') {
@@ -2301,6 +2318,40 @@
     } catch (err) {
       U.toast('تعذّر إضافة الفيديو — تحقق من الاتصال ثم أعد المحاولة', 'error', 3200);
     }
+  }
+
+  /**
+   * إضافة دفعة إلى قائمة الغرفة (لاستيراد قوائم يوتيوب).
+   * تُضيف واحداً واحداً عبر الناقل نفسه، فتصل للجميع بنفس طريقة الإضافة اليدوية.
+   * @param {Array<{url:string,title?:string,fromPlaylist?:string}>} items
+   * @param {(done:number,total:number)=>void} [onProgress]
+   * @returns {Promise<number>} عدد ما أُضيف فعلاً
+   */
+  async function addQueueItems(items, onProgress) {
+    const list = (items || []).filter(Boolean);
+    if (!list.length) return 0;
+    if (!session.transport || typeof session.transport.addQueueItem !== 'function') {
+      U.toast('قائمة التشغيل غير متاحة في وضع الاتصال الحالي', 'warn');
+      return 0;
+    }
+    let added = 0;
+    for (let i = 0; i < list.length; i++) {
+      const parsed = U.parseWatchUrl(list[i].url);
+      if (!parsed) continue;
+      try {
+        const result = await session.transport.addQueueItem({
+          url: parsed.src,
+          title: U.cleanName(list[i].title) || parsed.label || 'فيديو',
+          addedBy: session.name,
+          addedByClient: session.clientId,
+          fromPlaylist: list[i].fromPlaylist || ''
+        });
+        if (Array.isArray(result)) setQueue(result);
+        added++;
+      } catch (err) { /* نتابع مع بقية الدفعة */ }
+      if (onProgress) onProgress(added, list.length);
+    }
+    return added;
   }
 
   async function removeQueueItem(id) {
@@ -2928,6 +2979,13 @@
       if (!item) return false;
       playQueueItem(item);
       return true;
+    },
+    /** إضافة دفعة (استيراد قائمة يوتيوب) — تُرجع عدد ما أُضيف */
+    addQueueItems,
+    getQueue() { return (session.queue || []).slice(); },
+    /** معرّف فيديو يوتيوب الحالي (فارغ لغير يوتيوب) */
+    videoId() {
+      return session.videoParsed && session.videoParsed.kind === 'youtube' ? session.videoParsed.id : '';
     },
     diagnose: runDiagnostics,
     openDiag,

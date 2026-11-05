@@ -177,10 +177,17 @@
       this.el.appendChild(holder);
       this._yt = new YT.Player(holder, {
         videoId: parsed.id,
+        /* لا واجهة يوتيوب إطلاقاً: التحكم كله عبر شريط الغرفة (controls/disablekb/fs) */
         playerVars: {
           autoplay: opts.autoplay ? 1 : 0,
           controls: opts.controls === false ? 0 : 1,
-          rel: 0, modestbranding: 1, playsinline: 1,
+          disablekb: 1,          /* لا اختصارات لوحة مفاتيح من يوتيوب */
+          fs: 0,                 /* لا زر تكبير من يوتيوب — لدينا زر الغرفة */
+          rel: 0,                /* لا فيديوهات مقترحة من يوتيوب عند النهاية */
+          modestbranding: 1,     /* لا شعار يوتيوب بارز */
+          playsinline: 1,
+          iv_load_policy: 3,     /* لا طبقات إعلانية/تفاعلية فوق الفيديو */
+          cc_load_policy: 0,
           origin: location.origin, enablejsapi: 1
         },
         events: {
