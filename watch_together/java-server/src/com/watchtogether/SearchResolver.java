@@ -122,10 +122,18 @@ public final class SearchResolver {
                 "--use-extractors", "default,-generic", "--flat-playlist",
                 "--playlist-end", String.valueOf(limit),
                 "--print", FIELDS, "--", search));
+            Path err = Files.createTempFile("wt-search-", ".err");
             p = new ProcessBuilder(cmd).redirectOutput(out.toFile())
-                                       .redirectError(ProcessBuilder.Redirect.DISCARD).start();
-            if (!p.waitFor(30, TimeUnit.SECONDS)) return Collections.emptyList();
-            if (p.exitValue() != 0 || Files.size(out) > 262144) return Collections.emptyList();
+                                       .redirectError(err.toFile()).start();
+            boolean done = p.waitFor(30, TimeUnit.SECONDS);
+            if (!done || p.exitValue() != 0 || Files.size(out) > 262144) {
+                /* لا نصمت: سبب الفشل هو أول ما نحتاجه عند «صفر نتائج» */
+                System.err.println("[search] yt-dlp " + (!done ? "تجاوز المهلة" : "أعاد الرمز " + p.exitValue())
+                        + " — " + trimForLog(read(err)));
+                Files.deleteIfExists(err);
+                return Collections.emptyList();
+            }
+            Files.deleteIfExists(err);
             List<Map<String, Object>> items = new ArrayList<>();
             for (String line : Files.readAllLines(out, StandardCharsets.UTF_8)) {
                 Map<String, Object> item = fromRow(line);
@@ -296,6 +304,17 @@ public final class SearchResolver {
             if (!seen.containsKey(id)) seen.put(id, item);
         }
         return new ArrayList<>(seen.values());
+    }
+
+    /** قراءة آمنة لملف مؤقت (لا ترمي استثناءً) */
+    private static String read(Path file) {
+        try { return Files.readString(file); } catch (Exception e) { return ""; }
+    }
+
+    /** ملخّص قصير للسجل */
+    private static String trimForLog(String text) {
+        String t = text == null ? "" : text.replaceAll("\\s+", " ").trim();
+        return t.isEmpty() ? "(بلا رسالة)" : (t.length() > 300 ? t.substring(0, 300) + "…" : t);
     }
 
     private static String col(String[] parts, int i) {

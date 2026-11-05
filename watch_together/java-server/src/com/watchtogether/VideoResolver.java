@@ -14,12 +14,60 @@ public final class VideoResolver {
     private static final Set<String> HOSTS = new HashSet<>(Arrays.asList(
         "vimeo.com", "dailymotion.com", "dai.ly", "tiktok.com", "twitter.com", "x.com", "facebook.com", "fb.watch", "instagram.com"));
 
+    /**
+     * خرج yt-dlp بفواصل تبويب لا بصيغة JSON.
+     * السبب: حقل ناقص يُطبع كـ NA (بدون تنصيص) فيفسد أي قالب JSON نبنيه،
+     * فيصل المستخدم خطأ محلّل JSON غامض بدل سبب حقيقي. التبويب لا يُفسد.
+     */
+    private static final String FIELDS = "%(url)s\t%(title)s\t%(thumbnail)s";
+
     private static long windowStart = System.currentTimeMillis();
     private static int requests;
     private static synchronized boolean permit() {
         long now = System.currentTimeMillis();
         if (now - windowStart >= 60000) { windowStart = now; requests = 0; }
         return ++requests <= 12;
+    }
+
+    /**
+     * يقرأ آخر سطر غير فارغ من خرج yt-dlp ويقسّمه على التبويب.
+     * NA تعني حقلاً ناقصاً فنحوّلها إلى فراغ بدل أن نُفشل الطلب.
+     */
+    private static Map<String,Object> parseFields(String text) {
+        if (text == null) return null;
+        String last = "";
+        for (String line : text.split("\\R")) {
+            String t = line.trim();
+            if (!t.isEmpty()) last = line;
+        }
+        if (last.isEmpty()) return null;
+        String[] parts = last.split("\t", -1);
+        String mediaUrl = field(parts, 0);
+        String title = field(parts, 1);
+        String thumb = field(parts, 2);
+        if (mediaUrl.isEmpty()) return null;
+        Map<String,Object> m = new LinkedHashMap<>();
+        m.put("url", mediaUrl);
+        m.put("title", title);
+        m.put("thumbnail", thumb);
+        return m;
+    }
+
+    private static String field(String[] parts, int i) {
+        if (i >= parts.length) return "";
+        String v = parts[i].trim();
+        return "NA".equals(v) ? "" : v;
+    }
+
+    /** قراءة آمنة لملف مؤقت (لا ترمي استثناءً) */
+    private static String read(Path file) {
+        try { return Files.readString(file); } catch (Exception e) { return ""; }
+    }
+
+    /** ملخّص قصير للسجل — لا نُغرق الطرفية بخرج طويل */
+    private static String forLog(String text) {
+        String t = text == null ? "" : text.replaceAll("\\s+", " ").trim();
+        return t.isEmpty() ? "(فارغ)" : (t.length() > 300 ? t.substring(0, 300) + "…" : t);
     }
 
     static void validate(String raw) throws Exception {
@@ -42,6 +90,7 @@ public final class VideoResolver {
         Map<String,Object> result = new LinkedHashMap<>();
         Process p = null;
         Path output = null;
+        Path errors = null;
         boolean acquired = false;
         try {
             if (!"POST".equals(ex.getRequestMethod())) { status = 405; throw new IllegalArgumentException("استخدم POST"); }
@@ -60,18 +109,24 @@ public final class VideoResolver {
             validate(url);
             acquired = SLOTS.tryAcquire();
             if (!acquired) { status = 429; throw new IllegalArgumentException("الخدمة مشغولة؛ أعد المحاولة بعد قليل"); }
-            output = Files.createTempFile("wt-resolve-", ".json");
+            output = Files.createTempFile("wt-resolve-", ".tsv");
+            errors = Files.createTempFile("wt-resolve-", ".err");   /* نحتفظ بخطأ yt-dlp للتشخيص */
             p = new ProcessBuilder(Py.ytDlp(Arrays.asList(
                 "--ignore-config", "--no-playlist", "--skip-download", "--no-warnings", "--socket-timeout", "12", "--retries", "1",
                 "--use-extractors", "default,-generic", "-f", "best[ext=mp4][vcodec!=none][acodec!=none]/best[vcodec!=none][acodec!=none]",
-                "--print", "{\"url\":%(url)j,\"title\":%(title)j,\"thumbnail\":%(thumbnail)j}", "--", url)))
-                .redirectOutput(output.toFile()).redirectError(ProcessBuilder.Redirect.DISCARD).start();
+                "--print", FIELDS, "--", url)))
+                .redirectOutput(output.toFile()).redirectError(errors.toFile()).start();
             if (!p.waitFor(40, TimeUnit.SECONDS)) { status = 504; throw new IllegalArgumentException("انتهت مهلة استخراج الرابط"); }
             if (p.exitValue() != 0 || Files.size(output) > 131072) {
+                System.err.println("[resolve] فشل yt-dlp (الرمز " + p.exitValue() + ") للرابط: " + url);
+                System.err.println("[resolve] رسالة yt-dlp: " + forLog(read(errors)));
                 status = 422; throw new IllegalArgumentException("تعذّر استخراج فيديو عام قابل للتشغيل؛ قد يتطلب تسجيل دخول أو لا يكون مدعوماً. تأكد من تثبيت yt-dlp وتحديثه على الخادم");
             }
-            Map<String,Object> media = Json.parseObject(Files.readString(output).trim());
+            /* الخرج الآن ثلاثة حقول مفصولة بتبويب: url \t title \t thumbnail */
+            String raw = Files.readString(output);
+            Map<String,Object> media = parseFields(raw);
             if (media == null || !(media.get("url") instanceof String) || !((String)media.get("url")).startsWith("https://")) {
+                System.err.println("[resolve] yt-dlp لم يرجع رابطاً صالحاً: " + forLog(raw));
                 status = 422; throw new IllegalArgumentException("لم يُرجع الوسيط رابط فيديو آمناً");
             }
             result.putAll(media);
@@ -84,6 +139,7 @@ public final class VideoResolver {
         } finally {
             if (p != null && p.isAlive()) p.destroyForcibly();
             if (output != null) Files.deleteIfExists(output);
+            if (errors != null) Files.deleteIfExists(errors);
             if (acquired) SLOTS.release();
         }
         byte[] bytes = Json.stringify(result).getBytes(StandardCharsets.UTF_8);
