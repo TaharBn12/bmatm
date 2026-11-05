@@ -3,13 +3,6 @@
    نفس الهوية البصرية: Midnight Gold + Cairo + RTL
    ========================================================= */
 
-/* شريط التنقل السفلي يتكيّف مع عدد العناصر (4 أو 5) */
-.home-bottom-nav {
-  grid-template-columns: none;
-  grid-auto-flow: column;
-  grid-auto-columns: minmax(0, 1fr);
-}
-
 .search-page .home-header__inner {
   display: flex;
   align-items: center;
