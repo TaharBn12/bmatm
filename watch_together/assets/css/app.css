@@ -2530,3 +2530,50 @@ body.chat-focus .room-main > #chat {
 }
 .room-auth-status[hidden] { display: none; }
 .room-auth-status .spinner { width: 30px; height: 30px; border-width: 3px; }
+
+/* =========================================================
+   المسرح بحواف كاملة (full-bleed)
+   المشغّل يمتد من حافة الشاشة إلى حافتها: بلا حشو، بلا حدود،
+   بلا حواف مستديرة ولا ظل — والبقية (الرأس والرسائل) تبقى مضبوطة.
+   ========================================================= */
+.room-body .media-shell { background: #000; }
+
+.room-body .stage {
+  /* يكسر حشو الحاوية ويصل إلى حافتي الشاشة */
+  width: 100vw;
+  margin-inline: calc(50% - 50vw);
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  background: #000;
+  overflow: hidden;
+}
+
+.room-body .stage .player {
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  background: #000;
+  aspect-ratio: 16 / 9;
+  /* لا يتجاوز ارتفاع الشاشة: يبقى الرأس والرسائل في المتناول */
+  height: min(calc(100vw * 9 / 16), calc(100dvh - 172px));
+}
+
+.room-body .stage .ctrlbar {
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  background: #0b0e13;
+}
+
+/* استثناء: الشاشات القصيرة العرضية يبقى المشغّل فيها مضغوطاً لتبقى الرسائل ظاهرة
+   (نفس سلوك القاعدة الأصلية في الأعلى — نعيدها هنا لأن قواعد الحواف الكاملة تتلوها) */
+@media (max-height: 540px) and (orientation: landscape) {
+  .room-body .stage { width: min(100%, max(240px, 42vh)); margin-inline: auto; }
+  .room-body .stage .player { height: auto; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .upnext { animation: none; }
+}

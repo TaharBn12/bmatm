@@ -43,20 +43,14 @@
     overlay.id = 'upNext';
     overlay.hidden = true;
     overlay.innerHTML =
-      '<div class="upnext__scrim"></div>' +
-      '<section class="upnext__panel glass" role="dialog" aria-modal="false" aria-label="اقتراحات الفيديو التالي">' +
-      '  <header class="upnext__head">' +
-      '    <div class="upnext__titles">' +
-      '      <h3 class="upnext__title"><span class="ic" data-icon="playlist" data-size="17"></span> التالي — مقترحات بحسب المحتوى</h3>' +
-      '      <p class="upnext__sub" id="upNextSub">اختيار يوتيوب لما يشبه هذا الفيديو</p>' +
-      '    </div>' +
-      '    <button type="button" class="upnext__x" id="upNextClose" aria-label="إغلاق" title="إغلاق">' +
-      '      <span class="ic" data-icon="x" data-size="16"></span>' +
-      '    </button>' +
-      '  </header>' +
-      '  <div class="upnext__grid" id="upNextGrid"></div>' +
-      '  <footer class="upnext__foot" id="upNextFoot" hidden></footer>' +
-      '</section>';
+      '<div class="upnext__row">' +
+      '  <span class="upnext__label" id="upNextLabel"><span class="ic" data-icon="playlist" data-size="14"></span> التالي</span>' +
+      '  <div class="upnext__rail" id="upNextGrid" role="list" aria-label="مقترحات الفيديو التالي"></div>' +
+      '  <button type="button" class="upnext__x" id="upNextClose" aria-label="إغلاق" title="إغلاق">' +
+      '    <span class="ic" data-icon="x" data-size="15"></span>' +
+      '  </button>' +
+      '</div>' +
+      '<span class="upnext__note" id="upNextFoot" role="status" hidden></span>';
     host.appendChild(overlay);
     overlay.querySelector('#upNextClose').addEventListener('click', hide);
     return overlay;
@@ -102,6 +96,7 @@
     ov.hidden = false;
     ov.classList.add('is-loading');
     renderSkeleton();
+    paintFoot('جارٍ جلب المقترحات…', '');
 
     const ctx = {
       excludeIds: (r.getQueue ? r.getQueue() : []).map(q => S.parseVideoId(q && q.url)).filter(Boolean),
@@ -133,66 +128,50 @@
   function renderSkeleton() {
     const g = overlay.querySelector('#upNextGrid');
     g.innerHTML = new Array(6).fill(0).map(() =>
-      '<div class="upnext__card is-skeleton"><div class="upnext__thumb"></div><div class="upnext__lines"><span></span><span></span></div></div>'
+      '<div class="upnext__thumbcard is-skeleton"></div>'
     ).join('');
   }
 
   function renderEmpty() {
-    const g = overlay.querySelector('#upNextGrid');
-    g.innerHTML = '<p class="upnext__empty">لا تتوفر اقتراحات الآن — أضف فيديو إلى قائمة الغرفة للمتابعة.</p>';
+    paintFoot('لا تتوفر اقتراحات الآن — أضف فيديو إلى قائمة الغرفة للمتابعة.', '');
   }
 
   function render() {
     const g = overlay.querySelector('#upNextGrid');
-    const sub = overlay.querySelector('#upNextSub');
+    const label = overlay.querySelector('#upNextLabel');
     const ctrl = canControl();
-    if (sub) sub.textContent = ctrl
-      ? 'يبدأ الأول تلقائياً بعد العدّ — أو اختر أنت الآن'
-      : 'المنظّم هو من يبدأ التالي؛ يمكنك إضافة أي مقترح إلى القائمة';
+    if (label) {
+      label.title = ctrl
+        ? 'يبدأ الأول تلقائياً بعد العدّ — أو اختر أنت الآن'
+        : 'المنظّم هو من يبدأ التالي؛ يمكنك إضافة أي مقترح إلى القائمة';
+    }
 
+    /* صور مصغّرة فقط: الشريط لا يحجب الفيديو، والاسم يظهر عند المرور/التركيز */
     g.innerHTML = items.map((it, i) => {
       const isFirst = i === 0;
-      return '<article class="upnext__card' + (isFirst ? ' is-first' : '') + '" data-sug-id="' + esc(it.id) + '">' +
-        '<div class="upnext__thumb">' +
+      const tip = esc(it.title) + (it.author ? ' — ' + esc(it.author) : '');
+      return '<button type="button" class="upnext__thumbcard' + (isFirst ? ' is-first' : '') + '" role="listitem"' +
+        ' data-sug-id="' + esc(it.id) + '" title="' + tip + '" aria-label="' + tip + '">' +
+        '<span class="upnext__media">' +
         (isFirst
-          ? '<div class="upnext__preview" id="upNextPreview"></div>' +
-            '<div class="upnext__ring" id="upNextRing" role="timer" aria-label="الثواني المتبقية">' +
+          ? '<span class="upnext__preview" id="upNextPreview"></span>' +
+            '<span class="upnext__ring" id="upNextRing" role="timer" aria-label="الثواني المتبقية">' +
             '  <svg viewBox="0 0 44 44" aria-hidden="true"><circle class="ring-bg" cx="22" cy="22" r="19"></circle>' +
             '  <circle class="ring-fg" id="ringFg" cx="22" cy="22" r="19"></circle></svg>' +
             '  <span id="upNextCount">' + seconds() + '</span>' +
-            '</div>'
+            '</span>'
           : '<img src="' + esc(it.thumb) + '" alt="" loading="lazy" referrerpolicy="no-referrer">') +
+        '</span>' +
         (isFirst ? '<span class="upnext__flag">معاينة ' + seconds() + ' ث</span>' : '') +
-        '</div>' +
-        '<h4 class="upnext__name" title="' + esc(it.title) + '">' + esc(it.title) + '</h4>' +
-        (it.author ? '<p class="upnext__author">' + esc(it.author) + '</p>' : '') +
-        '<div class="upnext__actions">' +
-        /* «الآن» للمتحكم فقط — المشاهد يضيف للقائمة ويترك القرار للمنظّم */
-        (ctrl
-          ? '<button type="button" class="btn ' + (isFirst ? 'btn--primary' : 'btn--ghost') + ' btn--xs" data-act="now">' +
-            (isFirst ? 'الآن' : 'شغّل الآن') + '</button>'
-          : '') +
-        '<button type="button" class="btn btn--ghost btn--xs" data-act="queue">أضف للقائمة</button>' +
-        '</div>' +
-        '</article>';
+        '</button>';
     }).join('');
 
-    g.querySelectorAll('[data-act]').forEach(btn => {
-      btn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        const card = btn.closest('.upnext__card');
-        const id = card && card.getAttribute('data-sug-id');
-        const it = items.find(x => x.id === id);
-        if (!it) return;
-        if (btn.getAttribute('data-act') === 'now') playNow(it);
-        else addToQueue(it, btn);
-      });
-    });
-    g.querySelectorAll('.upnext__card').forEach(card => {
-      card.addEventListener('click', (e) => {
-        if (e.target.closest('[data-act]')) return;
+    /* المتحكم: النقر يبدأ المقترح. المشاهد: النقر يضيفه للقائمة فقط */
+    g.querySelectorAll('.upnext__thumbcard').forEach(card => {
+      card.addEventListener('click', () => {
         const it = items.find(x => x.id === card.getAttribute('data-sug-id'));
-        if (it && canControl()) playNow(it);
+        if (!it) return;
+        if (canControl()) playNow(it); else addToQueue(it);
       });
     });
   }
