@@ -77,6 +77,7 @@ public final class Main {
                 if (path.equals("/api/rooms")) { handleRooms(ex); return; }
                 if (path.equals("/api/rooms/report")) { handleRoomReport(ex); return; }
                 if (path.equals("/api/resolve")) { VideoResolver.handle(ex); return; }
+                if (path.equals("/api/suggest")) { SuggestResolver.handle(ex); return; }
                 if (path.equals("/api/stats")) { sendJson(ex, 200, stats()); return; }
                 files.handle(ex);
             } catch (IOException e) {
