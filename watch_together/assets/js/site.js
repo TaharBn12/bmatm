@@ -17,6 +17,7 @@
   var MAX_RECENT = 4;
   var PAGES = {
     index: { title: 'الغرف', file: 'index.html' },
+    search: { title: 'البحث', file: 'search.html' },
     room: { title: 'الغرفة', file: 'room.html' },
     profile: { title: 'الملف الشخصي', file: 'profile.html' },
     friends: { title: 'الأصدقاء', file: 'friends.html' },

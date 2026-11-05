@@ -13,6 +13,7 @@ const OFFLINE_URL = 'offline.html';
 
 const PRECACHE = [
   'index.html',
+  'search.html',
   'room.html',
   'auth.html',
   'profile.html',
