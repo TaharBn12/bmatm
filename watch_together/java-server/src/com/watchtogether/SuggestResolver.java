@@ -110,7 +110,9 @@ public final class SuggestResolver {
             }
             byte[] body = ex.getRequestBody().readNBytes(8193);
             if (body.length > 8192) { status = 413; throw new IllegalArgumentException("الطلب طويل جداً"); }
-            Map<String, Object> req = Json.parseObject(new String(body, StandardCharsets.UTF_8));
+            Map<String, Object> req;
+            try { req = Json.parseObject(new String(body, StandardCharsets.UTF_8)); }
+            catch (IllegalArgumentException e) { throw new IllegalArgumentException(Json.bodyError(e)); }
             if (req == null || !(req.get("url") instanceof String)) throw new IllegalArgumentException("الرابط مطلوب");
             String url = ((String) req.get("url")).trim();
 
