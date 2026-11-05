@@ -59,10 +59,10 @@ public final class VideoResolver {
             acquired = SLOTS.tryAcquire();
             if (!acquired) { status = 429; throw new IllegalArgumentException("الخدمة مشغولة؛ أعد المحاولة بعد قليل"); }
             output = Files.createTempFile("wt-resolve-", ".json");
-            p = new ProcessBuilder(System.getenv().getOrDefault("WT_PYTHON", "python3"), "-m", "yt_dlp",
+            p = new ProcessBuilder(Py.ytDlp(Arrays.asList(
                 "--ignore-config", "--no-playlist", "--skip-download", "--no-warnings", "--socket-timeout", "12", "--retries", "1",
                 "--use-extractors", "default,-generic", "-f", "best[ext=mp4][vcodec!=none][acodec!=none]/best[vcodec!=none][acodec!=none]",
-                "--print", "{\"url\":%(url)j,\"title\":%(title)j,\"thumbnail\":%(thumbnail)j}", "--", url)
+                "--print", "{\"url\":%(url)j,\"title\":%(title)j,\"thumbnail\":%(thumbnail)j}", "--", url)))
                 .redirectOutput(output.toFile()).redirectError(ProcessBuilder.Redirect.DISCARD).start();
             if (!p.waitFor(40, TimeUnit.SECONDS)) { status = 504; throw new IllegalArgumentException("انتهت مهلة استخراج الرابط"); }
             if (p.exitValue() != 0 || Files.size(output) > 131072) {
