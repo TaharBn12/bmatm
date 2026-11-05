@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
+  <meta name="theme-color" content="#080c14">
+  <meta name="description" content="ابحث في ديليموشن وشغّل النتيجة برابط مباشر عبر yt-dlp، أو افتح بها غرفة مشاهدة جماعية.">
+  <meta name="color-scheme" content="dark">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="apple-touch-icon" href="assets/icons/apple-touch-icon.png">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="WatchTogether">
+  <meta property="og:locale" content="ar_DZ">
+  <meta property="og:title" content="البحث — WatchTogether">
+  <meta property="og:description" content="ابحث في ديليموشن وشغّل النتيجة برابط مباشر، أو افتح بها غرفة مشاهدة جماعية.">
+  <meta property="og:image" content="assets/icons/icon-512.png">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="البحث — WatchTogether">
+  <meta name="twitter:description" content="ابحث في ديليموشن وشغّل النتيجة برابط مباشر، أو افتح بها غرفة مشاهدة جماعية.">
+  <meta name="twitter:image" content="assets/icons/icon-512.png">
+  <script src="assets/js/prefs.js?v=1.0.0"></script>
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <title>البحث — WatchTogether</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='24' fill='%23c5a572'/%3E%3Cpath d='M40 32l28 18-28 18z' fill='%23141006'/%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800;900&family=Grand+Hotel&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="assets/css/app.css?v=4.1.0">
+  <link rel="stylesheet" href="assets/css/home.css?v=4.3.0">
+  <link rel="stylesheet" href="assets/css/search.css?v=1.0.0">
+  <link rel="stylesheet" href="assets/css/site.css?v=1.0.0">
+</head>
+<body class="home-page search-page">
+  <div class="bg-fx" aria-hidden="true"></div>
+
+  <header class="home-header" aria-label="رأس الصفحة">
+    <div class="home-header__inner">
+      <a class="brand" href="index.html" aria-label="WatchTogether — الرئيسية">
+        <span class="brand__logo"><span class="ic" data-icon="logo" data-size="22"></span></span>
+        <span class="brand__text">
+          <span class="brand__name">WatchTogether</span>
+          <span class="brand__sub">WATCH • TOGETHER</span>
+        </span>
+      </a>
+      <span class="search-badge">ديليموشن</span>
+    </div>
+  </header>
+
+  <main class="search-main">
+    <h1 class="search-title">ابحث في ديليموشن</h1>
+    <p class="search-sub">النتائج من ديليموشن مباشرة، وعند الضغط على أي فيديو يستخرج السيرفر رابط تشغيل مباشر عبر yt-dlp.</p>
+
+    <form class="search-form" id="searchForm" role="search" autocomplete="off">
+      <div class="search-field">
+        <span class="ic search-field__icon" data-icon="search" data-size="20"></span>
+        <input class="input search-input" id="searchInput" type="search" name="q" maxlength="80"
+               placeholder="اكتب كلمة البحث…" aria-label="كلمة البحث" enterkeyhint="search" spellcheck="false">
+        <button class="search-clear" id="searchClear" type="button" aria-label="مسح" title="مسح" hidden>
+          <span class="ic" data-icon="x" data-size="16"></span>
+        </button>
+      </div>
+      <button class="btn btn--primary search-go" id="searchGo" type="submit">
+        <span class="ic" data-icon="search" data-size="18"></span> بحث
+      </button>
+    </form>
+
+    <div class="search-chips" id="searchChips" aria-label="بحث سريع"></div>
+
+    <p class="search-status" id="searchStatus" role="status" hidden></p>
+    <p class="search-note" id="serverNote" hidden>
+      <span class="ic" data-icon="info" data-size="16"></span>
+      <span>نتائج البحث تعمل، لكن <strong>استخراج رابط التشغيل المباشر</strong> يحتاج تشغيل الموقع من سيرفر Java مع yt-dlp. شغّل <code>run.bat</code> ثم أعد تحميل الصفحة.</span>
+    </p>
+
+    <div class="search-grid" id="results" aria-label="نتائج البحث" aria-busy="false"></div>
+
+    <div class="search-empty" id="empty" role="status">
+      <span class="ic" data-icon="search" data-size="34"></span>
+      <span id="emptyText">ابحث عن فيديو لتبدأ</span>
+    </div>
+  </main>
+
+  <nav class="home-bottom-nav" aria-label="التنقل الرئيسي">
+    <a class="home-bottom-nav__link" href="index.html">
+      <span class="ic" data-icon="home" data-size="21"></span><span>الغرف</span>
+    </a>
+    <a class="home-bottom-nav__link is-current" href="search.html" aria-current="page">
+      <span class="ic" data-icon="search" data-size="21"></span><span>البحث</span>
+    </a>
+    <a class="home-bottom-nav__link" href="profile.html">
+      <span class="ic" data-icon="user" data-size="21"></span><span>ملفي</span>
+    </a>
+    <a class="home-bottom-nav__link" href="friends.html">
+      <span class="ic" data-icon="users" data-size="21"></span><span>الأصدقاء</span>
+    </a>
+    <a class="home-bottom-nav__link" href="messages.html">
+      <span class="ic" data-icon="chat" data-size="21"></span><span>الرسائل</span>
+    </a>
+  </nav>
+
+  <dialog class="play-dialog glass" id="playDialog" aria-labelledby="playTitle">
+    <header class="play-dialog__head">
+      <h2 id="playTitle" class="play-dialog__title">تشغيل الفيديو</h2>
+      <button class="btn btn--ghost btn--icon-sm" id="playClose" type="button" aria-label="إغلاق" title="إغلاق">
+        <span class="ic" data-icon="x" data-size="18"></span>
+      </button>
+    </header>
+    <div class="play-dialog__body">
+      <div class="play-stage" id="playStage">
+        <div class="play-spinner" id="playSpinner">
+          <span class="spinner"></span>
+          <span id="playSpinnerText">جارٍ استخراج رابط التشغيل المباشر…</span>
+        </div>
+        <video class="play-video" id="playVideo" controls playsinline preload="metadata" hidden></video>
+        <p class="play-error" id="playError" role="alert" hidden></p>
+      </div>
+      <div class="play-actions">
+        <button class="btn btn--primary" id="playRoom" type="button" disabled>
+          <span class="ic" data-icon="users" data-size="18"></span> افتح غرفة مشاهدة
+        </button>
+        <button class="btn btn--ghost" id="playCopy" type="button" disabled>
+          <span class="ic" data-icon="copy" data-size="18"></span> نسخ الرابط المباشر
+        </button>
+        <a class="btn btn--ghost" id="playSource" href="#" target="_blank" rel="noopener noreferrer">
+          <span class="ic" data-icon="link" data-size="18"></span> افتح على ديليموشن
+        </a>
+      </div>
+      <p class="play-hint" id="playHint">الرابط المباشر مؤقّت (توقيع من ديليموشن) — صالح للتشغيل الآن فقط.</p>
+    </div>
+  </dialog>
+
+  <script src="assets/js/config.js?v=3.4.0"></script>
+  <script src="assets/js/util.js?v=3.1.0"></script>
+  <script src="assets/js/icons.js?v=3.2.0"></script>
+  <script src="assets/js/auth.js?v=3.2.0"></script>
+  <script src="assets/js/rooms.js?v=3.1.0"></script>
+  <script src="assets/js/resolver.js?v=3.0.0"></script>
+  <script src="assets/js/search.js?v=1.0.0"></script>
+  <script src="assets/js/site.js?v=1.0.2"></script>
+</body>
+</html>

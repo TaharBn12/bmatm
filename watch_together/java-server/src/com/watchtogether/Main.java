@@ -102,6 +102,7 @@ public final class Main {
                 if (path.equals("/api/rooms/report")) { handleRoomReport(ex); return; }
                 if (path.equals("/api/resolve")) { VideoResolver.handle(ex); return; }
                 if (path.equals("/api/suggest")) { SuggestResolver.handle(ex); return; }
+                if (path.equals("/api/search")) { SearchResolver.handle(ex); return; }
                 if (path.equals("/healthz")) { sendText(ex, 200, "OK", "ok\n"); return; }
                 if (path.equals("/api/stats")) { sendJson(ex, 200, stats()); return; }
                 files.handle(ex);
@@ -272,6 +273,7 @@ public final class Main {
         sb.append("  مجلد الموقع : ").append(root.getAbsolutePath()).append('\n');
         sb.append("  الاستماع على : ").append(host).append(':').append(port).append('\n');
         sb.append("  WebSocket    : /ws\n");
+        sb.append("  البحث        : /api/search?q=…  (صفحة: /search.html)\n");
         sb.append("  حفظ الحالات  : ").append(roomStore.getStoreFile().getAbsolutePath()).append('\n');
         sb.append("  الحالة       : /api/stats\n");
         sb.append(Py.report()).append('\n');
