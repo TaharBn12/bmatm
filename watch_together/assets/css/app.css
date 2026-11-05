@@ -2533,21 +2533,39 @@ body.chat-focus .room-main > #chat {
 
 /* =========================================================
    المسرح بحواف كاملة (full-bleed)
-   المشغّل يمتد من حافة الشاشة إلى حافتها: بلا حشو، بلا حدود،
-   بلا حواف مستديرة ولا ظل — والبقية (الرأس والرسائل) تبقى مضبوطة.
+   بدل حساب 100vw وهامش سالب (الذي تُفسده قاعدة max-width:100% العامة
+   فينزاح المشغّل ويُقطع)، نمدّد الحاوية نفسها بعرض الشاشة، وننقل
+   الحدّ الأقصى والحشو الجانبي إلى الرأس والرسائل:
+   فيصل المشغّل إلى الحافتين فعلاً، بلا انزياح مع شريط التمرير.
    ========================================================= */
+.room-body .room-main {
+  --gutter: clamp(10px, 2.4vw, 22px);
+  max-width: none;
+  padding-inline: 0;
+}
+
+/* الرأس وحقل الإضافة والرسائل: محدودة الومركززة، والمشغّل وحده كامل العرض */
+.room-body .room-main > .room-bar,
+.room-body .room-main > .change-bar,
+.room-body .room-main > #chat {
+  width: min(1060px, calc(100% - 2 * var(--gutter)));
+  margin-inline: auto;
+}
+
 .room-body .media-shell { background: #000; }
 
 .room-body .stage {
-  /* يكسر حشو الحاوية ويصل إلى حافتي الشاشة */
-  width: 100vw;
-  margin-inline: calc(50% - 50vw);
+  width: 100%;
+  max-width: none;          /* يلغي التقييد العام الذي كان يقطع المشغّل */
+  margin-inline: 0;
   padding: 0;
   border: 0;
   border-radius: 0;
   box-shadow: none;
   background: #000;
   overflow: hidden;
+  backdrop-filter: none;    /* .glass كان يضيف ضباباً وحدّاً */
+  -webkit-backdrop-filter: none;
 }
 
 .room-body .stage .player {
@@ -2557,7 +2575,8 @@ body.chat-focus .room-main > #chat {
   background: #000;
   aspect-ratio: 16 / 9;
   /* لا يتجاوز ارتفاع الشاشة: يبقى الرأس والرسائل في المتناول */
-  height: min(calc(100vw * 9 / 16), calc(100dvh - 172px));
+  max-height: calc(100vh - 150px);
+  max-height: calc(100dvh - 150px);
 }
 
 .room-body .stage .ctrlbar {
@@ -2571,7 +2590,7 @@ body.chat-focus .room-main > #chat {
    (نفس سلوك القاعدة الأصلية في الأعلى — نعيدها هنا لأن قواعد الحواف الكاملة تتلوها) */
 @media (max-height: 540px) and (orientation: landscape) {
   .room-body .stage { width: min(100%, max(240px, 42vh)); margin-inline: auto; }
-  .room-body .stage .player { height: auto; }
+  .room-body .stage .player { max-height: none; }
 }
 
 @media (prefers-reduced-motion: reduce) {

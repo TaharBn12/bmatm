@@ -84,9 +84,12 @@
     const r = room();
     if (!r || !S) return;
     const parsed = r.session && r.session.videoParsed;
-    if (!parsed || parsed.kind !== 'youtube') return;      /* يوتيوب فقط: بقية الأنواع لا اقتراحات لها */
-    const videoId = parsed.id;
-    if (!videoId || active) return;
+    if (!parsed || active) return;
+    /* يوتيوب: من المتصفح. بقية الصيغ (mp4/HLS/تضمين): عبر yt-dlp على السيرفر */
+    const isYt = parsed.kind === 'youtube';
+    const videoId = isYt ? parsed.id : '';
+    const url = (r.state && r.state.url) || parsed.src;
+    if (!url) return;
 
     const ov = ensureOverlay();
     if (!ov) return;
@@ -96,28 +99,31 @@
     ov.hidden = false;
     ov.classList.add('is-loading');
     renderSkeleton();
-    paintFoot('جارٍ جلب المقترحات…', '');
+    paintFoot(isYt ? 'جارٍ جلب المقترحات…' : 'جارٍ البحث عن مقترحات…', '');
 
     const ctx = {
       excludeIds: (r.getQueue ? r.getQueue() : []).map(q => S.parseVideoId(q && q.url)).filter(Boolean),
-      playlist: playlistContext(videoId),
-      channelId: ''
+      playlist: isYt ? playlistContext(videoId) : null,
+      channelId: '',
+      budgetMs: isYt ? undefined : (CFG().serverSuggestMs || 30000)
     };
-    try {
-      const meta = await S.meta([videoId]);
-      if (meta && meta[0] && meta[0].channel) ctx.channelId = meta[0].channel;
-    } catch (e) { /* لا يهم: الاقتراحات تعمل بدون القناة */ }
+    if (isYt) {
+      try {
+        const meta = await S.meta([videoId]);
+        if (meta && meta[0] && meta[0].channel) ctx.channelId = meta[0].channel;
+      } catch (e) { /* لا يهم: الاقتراحات تعمل بدون القناة */ }
+    }
 
     let result = { items: [], source: 'none' };
     try {
-      result = await S.forVideo(videoId, ctx);
+      result = await S.forUrl(url, ctx);
     } catch (e) { /* نعرض رسالة بدل الصمت */ }
 
     if (my !== seq || !active) return;
     ov.classList.remove('is-loading');
     items = result.items || [];
     if (!items.length) {
-      renderEmpty();
+      renderEmpty(result.source);
       return;
     }
     render();
@@ -132,7 +138,12 @@
     ).join('');
   }
 
-  function renderEmpty() {
+  function renderEmpty(source) {
+    /* لا سيرفر (استضافة ثابتة) وصيغة غير يوتيوب → نشرح السبب بدل الصمت */
+    if (source === 'no-server') {
+      paintFoot('الاقتراحات لهذا النوع تحتاج تشغيل الغرفة من سيرفر Java مع yt-dlp — أضف فيديو من القائمة للمتابعة.', 'is-wait');
+      return;
+    }
     paintFoot('لا تتوفر اقتراحات الآن — أضف فيديو إلى قائمة الغرفة للمتابعة.', '');
   }
 

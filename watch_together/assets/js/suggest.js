@@ -303,7 +303,106 @@
       .then(items => ({ list: parsed.list, kind: parsed.kind, videoId: parsed.videoId, items: items }));
   }
 
+  /* =========================================================
+     الصيغ غير اليوتيوب (mp4 / HLS / تضمين): لا مصدر لها في المتصفح،
+     فنطلبها من سيرفر Java الذي يستخدم yt-dlp:
+       1) إن كان الرابط سلسلة/قائمة → الاقتراحات منها
+       2) وإن كان فيديو مفرداً → عنوانه ← بحث يوتيوب (نتائج قابلة للتشغيل)
+     الاستضافة الثابتة بلا سيرفر: لا تظهر اقتراحات لها (بلا أخطاء).
+     ========================================================= */
+  let serverFlag = null;                       /* null = غير مُختبَر بعد */
+  function serverUsable() {
+    if (CFG().serverSuggest === false) return false;
+    if (serverFlag) return Date.now() - serverFlag.ts < 10 * 60 * 1000 ? serverFlag.ok : true;
+    try {
+      const v = U.store.get('ytsrv', null);
+      if (v && v.ts && Date.now() - v.ts < 10 * 60 * 1000) serverFlag = v;
+    } catch (e) { }
+    return !serverFlag || serverFlag.ok;
+  }
+  function markServer(ok) {
+    serverFlag = { ok: !!ok, ts: Date.now() };
+    try { U.store.set('ytsrv', serverFlag); } catch (e) { }
+  }
+
+  function postJson(url, body, ms) {
+    const ctrl = typeof AbortController === 'function' ? new AbortController() : null;
+    const timer = ctrl ? setTimeout(() => ctrl.abort(), ms || 25000) : null;
+    return fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+      signal: ctrl ? ctrl.signal : undefined,
+      cache: 'no-store'
+    }).then((r) => {
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return r.json();
+    }).finally(() => { if (timer) clearTimeout(timer); });
+  }
+
+  function hashKey(s) {
+    let h = 5381;
+    for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0;
+    return (h >>> 0).toString(36);
+  }
+
+  /**
+   * اقتراحات لصيغة غير يوتيوب عبر السيرفر (yt-dlp).
+   * @returns {Promise<{items:Array, source:string}>}
+   */
+  async function serverSuggest(url, opts) {
+    opts = opts || {};
+    if (!serverUsable()) return { items: [], source: 'no-server' };
+    const key = 'ytsugu:' + hashKey(url);
+    if (!opts.fresh) {
+      const hit = U.store.get(key, null);
+      if (hit && hit.ts && Date.now() - hit.ts < SUGGEST_TTL) return { items: hit.items, source: 'cache' };
+    }
+    try {
+      const data = await postJson('api/suggest', { url: url, limit: opts.limit || CFG().suggestLimit || 12 }, opts.timeoutMs || 30000);
+      markServer(true);
+      const items = (Array.isArray(data && data.items) ? data.items : []).map((it) => {
+        const id = (it && (it.id || '')) || parseIdFromUrl((it && it.url) || '');
+        return {
+          id: id || ((it && it.url) || ''),
+          title: U.cleanName((it && it.title) || '') || 'فيديو',
+          author: '',
+          thumb: (it && it.thumb) || (id && ID_RE.test(id) ? thumb(id) : ''),
+          url: (it && it.url) || '',
+          reason: (it && it.source) === 'series' ? 'series' : 'search'
+        };
+      }).filter((it) => /^https:\/\//.test(it.url));
+      if (items.length) { try { U.store.set(key, { ts: Date.now(), items: items }); } catch (e) { } }
+      return { items: items, source: (data && data.source) || (items.length ? 'ytdlp' : 'none') };
+    } catch (e) {
+      /* لا سيرفر (استضافة ثابتة) أو تعطّل: نُسجّلها ونصمت */
+      if (e && /HTTP (404|405|5\d\d)/.test(String(e.message || ''))) markServer(false);
+      return { items: [], source: 'no-server' };
+    }
+  }
+
+  function parseIdFromUrl(raw) {
+    const m = String(raw || '').match(VIDEO_RE);
+    return m && ID_RE.test(m[1]) ? m[1] : '';
+  }
+
+  /**
+   * الاقتراحات لأي رابط: يوتيوب من المتصفح، وبقية الصيغ عبر yt-dlp.
+   * @param {string} url رابط الفيديو الحالي
+   */
+  async function forUrl(url, ctx) {
+    ctx = ctx || {};
+    const parsed = U.parseWatchUrl(url);
+    if (parsed && parsed.kind === 'youtube') return forVideo(parsed.id, ctx);
+    if (!parsed) return { items: [], source: 'none' };
+    return serverSuggest(parsed.src, ctx);
+  }
+
   global.WTSuggest = {
+    forUrl,
+    serverSuggest,
+    serverUsable,
+    resetServerFlag() { serverFlag = null; U.store.del('ytsrv'); },
     parseListUrl,
     parseVideoId(raw) {
       const m = String(raw || '').match(VIDEO_RE);
