@@ -112,10 +112,23 @@ public final class RoomStore implements WebSocketServer.Listener {
        ========================================================= */
     @SuppressWarnings("unchecked")
     private void loadFromDisk() {
+        if (storeFile == null || !storeFile.isFile()) return;
+        String raw;
         try {
-            if (storeFile == null || !storeFile.isFile()) return;
-            String raw = new String(Files.readAllBytes(storeFile.toPath()), StandardCharsets.UTF_8);
-            Map<String, Object> root = Json.parseObject(raw);
+            raw = new String(Files.readAllBytes(storeFile.toPath()), StandardCharsets.UTF_8);
+        } catch (Exception e) {
+            System.err.println("[Rooms] تعذّر قراءة ملف الحالات: " + e.getMessage());
+            return;
+        }
+        if (raw.trim().isEmpty()) return;                 /* ملف جديد أو فارغ — ليس خطأ */
+        Map<String, Object> root;
+        try {
+            root = Json.parseObject(raw);
+        } catch (Exception e) {
+            quarantine(e);                                /* ملف تالف: نحيّده بدل إسقاطه */
+            return;
+        }
+        try {
             if (root == null) return;
             Object reportsObj = root.get("reports");
             if (reportsObj instanceof List) {
@@ -176,6 +189,24 @@ public final class RoomStore implements WebSocketServer.Listener {
         }
     }
 
+    /**
+     * ملف الحالات تالف (أشهر سبب: إغلاق السيرفر أثناء الكتابة).
+     * ننقله جانباً باسم مميّز بدل أن نطمسه، حتى لا تُفقد الغرف بصمت.
+     */
+    private void quarantine(Exception e) {
+        File backup = new File(storeFile.getAbsolutePath() + ".corrupt-" + System.currentTimeMillis());
+        String where;
+        try {
+            Files.move(storeFile.toPath(), backup.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+            where = backup.getAbsolutePath();
+        } catch (Exception ignored) {
+            where = storeFile.getAbsolutePath() + " (تعذّر نقله)";
+        }
+        System.err.println("[Rooms] ملف الحالات تالف ولم يمكن قراءته: " + (e == null ? "" : e.getMessage()));
+        System.err.println("[Rooms] نُقل إلى: " + where);
+        System.err.println("[Rooms] سيبدأ السيرفر بقائمة غرف فارغة — احذف الملف أو أصلحه ثم أعد التشغيل لاستعادتها.");
+    }
+
     /** احفظ كل الحالات على القرص (آمن: لا يرمي استثناءات) */
     public synchronized void persist() {
         try {
@@ -214,9 +245,14 @@ public final class RoomStore implements WebSocketServer.Listener {
 
             File tmp = new File(storeFile.getAbsolutePath() + ".tmp");
             Files.write(tmp.toPath(), Json.stringify(root).getBytes(StandardCharsets.UTF_8));
-            if (storeFile.isFile() && !storeFile.delete()) { /* تجاهل */ }
-            if (!tmp.renameTo(storeFile)) {
-                Files.write(storeFile.toPath(), Json.stringify(root).getBytes(StandardCharsets.UTF_8));
+            /* نقل ذري: لا نحذف الأصل ولا نكتب فوقه يدوياً، حتى لا يبقى نصف ملف
+               عند إغلاق السيرفر فجأة (وهو سبب الخطأ «JSON: متوقع نص» عند الإقلاع) */
+            try {
+                Files.move(tmp.toPath(), storeFile.toPath(),
+                        java.nio.file.StandardCopyOption.REPLACE_EXISTING,
+                        java.nio.file.StandardCopyOption.ATOMIC_MOVE);
+            } catch (java.nio.file.AtomicMoveNotSupportedException ignored) {
+                Files.move(tmp.toPath(), storeFile.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
             }
         } catch (Exception e) {
             System.err.println("[Rooms] تعذّر الحفظ: " + e.getMessage());

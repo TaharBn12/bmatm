@@ -203,8 +203,10 @@ public final class Main {
     private static Map<String, Object> readJsonBody(HttpExchange ex, int maxBytes) throws IOException {
         byte[] raw = ex.getRequestBody().readNBytes(maxBytes + 1);
         if (raw.length > maxBytes) throw new IllegalArgumentException("الطلب كبير جداً");
-        Map<String, Object> data = Json.parseObject(new String(raw, StandardCharsets.UTF_8));
-        if (data == null) throw new IllegalArgumentException("طلب غير صالح");
+        Map<String, Object> data;
+        try { data = Json.parseObject(new String(raw, StandardCharsets.UTF_8)); }
+        catch (IllegalArgumentException e) { throw new IllegalArgumentException(Json.bodyError(e)); }
+        if (data == null) throw new IllegalArgumentException(Json.bodyError(null));
         return data;
     }
 

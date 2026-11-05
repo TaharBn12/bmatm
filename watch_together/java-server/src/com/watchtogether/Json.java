@@ -33,6 +33,17 @@ public final class Json {
         return (v instanceof Map) ? (Map<String, Object>) v : null;
     }
 
+    /**
+     * يحوّل خطأ التحليل إلى رسالة مفهومة للمشغّل.
+     * أشهر سبب عملي: تمرير JSON داخل سطر أوامر ويندوز — فالـ \" لا تعمل في CMD،
+     * فيصل الجسم هكذا {\"url\":…} ويفشل التحليل برسالة غامضة.
+     */
+    public static String bodyError(Exception e) {
+        String why = (e == null || e.getMessage() == null) ? "صيغة غير معروفة" : e.getMessage();
+        return "جسم الطلب ليس JSON صالحاً (" + why + ")" +
+               " — في موجه الأوامر اكتب الـ JSON في ملف ثم استخدم: curl -d @body.json";
+    }
+
     private static final class Parser {
         private final String src;
         private int i;

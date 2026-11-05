@@ -51,7 +51,9 @@ public final class VideoResolver {
             }
             byte[] body = ex.getRequestBody().readNBytes(8193);
             if (body.length > 8192) { status = 413; throw new IllegalArgumentException("الرابط طويل جداً"); }
-            Map<String,Object> request = Json.parseObject(new String(body, StandardCharsets.UTF_8));
+            Map<String,Object> request;
+            try { request = Json.parseObject(new String(body, StandardCharsets.UTF_8)); }
+            catch (IllegalArgumentException e) { throw new IllegalArgumentException(Json.bodyError(e)); }
             if (request == null || !(request.get("url") instanceof String)) throw new IllegalArgumentException("الرابط مطلوب");
             String url = (String)request.get("url");
             if (!permit()) { status = 429; throw new IllegalArgumentException("تم تجاوز حد الاستخراج؛ انتظر دقيقة"); }
