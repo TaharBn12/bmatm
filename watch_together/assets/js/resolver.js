@@ -18,8 +18,19 @@
     try {
       const endpoint = (window.WTServer && window.WTServer.api) ? window.WTServer.api('api/resolve') : 'api/resolve';
       const response = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url: raw }), signal: ctrl.signal });
+      if (response.status === 426) {   /* العنوان لا يخدم HTTP: ليس سيرفر API */
+        throw new Error('السيرفر ' + String(endpoint).replace(/\/api\/resolve$/, '') +
+          ' ردّ 426 Upgrade Required — أي أنه لا يخدم طلبات HTTP (خدمة WebSocket أو عنوان خدمة أخرى). ' +
+          'انسخ عنوان خدمتك من لوحة Render وجرّبه بـ ?api=<العنوان>.');
+      }
       let data;
-      try { data = await response.json(); } catch (_) { throw new Error('الاستخراج يحتاج خادم Java مع yt-dlp؛ الاستضافة الثابتة وحدها لا تكفي'); }
+      try { data = await response.json(); } catch (_) {
+        const js = window.WT_CONFIG && window.WT_CONFIG.javaServer;
+        const host = String(location.hostname || '');
+        const mine = /^(localhost|127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(host);
+        throw new Error('الاستخراج يحتاج خادم Java مع yt-dlp؛ الاستضافة الثابتة وحدها لا تكفي' +
+          (!mine && !(js && js.apiBase) ? ' — اضبط javaServer.apiBase بعنوان سيرفر Render في assets/js/config.js' : ''));
+      }
       if (!response.ok || !data.url) throw new Error(data.error || 'تعذّر تجهيز الفيديو');
       const url = new URL(data.url);
       if (url.protocol !== 'https:') throw new Error('رابط تشغيل غير آمن');

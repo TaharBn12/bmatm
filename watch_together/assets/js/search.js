@@ -140,6 +140,11 @@
     try { data = JSON.parse(text); } catch (e) { data = null; }
     if (!response.ok) {
       const message = (data && data.error) ? data.error : 'استجابة غير متوقعة (' + response.status + ')';
+      if (response.status === 426) {                            /* ليس سيرفر API أصلاً */
+        state.status = 426;
+        state.reason = wrongApiMessage(String(api).replace(/\/api\/search$/, ''), 426);
+        return null;
+      }
       if (response.status === 404 || response.status === 405 || response.status === 501) {
         state.reason = await diagnoseMissing(response.status);   /* لا تستخدم status وحدها: هي دالة العرض */
         return null;
@@ -162,10 +167,29 @@
       .test(String(location.hostname || ''));
   }
 
-  /** عنوان السيرفر المضبوط في الإعدادات (إن وُجد) */
+  /**
+   * عنوان السيرفر **الفعلي** الذي ستُوجَّه إليه الطلبات:
+   * WTServer.apiBase() (config.js أو ?api= أو localStorage) ثم config.js.
+   */
   function apiBaseUrl() {
+    if (window.WTServer && typeof window.WTServer.apiBase === 'function') {
+      const eff = window.WTServer.apiBase();
+      if (eff) return String(eff).replace(/\/+$/, '');
+    }
     const js = window.WT_CONFIG && window.WT_CONFIG.javaServer;
     return js && js.apiBase ? String(js.apiBase).replace(/\/+$/, '') : '';
+  }
+
+  /**
+   * ردّ 426 Upgrade Required: العنوان يرفض طلبات HTTP العادية كلها.
+   * سيرفرنا (Java) لا يردّ 426 أبداً — فمن يفعل هو غالباً خدمة WebSocket
+   * لشخص آخر، أي: **العنوان المضبوط ليس سيرفر API**. نقولها صراحة بدل
+   * «تعذّر الاتصال» الذي يوحي بأن السيرفر نائم أو معطّل.
+   */
+  function wrongApiMessage(api, status) {
+    return 'السيرفر ' + (api || location.origin) + ' ردّ ' + status + ' Upgrade Required — أي أنه لا يخدم طلبات HTTP عادية ' +
+      '(خدمة WebSocket فقط، أو عنوان خدمة أخرى غير خدمتك). انسخ عنوان خدمتك من لوحة Render ' +
+      '(الرابط أعلى صفحة الخدمة) وجرّبه فوراً بإضافة ?api=<العنوان> للرابط.';
   }
 
   /**
@@ -289,6 +313,7 @@
     const noServer = state.server === false;
     el.note.hidden = !noServer;
     if (!noServer || !el.noteText) return;
+    if (state.status === 426 && state.reason) { el.noteText.textContent = state.reason; return; }
     /* التوجيه يختلف جذرياً بين «جهازك» و«استضافة ثابتة» */
     let where;
     const api = apiBaseUrl();
