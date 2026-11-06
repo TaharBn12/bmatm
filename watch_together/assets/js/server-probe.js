@@ -69,12 +69,27 @@
     return String(base).replace(/\/+$/, '') + '/' + String(path).replace(/^\/+/, '');
   }
 
-  /** هل السياق «سيرفر بعيد للبحث والاستخراج فقط» بلا نقطة غرف (WebSocket)؟ */
-  function remoteApiOnly() {
+  /**
+   * عنوان فحص «هل هناك سيرفر يستضيف **الغرف**؟».
+   * الغرف عبر WebSocket على **نفس النطاق** الذي يخدم الصفحة، فالفحص يكون
+   * نسبيّاً دائماً. أما `apiBase` (سيرفر بحث/استخراج على نطاق آخر) فلا يخدم
+   * الغرف، فلا يجعلنا نظنّ أن هناك سيرفر غرف — وإلا أرسلنا الغرف إلى
+   * WebSocket على github.io!
+   * استثناء واحد: إن ضُبط `javaServer.url` (عنوان WebSocket صريح) فالغرف تذهب
+   * إلى ذاك السيرفر، فنفحصه هناك.
+   */
+  function roomsProbeUrl() {
     var cfg = global.WT_CONFIG;
-    var js = cfg && cfg.javaServer;
-    if (!js) return false;
-    return !!configuredBase() && !js.url;
+    var js = (cfg && cfg.javaServer) || {};
+    if (!js.url) return 'healthz';                 /* الغرف إن وُجدت فهي على نفس النطاق */
+    var base = js.apiBase ? String(js.apiBase) : '';
+    if (!base) {
+      try {
+        var u = new global.URL(js.url, global.location.href);
+        base = (u.protocol === 'wss:' ? 'https:' : 'http:') + '//' + u.host;
+      } catch (e) { base = ''; }
+    }
+    return base ? String(base).replace(/\/+$/, '') + '/healthz' : 'healthz';
   }
 
   function probeMs() {
@@ -83,7 +98,7 @@
     return typeof v === 'number' && v > 0 ? v : 30000;
   }
 
-  function run(timeoutMs) {
+  function run(url, timeoutMs) {
     var settled = false;
     return new Promise(function (resolve) {
       var finish = function (value) {
@@ -96,7 +111,7 @@
       };
       var timer = global.setTimeout(function () { finish(false); }, timeoutMs);
       var fail = function () { global.clearTimeout(timer); finish(false); };
-      global.fetch(apiUrl('healthz'), { cache: 'no-store', headers: { Accept: 'text/plain' } }).then(
+      global.fetch(url, { cache: 'no-store', headers: { Accept: 'text/plain' } }).then(
         function (response) {
           if (!response || !response.ok) return fail();
           return response.text().then(function (text) {
@@ -152,8 +167,6 @@
 
     available: function (onStatus) {
       if (forcedLocal() || !javaEnabled()) return Promise.resolve(false);
-      /* سيرفر بعيد للبحث/الاستخراج فقط: الغرف تبقى على Supabase، فلا WebSocket */
-      if (remoteApiOnly()) return Promise.resolve(false);
       if (typeof cache.value === 'boolean' && Date.now() - cache.at < TTL) return Promise.resolve(cache.value);
       if (cache.promise) return cache.promise;
       if (onStatus) {
@@ -164,7 +177,7 @@
             : 'جارٍ إيقاظ السيرفر… قد يستغرق حتى دقيقة في الخطة المجانية'
         });
       }
-      cache.promise = run(probeMs());
+      cache.promise = run(roomsProbeUrl(), probeMs());
       return cache.promise;
     },
 
