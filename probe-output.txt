@@ -1,80 +1,12 @@
-=== 2026-11-06T22:02:04Z ===
-
-===== GET /healthz (بلا Origin) =====
+=== 2026-11-06T22:07:50Z ===
+===== GET /api/stats =====
+{"status":"ok","app":"WatchTogether","version":"1.0.0","uptimeSeconds":365,"rooms":0,"connections":0,"totalConnections":0,"messages":0,"serverTime":1794002871112,"store":"rooms.json"}
+===== search dailymotion =====
+{"query":"football","site":"dailymotion","source":"dailymotion-api","count":3,"items":[{"id":"x8due1z","title":"football, football skills, football highlights, football songs, football cartoon, football tricks, football shorts, football game, football movie, football reels","url":"https://www.dailymotion.com/video/x8due1z","thumb":"https://s2.dmcdn.net/v/UD--d1gsVYRBHsaRn/x720","duration":310,"author":"us24364"},{"id":"x8due3b","title":"Football moments 2022 football, football skills, football highlights, football songs, football cartoon, football tricks, football shorts, football game, football movie, football reels","url":"https://www.dailymotion.com/video/x8due3b","thumb":"https://s2.dmcd
+الرابط المختار: [https://www.dailymotion.com/video/x8due1z]
+===== POST /api/resolve =====
 HTTP/2 200 
-date: Fri, 06 Nov 2026 22:02:04 GMT
-content-type: text/plain; charset=utf-8
-access-control-allow-headers: Content-Type
-access-control-allow-methods: GET, OPTIONS
-access-control-allow-origin: *
-access-control-max-age: 600
-cf-cache-status: DYNAMIC
-rndr-id: d2c304d3-0b4e-4a5d
-server: cloudflare
-vary: Accept-Encoding
-x-render-origin-server: Render
-cf-ray: a567616078fc990b-IAD
-alt-svc: h3=":443"; ma=86400
-
-ok
-
-===== GET /healthz مع Origin: https://taharbn12.github.io =====
-HTTP/2 200 
-date: Fri, 06 Nov 2026 22:02:04 GMT
-content-type: text/plain; charset=utf-8
-access-control-allow-headers: Content-Type
-access-control-allow-methods: GET, OPTIONS
-access-control-allow-origin: https://taharbn12.github.io
-access-control-max-age: 600
-cf-cache-status: DYNAMIC
-rndr-id: 75a51710-2bc0-4636
-server: cloudflare
-vary: Origin
-vary: Accept-Encoding
-x-render-origin-server: Render
-cf-ray: a5676161acf881ac-IAD
-alt-svc: h3=":443"; ma=86400
-
-ok
-
-===== GET /api/search مع Origin (CORS الحقيقي) =====
-HTTP/2 200 
-date: Fri, 06 Nov 2026 22:02:09 GMT
-content-type: application/json; charset=utf-8
-access-control-allow-headers: Content-Type
-access-control-allow-methods: GET, OPTIONS
-access-control-allow-origin: https://taharbn12.github.io
-access-control-max-age: 600
-cache-control: no-store
-cf-cache-status: DYNAMIC
-rndr-id: 4a956f6e-2679-48b5
-server: cloudflare
-vary: Origin
-vary: Accept-Encoding
-x-render-origin-server: Render
-cf-ray: a56761631d862ac2-IAD
-alt-svc: h3=":443"; ma=86400
-
-{"query":"test","site":"youtube","source":"yt-dlp","count":2,"items":[{"id":"_okYkBRnxQA","title":"Highlights | Bangladesh vs West Indies | 2nd Test | Day 2 | West Indies tour of Bangladesh 2026","url":"https://www.youtube.com/watch?v=_okYkBRnxQA","thumb":"https://i.ytimg.com/vi/_okYkBRnxQA/hqdefault.jpg","duration":909,"author":""},{"id":"UEQSkaqrMZA","title":"OLED TEST HDR 4K 120FPS DOLBY VISION 🏞 4K / 8K Monitor Test Video #BGM","url":"https://www.youtube.com/watch?v=UEQSkaqrMZA","thumb":"https://i.ytimg.com/vi/UEQSkaqrMZA/hqdefault.jpg","duration":4663,"author":""}]}
-===== OPTIONS /api/resolve (preflight) =====
-HTTP/2 204 
-date: Fri, 06 Nov 2026 22:02:09 GMT
-access-control-allow-headers: Content-Type
-access-control-allow-methods: GET, POST, OPTIONS
-access-control-allow-origin: https://taharbn12.github.io
-access-control-max-age: 600
-rndr-id: ea20e0f5-0f2a-4974
-server: cloudflare
-vary: Origin
-x-render-origin-server: Render
-cf-cache-status: DYNAMIC
-cf-ray: a567617f48d3c6f7-IAD
-alt-svc: h3=":443"; ma=86400
-
-
-===== POST /api/resolve (يوتيوب حقيقي) =====
-HTTP/2 400 
-date: Fri, 06 Nov 2026 22:02:09 GMT
+date: Fri, 06 Nov 2026 22:07:59 GMT
 content-type: application/json; charset=utf-8
 access-control-allow-headers: Content-Type
 access-control-allow-methods: POST, OPTIONS
@@ -82,51 +14,8 @@ access-control-allow-origin: https://taharbn12.github.io
 access-control-max-age: 600
 cache-control: no-store
 cf-cache-status: DYNAMIC
-rndr-id: 7c416a13-ff3f-4597
+rndr-id: 7cdb868d-acc3-4e94
 server: cloudflare
 vary: Origin
-
-===== POST /api/resolve (ديليموشن حقيقي) =====
-HTTP/2 422 
-date: Fri, 06 Nov 2026 22:02:12 GMT
-content-type: application/json; charset=utf-8
-access-control-allow-headers: Content-Type
-access-control-allow-methods: POST, OPTIONS
-access-control-allow-origin: https://taharbn12.github.io
-access-control-max-age: 600
-cache-control: no-store
-cf-cache-status: DYNAMIC
-rndr-id: 9b55577a-9f74-4eb9
-server: cloudflare
-vary: Origin
-
-===== POST /api/suggest =====
-HTTP/2 200 
-date: Fri, 06 Nov 2026 22:02:32 GMT
-content-type: application/json; charset=utf-8
-access-control-allow-headers: Content-Type
-access-control-allow-methods: POST, OPTIONS
-access-control-allow-origin: https://taharbn12.github.io
-access-control-max-age: 600
-cache-control: no-store
-cf-cache-status: DYNAMIC
-rndr-id: 274cab3d-e0f0-4c0f
-server: cloudflare
-vary: Origin
-
-===== GET / (التأكد من وضع API فقط) =====
-HTTP/2 200 
-date: Fri, 06 Nov 2026 22:02:32 GMT
-content-type: text/html; charset=utf-8
-access-control-allow-headers: Content-Type
-access-control-allow-methods: GET, OPTIONS
-access-control-allow-origin: *
-access-control-max-age: 600
-cache-control: no-store
-cf-cache-status: DYNAMIC
-rndr-id: 0362554e-52aa-4a74
-server: cloudflare
 vary: Accept-Encoding
 x-render-origin-server: Render
-cf-ray: a5676210d8924967-IAD
-alt-svc: h3=":443"; ma=86400
