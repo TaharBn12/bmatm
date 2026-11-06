@@ -165,9 +165,14 @@
       updatePlayIcon();
     },
     onStateChange: (d) => {
-      /* انتهاء الفيديو → طبقة «التالي»: تظهر للجميع، والتنفيذ للمتحكم فقط */
-      if (d.ended && window.WTUpNext && window.WTUpNext.onEnded) {
-        try { window.WTUpNext.onEnded(); } catch (err) { console.error(err); }
+      /* انتهاء الفيديو → قائمة الانتظار أولاً، ثم طبقة «التالي»
+         (تظهر للجميع، والتنفيذ للمتحكم فقط) */
+      if (d.ended) {
+        if (!advanceQueue()) {
+          if (window.WTUpNext && window.WTUpNext.onEnded) {
+            try { window.WTUpNext.onEnded(); } catch (err) { console.error(err); }
+          }
+        }
       }
       if (session.applyingRemote) return;
       if (!canControl()) {
@@ -476,6 +481,7 @@
       if (Array.isArray(result && result.members)) mergeMembers(result.members);
       updateControlAccess();
       renderQueue();
+      importPendingQueue();          /* ما أُرسل من صفحة البحث (بلا انتظار) */
       const serverTime = (result && result.serverTime) || transport.serverTime;
       if (typeof serverTime === 'number') session.clockOffset = serverTime - Date.now();
 
@@ -2360,6 +2366,37 @@
       const result = await session.transport.removeQueueItem(id);
       if (Array.isArray(result)) setQueue(result);
     } catch (err) { U.toast('تعذّر إزالة الفيديو من القائمة', 'error', 2600); }
+  }
+
+  /**
+   * تشغيل التالي من قائمة الانتظار وإزالته منها — يُستدعى عند انتهاء الفيديو.
+   * لا ينفّذه إلا المتحكم، حتى تبقى الغرفة كلها متزامنة.
+   * @returns {boolean} true إن كان هناك تالٍ وتم تشغيله
+   */
+  function advanceQueue() {
+    if (!canControl()) return false;
+    const queue = session.queue || [];
+    if (!queue.length) return false;
+    const next = queue[0];
+    playQueueItem(next);
+    if (session.transport && typeof session.transport.removeQueueItem === 'function') {
+      session.transport.removeQueueItem(next.id)
+        .then(result => { if (Array.isArray(result)) setQueue(result); })
+        .catch(() => { /* تبقى البطاقة إن تعذّرت الإزالة */ });
+    }
+    return true;
+  }
+
+  /** فيديو مُرسَل من صفحة البحث: يُضاف إلى القائمة عند دخول الغرفة */
+  async function importPendingQueue() {
+    const key = 'wt:pending-queue:' + roomId;
+    let items = null;
+    try { items = JSON.parse(sessionStorage.getItem(key) || 'null'); } catch (e) { items = null; }
+    if (!Array.isArray(items) || !items.length) return;
+    try { sessionStorage.removeItem(key); } catch (e) { /* التخزين محجوب */ }
+    const added = await addQueueItems(items);
+    if (added) U.toast('أُضيف ' + added + ' فيديو إلى قائمة الانتظار', 'success', 2800);
+    else U.toast('تعذّر إضافة الفيديو إلى قائمة الانتظار', 'warn', 2600);
   }
 
   function playQueueItem(item) {

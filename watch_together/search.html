@@ -51,7 +51,16 @@
 
   <main class="search-main">
     <h1 class="search-title">ابحث في ديليموشن</h1>
-    <p class="search-sub">النتائج من ديليموشن مباشرة، وعند الضغط على أي فيديو يستخرج السيرفر رابط تشغيل مباشر عبر yt-dlp.</p>
+    <p class="search-sub">ابحث في ديليموشن أو يوتيوب. في ديليموشن يستخرج السيرفر رابط تشغيل مباشر عبر yt-dlp؛ وفي يوتيوب يُشغَّل الفيديو بمشغّله الرسمي.</p>
+
+    <div class="search-sources" id="searchSources" role="tablist" aria-label="مصدر البحث">
+      <button class="source-tab is-active" type="button" role="tab" aria-selected="true" data-site="dailymotion">
+        <span class="ic" data-icon="film" data-size="17"></span> ديليموشن
+      </button>
+      <button class="source-tab" type="button" role="tab" aria-selected="false" data-site="youtube">
+        <span class="ic" data-icon="play" data-size="17"></span> يوتيوب
+      </button>
+    </div>
 
     <form class="search-form" id="searchForm" role="search" autocomplete="off">
       <div class="search-field">
@@ -121,14 +130,31 @@
         <button class="btn btn--primary" id="playRoom" type="button" disabled>
           <span class="ic" data-icon="users" data-size="18"></span> افتح غرفة مشاهدة
         </button>
+        <button class="btn btn--ghost" id="playQueue" type="button" disabled>
+          <span class="ic" data-icon="plus" data-size="18"></span> أضف إلى قائمة الانتظار
+        </button>
         <button class="btn btn--ghost" id="playCopy" type="button" disabled>
-          <span class="ic" data-icon="copy" data-size="18"></span> نسخ الرابط المباشر
+          <span class="ic" data-icon="copy" data-size="18"></span> نسخ الرابط
         </button>
         <a class="btn btn--ghost" id="playSource" href="#" target="_blank" rel="noopener noreferrer">
           <span class="ic" data-icon="link" data-size="18"></span> افتح على ديليموشن
         </a>
       </div>
       <p class="play-hint" id="playHint">الرابط المباشر مؤقّت (توقيع من ديليموشن) — صالح للتشغيل الآن فقط.</p>
+    </div>
+  </dialog>
+
+  <dialog class="room-picker glass" id="roomPicker" aria-labelledby="pickerTitle">
+    <header class="play-dialog__head">
+      <h2 id="pickerTitle" class="play-dialog__title">أضف إلى غرفة</h2>
+      <button class="btn btn--ghost btn--icon-sm" id="pickerClose" type="button" aria-label="إغلاق" title="إغلاق">
+        <span class="ic" data-icon="x" data-size="18"></span>
+      </button>
+    </header>
+    <div class="play-dialog__body">
+      <p class="picker-hint">سيُضاف الفيديو إلى <strong>قائمة الانتظار</strong> في الغرفة، ويمكن تشغيله منها في أي وقت.</p>
+      <div class="picker-list" id="pickerList" role="list"></div>
+      <p class="picker-empty" id="pickerEmpty" role="status" hidden>لا غرف محفوظة — أنشئ غرفة أولاً من صفحة الغرف.</p>
     </div>
   </dialog>
 
