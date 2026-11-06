@@ -16,7 +16,8 @@
     const timer = setTimeout(cancel, 45000);
     dialog.showModal();
     try {
-      const response = await fetch('api/resolve', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url: raw }), signal: ctrl.signal });
+      const endpoint = (window.WTServer && window.WTServer.api) ? window.WTServer.api('api/resolve') : 'api/resolve';
+      const response = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url: raw }), signal: ctrl.signal });
       let data;
       try { data = await response.json(); } catch (_) { throw new Error('الاستخراج يحتاج خادم Java مع yt-dlp؛ الاستضافة الثابتة وحدها لا تكفي'); }
       if (!response.ok || !data.url) throw new Error(data.error || 'تعذّر تجهيز الفيديو');

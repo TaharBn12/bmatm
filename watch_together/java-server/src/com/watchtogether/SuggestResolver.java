@@ -105,11 +105,8 @@ public final class SuggestResolver {
         boolean acquired = false;
         try {
             if (!"POST".equals(ex.getRequestMethod())) { status = 405; throw new IllegalArgumentException("استخدم POST"); }
-            String origin = ex.getRequestHeaders().getFirst("Origin");
-            if (origin != null && !Objects.equals(URI.create(origin).getRawAuthority(),
-                                                  ex.getRequestHeaders().getFirst("Host"))) {
-                status = 403; throw new IllegalArgumentException("طلب من مصدر غير مسموح");
-            }
+            if (Origins.preflight(ex, "POST, OPTIONS")) return;   /* طلب تمهيدي من نطاق آخر */
+            if (!Origins.allowed(ex)) { status = 403; throw new IllegalArgumentException(Origins.denyMessage()); }
             byte[] body = ex.getRequestBody().readNBytes(8193);
             if (body.length > 8192) { status = 413; throw new IllegalArgumentException("الطلب طويل جداً"); }
             Map<String, Object> req;
@@ -180,6 +177,7 @@ public final class SuggestResolver {
         byte[] bytes = Json.stringify(result).getBytes(StandardCharsets.UTF_8);
         ex.getResponseHeaders().set("Content-Type", "application/json; charset=utf-8");
         ex.getResponseHeaders().set("Cache-Control", "no-store");
+        Origins.apply(ex, "POST, OPTIONS");
         ex.sendResponseHeaders(status, bytes.length);
         try (OutputStream os = ex.getResponseBody()) { os.write(bytes); }
     }

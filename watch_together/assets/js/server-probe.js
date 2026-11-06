@@ -42,6 +42,26 @@
     return !!(cfg && cfg.javaServer && cfg.javaServer.enabled !== false);
   }
 
+  /**
+   * عنوان نقطة على السيرفر.
+   * إن ضُبط javaServer.apiBase فالموقع على نطاق آخر (GitHub Pages مثلاً)
+   * والسيرفر على Render — فنحتاج عنواناً مطلقاً، وإلا نستخدم النسبي.
+   */
+  function apiUrl(path) {
+    var cfg = global.WT_CONFIG;
+    var base = cfg && cfg.javaServer && cfg.javaServer.apiBase;
+    if (!base) return path;
+    return String(base).replace(/\/+$/, '') + '/' + String(path).replace(/^\/+/, '');
+  }
+
+  /** هل السياق «سيرفر بعيد للبحث والاستخراج فقط» بلا نقطة غرف (WebSocket)؟ */
+  function remoteApiOnly() {
+    var cfg = global.WT_CONFIG;
+    var js = cfg && cfg.javaServer;
+    if (!js) return false;
+    return !!js.apiBase && !js.url;
+  }
+
   function probeMs() {
     var cfg = global.WT_CONFIG;
     var v = cfg && cfg.javaServer && cfg.javaServer.probeMs;
@@ -61,7 +81,7 @@
       };
       var timer = global.setTimeout(function () { finish(false); }, timeoutMs);
       var fail = function () { global.clearTimeout(timer); finish(false); };
-      global.fetch('healthz', { cache: 'no-store', headers: { Accept: 'text/plain' } }).then(
+      global.fetch(apiUrl('healthz'), { cache: 'no-store', headers: { Accept: 'text/plain' } }).then(
         function (response) {
           if (!response || !response.ok) return fail();
           return response.text().then(function (text) {
@@ -87,7 +107,7 @@
   }
 
   function ping() {
-    try { global.fetch('healthz', { cache: 'no-store' }).catch(function () { }); } catch (e) { }
+    try { global.fetch(apiUrl('healthz'), { cache: 'no-store' }).catch(function () { }); } catch (e) { }
   }
 
   global.WTServer = {
@@ -112,8 +132,13 @@
      * @param {(s:{state:string,detail:string})=>void} [onStatus] لتحديث واجهة الحالة
      * @returns {Promise<boolean>}
      */
+    /** عنوان نقطة API (مطلق إن كان السيرفر على نطاق آخر) */
+    api: apiUrl,
+
     available: function (onStatus) {
       if (forcedLocal() || !javaEnabled()) return Promise.resolve(false);
+      /* سيرفر بعيد للبحث/الاستخراج فقط: الغرف تبقى على Supabase، فلا WebSocket */
+      if (remoteApiOnly()) return Promise.resolve(false);
       if (typeof cache.value === 'boolean' && Date.now() - cache.at < TTL) return Promise.resolve(cache.value);
       if (cache.promise) return cache.promise;
       if (onStatus) {
