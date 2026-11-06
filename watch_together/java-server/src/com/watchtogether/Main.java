@@ -39,6 +39,10 @@ import java.util.concurrent.TimeUnit;
  */
 public final class Main {
 
+    /** WT_API_ONLY=true → السيرفر للبحث والاستخراج فقط (الموقع على استضافة ثابتة) */
+    private static final boolean API_ONLY =
+            "true".equalsIgnoreCase(String.valueOf(System.getenv("WT_API_ONLY")).trim());
+
     private static RoomStore roomStore;
     private static WebSocketServer wsServer;
     private static long startedAt = System.currentTimeMillis();
@@ -115,6 +119,7 @@ public final class Main {
                 if (path.equals("/api/search")) { SearchResolver.handle(ex); return; }
                 if (path.equals("/healthz")) { Origins.apply(ex, "GET, OPTIONS"); sendText(ex, 200, "OK", "ok\n"); return; }
                 if (path.equals("/api/stats")) { Origins.apply(ex, "GET, OPTIONS"); sendJson(ex, 200, stats()); return; }
+                if (API_ONLY) { apiHome(ex); return; }
                 files.handle(ex);
             } catch (IOException e) {
                 try { sendText(ex, 500, "Internal Server Error", "خطأ داخلي: " + e.getMessage()); }
@@ -133,6 +138,43 @@ public final class Main {
 
         server.start();
         banner(port, host, root);
+    }
+
+    /**
+     * الصفحة الرئيسية في «وضع API فقط»: بدل 404 أو خدمة ملفات الموقع،
+     * نعرض ملخّصاً عربياً يؤكد أن السيرفر يعمل ويشرح نقاطه.
+     */
+    private static void apiHome(HttpExchange ex) throws IOException {
+        Origins.apply(ex, "GET, OPTIONS");
+        String origin = String.valueOf(ex.getRequestHeaders().getFirst("Origin") == null
+                ? "(بدون)" : ex.getRequestHeaders().getFirst("Origin"));
+        Map<String, Object> st = stats();
+        String uptime = st == null ? "" : String.valueOf(st.get("uptimeSeconds"));
+        String body = "<!doctype html><html lang=\"ar\" dir=\"rtl\"><meta charset=\"utf-8\">"
+            + "<title>WatchTogether — سيرفر API</title>"
+            + "<body style=\"margin:0;min-height:100vh;display:grid;place-items:center;background:#080C14;color:#E8DCC6;"
+            + "font-family:Cairo,system-ui,sans-serif\"><div style=\"max-width:640px;padding:28px;text-align:center\">"
+            + "<h1 style=\"font-size:22px;margin:0 0 6px\">سيرفر WatchTogether يعمل ✓</h1>"
+            + "<p style=\"color:#9AA8B8;margin:0 0 18px\">هذه النسخة في <strong>وضع API فقط</strong>: "
+            + "الموقع على استضافة ثابتة، والسيرفر مسؤول عن البحث وتحويل الروابط.</p>"
+            + "<ul style=\"list-style:none;padding:0;margin:0 0 18px;color:#C5A572;line-height:2\">"
+            + "<li>GET /api/search?q=…&amp;site=dailymotion|youtube</li>"
+            + "<li>POST /api/resolve</li>"
+            + "<li>POST /api/suggest</li>"
+            + "<li>GET /healthz · GET /api/stats</li></ul>"
+            + "<p style=\"color:#6b7787;font-size:13px;margin:0\">Origin: " + esc(origin)
+            + " · مضى على التشغيل: " + esc(uptime) + " ثانية</p></div></body></html>";
+        byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
+        ex.getResponseHeaders().set("Content-Type", "text/html; charset=utf-8");
+        ex.getResponseHeaders().set("Cache-Control", "no-store");
+        ex.sendResponseHeaders(200, bytes.length);
+        try (OutputStream os = ex.getResponseBody()) { os.write(bytes); }
+    }
+
+    private static String esc(String v) {
+        String s = String.valueOf(v == null ? "" : v);
+        return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+                .replace("\"", "&quot;").replace("'", "&#39;");
     }
 
     private static void handleRooms(HttpExchange ex) throws IOException {
@@ -284,6 +326,7 @@ public final class Main {
         sb.append("  ╚══════════════════════════════════════════════════════════╝\n\n");
         sb.append("  مجلد الموقع : ").append(root.getAbsolutePath()).append('\n');
         sb.append("  الاستماع على : ").append(host).append(':').append(port).append('\n');
+        sb.append("  الوضع        : ").append(API_ONLY ? "API فقط (الموقع على استضافة ثابتة)" : "الموقع + API").append('\n');
         sb.append("  WebSocket    : /ws\n");
         sb.append("  البحث        : /api/search?q=…  (صفحة: /search.html)\n");
         sb.append("  حفظ الحالات  : ").append(roomStore.getStoreFile().getAbsolutePath()).append('\n');

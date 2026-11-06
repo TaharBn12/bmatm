@@ -273,9 +273,17 @@
     el.note.hidden = !noServer;
     if (!noServer || !el.noteText) return;
     /* state.reason يحمل التعليمات المناسبة لكل سبب (منفذ قديم · 404 · انقطاع) */
-    const where = location.protocol === 'file:'
+    let where = location.protocol === 'file:'
       ? 'أنت تفتح الصفحة كملف (file://) — لا تعمل أي نقطة /api. شغّل run.bat ثم افتح العنوان الذي تطبعه اللافتة.'
       : (state.reason || 'شغّل run.bat ثم أعد تحميل الصفحة من العنوان الذي تطبعه اللافتة.');
+    /* على استضافة ثابتة (GitHub Pages) لا يكفي run.bat: نحتاج عنوان السيرفر */
+    const cfgBase = window.WT_CONFIG && window.WT_CONFIG.javaServer && window.WT_CONFIG.javaServer.apiBase;
+    const override = window.WTServer && typeof window.WTServer.api === 'function'
+      ? window.WTServer.api('healthz') : '';
+    if (!cfgBase && !/^https?:\/\//i.test(String(override))) {
+      where += ' على استضافة ثابتة: اضبط javaServer.apiBase في assets/js/config.js بعنوان سيرفر Render،' +
+               ' أو جرّب مؤقتاً بإضافة ?api=https://<عنوان السيرفر> للرابط.';
+    }
     el.noteText.textContent = state.site === 'youtube'
       ? 'بحث يوتيوب يحتاج سيرفر Java مع yt-dlp. ' + where
       : 'نتائج البحث تعمل، لكن استخراج رابط التشغيل المباشر يحتاج سيرفر Java مع yt-dlp. ' + where;

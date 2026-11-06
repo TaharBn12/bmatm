@@ -20,6 +20,10 @@ services:
     autoDeploy: true         # كل دمج في main ينشر تلقائياً
     healthCheckPath: /healthz
     envVars:
+      # «وضع API فقط»: السيرفر للبحث وتحويل الروابط، والموقع على GitHub Pages.
+      # لإعادة «الموقع + API» على Render اجعلها false.
+      - key: WT_API_ONLY
+        value: "true"
       - key: PORT
         value: "10000"
       - key: HOST

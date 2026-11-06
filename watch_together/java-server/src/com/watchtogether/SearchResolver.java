@@ -63,8 +63,8 @@ public final class SearchResolver {
         Map<String, Object> result = new LinkedHashMap<>();
         boolean acquired = false;
         try {
-            if (!"GET".equals(ex.getRequestMethod())) { status = 405; throw new IllegalArgumentException("استخدم GET"); }
             if (Origins.preflight(ex, "GET, OPTIONS")) return;    /* طلب تمهيدي من نطاق آخر */
+            if (!"GET".equals(ex.getRequestMethod())) { status = 405; throw new IllegalArgumentException("استخدم GET"); }
             if (!Origins.allowed(ex)) { status = 403; throw new IllegalArgumentException(Origins.denyMessage()); }
             Map<String, String> query = params(ex.getRequestURI().getRawQuery());
             String term = clean(query.get("q"));

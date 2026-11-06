@@ -54,15 +54,30 @@
 نفّذ [`docs/sql/01-bootstrap.sql`](sql/01-bootstrap.sql) في **SQL Editor → Run**،
 وفعّل Email في **Authentication → Providers**.
 
-### ج) Render (للبحث والاستخراج)
+### ج) Render — **سيرفر API فقط**
 
-كما في [`docs/render.md`](render.md) — Blueprint أو Web Service — ثم أضف متغيراً:
+كما في [`docs/render.md`](render.md) — Blueprint أو Web Service — ثم أضف متغيرَين:
 
 ```
 WT_ALLOWED_ORIGINS = https://taharbn12.github.io
+WT_API_ONLY        = true
 ```
 
 （افصل بين أكثر من نطاق بفاصلة. القيمة `*` تسمح للجميع — للتجربة فقط.）
+
+**ما يفعله `WT_API_ONLY=true`؟**
+
+| | `true` (هذه البنية) | `false` (الافتراضي) |
+|---|---|---|
+| `/` | صفحة حالة عربية تؤكد العمل وتعرض النقاط | الموقع كاملاً من `ROOT` |
+| `/api/search` · `/api/resolve` · `/api/suggest` | ✅ | ✅ |
+| `/healthz` · `/api/stats` | ✅ | ✅ |
+| `/ws` و`/api/rooms` | تعمل لكنها غير مستخدمة | مستخدمة (الغرف على السيرفر) |
+
+اللافتة في سجل Render تطبع سطر **«الوضع: API فقط (الموقع على استضافة ثابتة)»**.
+
+> `render.yaml` في جذر المستودع مضبوط أصلاً على `WT_API_ONLY=true` و`plan: free`
+> و`region: frankfurt` — لا تحتاج إلا متغيّر `WT_ALLOWED_ORIGINS` من اللوحة.
 
 ### د) الربط في `config.js`
 
@@ -79,6 +94,11 @@ javaServer: {
 بدل المسار النسبي (الذي يعني على Pages مساراً غير موجود).
 
 **لا تضبط `url`** (عنوان WebSocket) — الغرف عندك على Supabase، ولا حاجة لغرف عبر Render.
+
+> **تجربة سريعة بلا تعديل ملفات**: أضف `?api=https://watchtogether-xxxx.onrender.com`
+> إلى رابط أي صفحة، أو نفّذ في الطرفية (Console):
+> `localStorage.setItem('wt:apiBase','https://watchtogether-xxxx.onrender.com')`
+> ثم أعد التحميل. يفيد هذا قبل أن تعتمد التعديل في `config.js`.
 
 ### هـ) تحقّق
 

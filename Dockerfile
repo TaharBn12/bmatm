@@ -41,10 +41,13 @@ COPY watch_together /app/watch_together
 # PORT  : يضبطه Render تلقائياً (10000 هو المتعارف عليه).
 # ROOT  : مجلد الملفات الثابتة (الموقع نفسه).
 # WT_PYTHON : اسم مترجم Python الذي يستخدمه Py.java.
+# WT_API_ONLY=true → السيرفر للبحث والاستخراج فقط، و"/" تعرض صفحة حالة
+# بدل خدمة ملفات الموقع (الموقع حينها على GitHub Pages). false = الموقع + API.
 ENV PORT=10000 \
     HOST=0.0.0.0 \
     ROOT=/app/watch_together \
     WT_PYTHON=python3 \
+    WT_API_ONLY=false \
     TZ=Africa/Algiers
 
 EXPOSE 10000
