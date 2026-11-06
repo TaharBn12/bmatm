@@ -123,7 +123,8 @@
    *   3) خطأ من عندنا (4xx) → خطأ عادي
    */
   async function fromServer(term, limit, site) {
-    const url = 'api/search?q=' + encodeURIComponent(term) + '&limit=' + limit + '&site=' + encodeURIComponent(site);
+    const api = (window.WTServer && window.WTServer.api) ? window.WTServer.api('api/search') : 'api/search';
+    const url = api + '?q=' + encodeURIComponent(term) + '&limit=' + limit + '&site=' + encodeURIComponent(site);
     let response = null;
     try {
       response = await fetch(url, { headers: { Accept: 'application/json' }, cache: 'no-store' });
@@ -164,7 +165,8 @@
     const base = 'الصفحة مفتوحة من ' + from + '، وهذا السيرفر لا يعرض /api/search (' + status + ')';
     let java = false;
     try {
-      const probe = await fetch('healthz', { headers: { Accept: 'text/plain' }, cache: 'no-store' });
+      const health = (window.WTServer && window.WTServer.api) ? window.WTServer.api('healthz') : 'healthz';
+      const probe = await fetch(health, { headers: { Accept: 'text/plain' }, cache: 'no-store' });
       java = !!probe && probe.ok;
     } catch (e) { java = false; }
     return base + ' — ' + (java

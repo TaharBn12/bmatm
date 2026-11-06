@@ -96,6 +96,12 @@ public final class Main {
         server.createContext("/", (HttpExchange ex) -> {
             String path = ex.getRequestURI().getPath();
             try {
+                /* طلب تمهيدي (preflight) من موقع على نطاق آخر: GitHub Pages → Render */
+                if ("OPTIONS".equals(ex.getRequestMethod())
+                        && (path.startsWith("/api/") || path.equals("/healthz"))) {
+                    Origins.preflight(ex, "GET, POST, OPTIONS");
+                    return;
+                }
                 if (path.equals("/ws") || path.equals("/ws/")) {
                     if (wsServer.handleUpgrade(ex)) return;         // تمّت الترقية
                     sendText(ex, 400, "Bad Request",
@@ -107,8 +113,8 @@ public final class Main {
                 if (path.equals("/api/resolve")) { VideoResolver.handle(ex); return; }
                 if (path.equals("/api/suggest")) { SuggestResolver.handle(ex); return; }
                 if (path.equals("/api/search")) { SearchResolver.handle(ex); return; }
-                if (path.equals("/healthz")) { sendText(ex, 200, "OK", "ok\n"); return; }
-                if (path.equals("/api/stats")) { sendJson(ex, 200, stats()); return; }
+                if (path.equals("/healthz")) { Origins.apply(ex, "GET, OPTIONS"); sendText(ex, 200, "OK", "ok\n"); return; }
+                if (path.equals("/api/stats")) { Origins.apply(ex, "GET, OPTIONS"); sendJson(ex, 200, stats()); return; }
                 files.handle(ex);
             } catch (IOException e) {
                 try { sendText(ex, 500, "Internal Server Error", "خطأ داخلي: " + e.getMessage()); }

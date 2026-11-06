@@ -64,10 +64,8 @@ public final class SearchResolver {
         boolean acquired = false;
         try {
             if (!"GET".equals(ex.getRequestMethod())) { status = 405; throw new IllegalArgumentException("استخدم GET"); }
-            String origin = ex.getRequestHeaders().getFirst("Origin");
-            if (origin != null && !sameOrigin(origin, ex.getRequestHeaders().getFirst("Host"))) {
-                status = 403; throw new IllegalArgumentException("طلب من مصدر غير مسموح");
-            }
+            if (Origins.preflight(ex, "GET, OPTIONS")) return;    /* طلب تمهيدي من نطاق آخر */
+            if (!Origins.allowed(ex)) { status = 403; throw new IllegalArgumentException(Origins.denyMessage()); }
             Map<String, String> query = params(ex.getRequestURI().getRawQuery());
             String term = clean(query.get("q"));
             if (term.length() < 2) { status = 400; throw new IllegalArgumentException("اكتب كلمة بحث من حرفين على الأقل"); }
@@ -109,7 +107,7 @@ public final class SearchResolver {
         byte[] bytes = Json.stringify(result).getBytes(StandardCharsets.UTF_8);
         ex.getResponseHeaders().set("Content-Type", "application/json; charset=utf-8");
         ex.getResponseHeaders().set("Cache-Control", "no-store");
-        ex.getResponseHeaders().set("Access-Control-Allow-Origin", "*");
+        Origins.apply(ex, "GET, OPTIONS");
         ex.sendResponseHeaders(status, bytes.length);
         try (OutputStream os = ex.getResponseBody()) { os.write(bytes); }
     }
@@ -390,14 +388,6 @@ public final class SearchResolver {
             }
         }
         return out;
-    }
-
-    private static boolean sameOrigin(String origin, String host) {
-        try {
-            return java.util.Objects.equals(URI.create(origin).getRawAuthority(), host);
-        } catch (Exception e) {
-            return false;
-        }
     }
 
     /** يُستخدم من السيرفر فقط — لا يوجد سبب لإنشاء نسخة من هذه الفئة */
