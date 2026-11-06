@@ -28,9 +28,15 @@ jobs:
             curl -sS -i --max-time 120 -X OPTIONS -H "Origin: $O" \
                  -H "Access-Control-Request-Method: POST" \
                  -H "Access-Control-Request-Headers: content-type" $B/api/resolve | head -20
-            echo; echo "===== POST /api/resolve ====="
+            echo; echo "===== POST /api/resolve (يوتيوب حقيقي) ====="
             curl -sS -i --max-time 180 -X POST -H "Origin: $O" -H "Content-Type: application/json" \
-                 -d '{"url":"https://www.dailymotion.com/video/x8tf0zn"}' $B/api/resolve | head -20
+                 -d '{"url":"https://www.youtube.com/watch?v=5O-vCJW1b8g"}' $B/api/resolve | head -12
+            echo; echo "===== POST /api/resolve (ديليموشن حقيقي) ====="
+            curl -sS -i --max-time 180 -X POST -H "Origin: $O" -H "Content-Type: application/json" \
+                 -d '{"url":"https://www.dailymotion.com/video/x90lnae"}' $B/api/resolve | head -12
+            echo; echo "===== POST /api/suggest ====="
+            curl -sS -i --max-time 180 -X POST -H "Origin: $O" -H "Content-Type: application/json" \
+                 -d '{"url":"https://www.youtube.com/watch?v=5O-vCJW1b8g","limit":3}' $B/api/suggest | head -12
             echo; echo "===== GET / (التأكد من وضع API فقط) ====="
             curl -sS -i --max-time 120 $B/ | head -15
           } > probe-output.txt 2>&1
