@@ -41,7 +41,7 @@ window.WT_CONFIG = {
        (الغرف نفسها تعمل عبر Supabase فلا تحتاج هذا العنوان)
        اجعله null إن كنت تشغّل السيرفر على نفس نطاق الموقع. */
     /* العنوان وحده — بلا ?api= وبدون شرطة مائلة في آخره */
-    apiBase: '?api=https://watchtogether-8vr3.onrender.com',
+    apiBase: 'https://watchtogether-8vr3.onrender.com',
     timeoutMs: 2500,
     /* استضافة عامة (Render مثلاً): الخدمة المجانية تنام بعد 15 دقيقة خمول
        وأول طلب يستغرق عشرات الثواني. فحص قصير هنا يعني السقوط إلى Supabase
