@@ -44,6 +44,9 @@ public final class SearchResolver {
     private static final String API = "https://api.dailymotion.com/videos";
     private static final String FIELDS = "%(id)s\t%(title)s\t%(webpage_url)s\t%(duration)s";
     private static final String THUMB = "https://www.dailymotion.com/thumbnail/video/";
+    private static final String DM_WATCH = "https://www.dailymotion.com/video/";
+    private static final String YT_WATCH = "https://www.youtube.com/watch?v=";
+    private static final String YT_THUMB = "https://i.ytimg.com/vi/";
 
     private static final Semaphore SLOTS = new Semaphore(2);
     private static long windowStart = System.currentTimeMillis();
@@ -75,16 +78,17 @@ public final class SearchResolver {
             acquired = SLOTS.tryAcquire();
             if (!acquired) { status = 429; throw new IllegalArgumentException("الخدمة مشغولة؛ أعد المحاولة بعد قليل"); }
 
-            List<Map<String, Object>> items = viaYtDlp(term, limit);
+            List<Map<String, Object>> items = viaYtDlp(term, limit, youtube);
             String source = "yt-dlp";
-            if (items.isEmpty()) {
+            if (items.isEmpty() && !youtube) {
                 items = viaApi(term, limit);
                 source = "dailymotion-api";
-            } else {
+            } else if (!items.isEmpty() && !youtube) {
                 enrich(items);
             }
             result.put("query", term);
-            result.put("source", source);
+            result.put("site", youtube ? "youtube" : "dailymotion");
+            result.put("source", items.isEmpty() && youtube ? "none" : source);
             result.put("count", items.size());
             result.put("items", items);
         } catch (IllegalArgumentException e) {
@@ -111,11 +115,15 @@ public final class SearchResolver {
     /* =========================================================
        1) البحث عبر yt-dlp (مستخرج dailymotion:search)
        ========================================================= */
-    private static List<Map<String, Object>> viaYtDlp(String term, int limit) {
+    private static List<Map<String, Object>> viaYtDlp(String term, int limit, boolean youtube) {
         Path out = null;
         Process p = null;
         try {
-            String search = SEARCH_HOST + URLEncoder.encode(term, "UTF-8") + "/videos";
+            /* يوتيوب: ytsearchN:<كلمة> — بلا مفتاح API، عبر yt-dlp نفسه.
+               ديليموشن: صفحة البحث عبر مستخرج dailymotion:search. */
+            String search = youtube
+                ? "ytsearch" + Math.max(1, limit) + ":" + term
+                : SEARCH_HOST + URLEncoder.encode(term, "UTF-8") + "/videos";
             out = Files.createTempFile("wt-search-", ".tsv");
             List<String> args = new ArrayList<>(Arrays.asList(
                 "--ignore-config", "--no-warnings", "--socket-timeout", "10", "--retries", "1",
@@ -137,7 +145,7 @@ public final class SearchResolver {
             Files.deleteIfExists(err);
             List<Map<String, Object>> items = new ArrayList<>();
             for (String line : read(out).split("\\R")) {
-                Map<String, Object> item = fromRow(line);
+                Map<String, Object> item = fromRow(line, youtube);
                 if (item != null) items.add(item);
                 if (items.size() >= limit) break;
             }
@@ -150,28 +158,26 @@ public final class SearchResolver {
         }
     }
 
-    /** سطر من yt-dlp: id \t title \t url \t duration */
-    private static Map<String, Object> fromRow(String line) {
+    /**
+     * سطر من yt-dlp: id \t title \t url \t duration
+     * العنوان والرابط يُبنيان من المعرّف نفسه، فلا نثق بروابط يكتبها الوسيط.
+     */
+    private static Map<String, Object> fromRow(String line, boolean youtube) {
         if (line == null) return null;
         String t = line.trim();
         if (t.isEmpty()) return null;
         String[] parts = t.split("\t", -1);
         String id = col(parts, 0);
         String title = col(parts, 1);
-        String url = col(parts, 2);
         long duration = 0;
         try { duration = Long.parseLong(col(parts, 3)); } catch (Exception ignored) { }
-        if (id.isEmpty()) return null;
-        if (!isId(id)) return null;
-        if (url.isEmpty() || "NA".equals(url)) url = "https://www.dailymotion.com/video/" + id;
-        if (!url.startsWith("https://www.dailymotion.com/") && !url.startsWith("https://dailymotion.com/")
-                && !url.startsWith("https://dai.ly/")) return null;
+        if (id.isEmpty() || !isId(id, youtube)) return null;
         if (title.isEmpty() || "NA".equals(title)) title = "";
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("id", id);
         m.put("title", title);
-        m.put("url", url);
-        m.put("thumb", THUMB + id);
+        m.put("url", youtube ? YT_WATCH + id : DM_WATCH + id);
+        m.put("thumb", youtube ? YT_THUMB + id + "/hqdefault.jpg" : THUMB + id);
         m.put("duration", duration);
         m.put("author", "");
         return m;
@@ -184,7 +190,7 @@ public final class SearchResolver {
         StringBuilder ids = new StringBuilder();
         for (Map<String, Object> item : items) {
             String id = String.valueOf(item.get("id"));
-            if (isId(id)) { if (ids.length() > 0) ids.append(','); ids.append(id); }
+            if (isId(id, false)) { if (ids.length() > 0) ids.append(','); ids.append(id); }
         }
         if (ids.length() == 0) return;
         Object data = httpJson(API + "?ids=" + ids + "&limit=" + Math.min(100, items.size() + 4)
@@ -232,7 +238,7 @@ public final class SearchResolver {
             Map<String, Object> v = Json.asMap(entry);
             if (v == null) continue;
             String id = Json.str(v, "id", "");
-            if (!isId(id)) continue;
+            if (!isId(id, false)) continue;
             String author = Json.str(v, "owner.username", "");
             if (author.isEmpty()) author = Json.str(Json.asMap(v.get("owner")), "username", "");
             Map<String, Object> m = new LinkedHashMap<>();
@@ -324,10 +330,13 @@ public final class SearchResolver {
         return "NA".equals(v) ? "" : v;
     }
 
-    private static boolean isId(String id) {
+    /** معرّف ديليموشن: حروف وأرقام · معرّف يوتيوب: 11 محرفاً من [A-Za-z0-9_-] */
+    private static boolean isId(String id, boolean youtube) {
         if (id == null) return false;
         String v = id.trim();
-        if (v.isEmpty() || v.length() > 32) return false;
+        if (v.isEmpty()) return false;
+        if (youtube) return v.length() == 11 && v.matches("[A-Za-z0-9_-]{11}");
+        if (v.length() > 32) return false;
         for (int i = 0; i < v.length(); i++) {
             char c = v.charAt(i);
             boolean ok = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9');
