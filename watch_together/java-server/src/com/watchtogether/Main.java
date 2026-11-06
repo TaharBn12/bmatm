@@ -65,6 +65,10 @@ public final class Main {
                 bound = HttpServer.create(new InetSocketAddress(host, candidate), 0);
                 if (i > 0) {
                     System.out.println("  [!] المنفذ " + port + " مشغول — تم التشغيل على " + candidate + " بدلاً منه.");
+                    System.out.println("      نسخة قديمة من السيرفر قد تكون شغّالة هناك؛ لمعرفة من يشغله:");
+                    System.out.println("        netstat -ano | findstr :" + port);
+                    System.out.println("      أو أوقف كل النسخ ثم أعد التشغيل على " + port + ":");
+                    System.out.println("        taskkill /F /IM java.exe");
                     port = candidate;
                 }
             } catch (java.net.BindException e) {
