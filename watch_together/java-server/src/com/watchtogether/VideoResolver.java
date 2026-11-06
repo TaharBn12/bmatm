@@ -93,8 +93,8 @@ public final class VideoResolver {
         Path errors = null;
         boolean acquired = false;
         try {
-            if (!"POST".equals(ex.getRequestMethod())) { status = 405; throw new IllegalArgumentException("استخدم POST"); }
             if (Origins.preflight(ex, "POST, OPTIONS")) return;   /* طلب تمهيدي من نطاق آخر */
+            if (!"POST".equals(ex.getRequestMethod())) { status = 405; throw new IllegalArgumentException("استخدم POST"); }
             if (!Origins.allowed(ex)) { status = 403; throw new IllegalArgumentException(Origins.denyMessage()); }
             byte[] body = ex.getRequestBody().readNBytes(8193);
             if (body.length > 8192) { status = 413; throw new IllegalArgumentException("الرابط طويل جداً"); }

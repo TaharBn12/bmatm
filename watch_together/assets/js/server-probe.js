@@ -47,9 +47,24 @@
    * إن ضُبط javaServer.apiBase فالموقع على نطاق آخر (GitHub Pages مثلاً)
    * والسيرفر على Render — فنحتاج عنواناً مطلقاً، وإلا نستخدم النسبي.
    */
-  function apiUrl(path) {
+  function configuredBase() {
     var cfg = global.WT_CONFIG;
     var base = cfg && cfg.javaServer && cfg.javaServer.apiBase;
+    if (base) return String(base);
+    /* تجاوز سريع للتجربة على استضافة ثابتة (GitHub Pages) دون تعديل الملفات:
+         ?api=https://watchtogether-xxxx.onrender.com
+       أو: localStorage.setItem('wt:apiBase', 'https://...') */
+    try {
+      var q = new global.URLSearchParams(global.location.search).get('api');
+      if (q && /^https?:\/\//i.test(q)) return q;
+      var stored = global.localStorage.getItem('wt:apiBase');
+      if (stored && /^https?:\/\//i.test(stored)) return stored;
+    } catch (e) { /* تخزين أو URLSearchParams محجوب */ }
+    return null;
+  }
+
+  function apiUrl(path) {
+    var base = configuredBase();
     if (!base) return path;
     return String(base).replace(/\/+$/, '') + '/' + String(path).replace(/^\/+/, '');
   }
@@ -59,7 +74,7 @@
     var cfg = global.WT_CONFIG;
     var js = cfg && cfg.javaServer;
     if (!js) return false;
-    return !!js.apiBase && !js.url;
+    return !!configuredBase() && !js.url;
   }
 
   function probeMs() {
