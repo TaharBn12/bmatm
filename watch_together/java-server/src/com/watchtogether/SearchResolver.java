@@ -73,6 +73,8 @@ public final class SearchResolver {
             if (term.length() < 2) { status = 400; throw new IllegalArgumentException("اكتب كلمة بحث من حرفين على الأقل"); }
             if (term.length() > 80) term = term.substring(0, 80);
             int limit = intParam(query.get("limit"), DEFAULT_LIMIT, 1, MAX_LIMIT);
+            String site = (query.get("site") == null ? "" : query.get("site")).trim().toLowerCase();
+            boolean youtube = site.equals("youtube") || site.equals("yt") || site.equals("يوتيوب");
 
             if (!permit()) { status = 429; throw new IllegalArgumentException("تم تجاوز حدّ البحث؛ انتظر قليلاً"); }
             acquired = SLOTS.tryAcquire();
