@@ -509,6 +509,9 @@
       /* تنبيه صريح: الوضع المحلي يعني أن الأصدقاء لن يلتحقوا بك */
       if (transport.kind === 'local') warnLocalMode();
 
+      /* نبضة إبقاء على الاستضافة العامة (Render): تمنع نوم الخدمة وسط الفيلم */
+      if (transport.kind === 'ws' && global.WTServer) global.WTServer.keepAlive(true);
+
       /* أَوّل من يدخل ومعه رابط فيديو ينشره فوراً، فلا ينتظر المنضمّون
          نبضة الـ5 ثوانٍ ولا يجدون «غرفة فارغة» ويظنّونها غرفة أخرى */
       const savedUrl = (result && result.state && result.state.url) || '';
@@ -2896,6 +2899,7 @@
   let goodbyeDone = false;
   function goodbye(keepAlive, saveOnly) {
     const t = session.transport;
+    if (global.WTServer) global.WTServer.keepAlive(false);
     if (!t) return;
 
     /* 1) ارفع الحالة الحالية فوراً (خصوصاً إن كنت آخر من سيخرج) */

@@ -74,8 +74,38 @@
     });
   }
 
+  /* نبضة إبقاء: تمنع الخدمة المجانية على Render من النوم أثناء المشاهدة.
+     Render ينام بعد 15 دقيقة **بلا أي حركة داخلة** — ورسائل WebSocket
+     تُحسب، لكن نبضة HTTP كل 10 دقائق تضمن الحركة حتى لو خُفِّضت مؤقّتات
+     التبويب في الخلفية، وهي أخفّ من أن تُذكر (نص "ok"). */
+  var keepTimer = null;
+
+  function keepAliveMs() {
+    var cfg = global.WT_CONFIG;
+    var v = cfg && cfg.javaServer && cfg.javaServer.keepAliveMs;
+    return typeof v === 'number' && v > 0 ? v : 600000;   /* 10 دقائق */
+  }
+
+  function ping() {
+    try { global.fetch('healthz', { cache: 'no-store' }).catch(function () { }); } catch (e) { }
+  }
+
   global.WTServer = {
     isPrivateHost: privateHost,
+
+    /**
+     * نبضة إبقاء اختيارية: ابدأها بعد نجاح الاتصال بسيرفر Java على
+     * استضافة عامة، وأوقفها عند مغادرة الغرفة.
+     */
+    keepAlive: function (on) {
+      if (!on) {
+        if (keepTimer) { global.clearInterval(keepTimer); keepTimer = null; }
+        return;
+      }
+      if (keepTimer || privateHost()) return;      /* على جهازك لا داعي لها */
+      ping();
+      keepTimer = global.setInterval(ping, keepAliveMs());
+    },
 
     /**
      * هل سيرفر Java يستجيب من نفس النطاق؟
