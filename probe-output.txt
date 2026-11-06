@@ -1,0 +1,70 @@
+=== 2026-11-06T21:33:30Z ===
+
+===== GET /healthz =====
+HTTP/2 426 
+date: Fri, 06 Nov 2026 21:33:31 GMT
+content-type: text/plain
+cf-cache-status: DYNAMIC
+rndr-id: 1784ae30-be34-4e39
+server: cloudflare
+vary: Accept-Encoding
+x-render-origin-server: Render
+cf-ray: a567378c5fd95ea4-LAX
+alt-svc: h3=":443"; ma=86400
+
+Upgrade Required
+===== GET / =====
+HTTP/2 426 
+date: Fri, 06 Nov 2026 21:33:31 GMT
+content-type: text/plain
+rndr-id: 62a326ac-5dde-4bf6
+server: cloudflare
+vary: Accept-Encoding
+x-render-origin-server: Render
+cf-cache-status: DYNAMIC
+cf-ray: a567378d4dee2f32-LAX
+alt-svc: h3=":443"; ma=86400
+
+Upgrade Required
+===== GET /api/stats =====
+HTTP/2 426 
+date: Fri, 06 Nov 2026 21:33:31 GMT
+content-type: text/plain
+cf-cache-status: DYNAMIC
+rndr-id: 26434d20-9638-466c
+server: cloudflare
+vary: Accept-Encoding
+x-render-origin-server: Render
+cf-ray: a567378e5d449d5a-LAX
+alt-svc: h3=":443"; ma=86400
+
+Upgrade Required
+===== GET /api/search =====
+HTTP/2 426 
+date: Fri, 06 Nov 2026 21:33:31 GMT
+content-type: text/plain
+cf-cache-status: DYNAMIC
+rndr-id: 2f818619-9671-4092
+server: cloudflare
+vary: Accept-Encoding
+x-render-origin-server: Render
+cf-ray: a567378f3a236300-LAX
+alt-svc: h3=":443"; ma=86400
+
+Upgrade Required
+===== WS handshake /ws =====
+HTTP/2 426 
+date: Fri, 06 Nov 2026 21:33:31 GMT
+content-type: text/plain
+rndr-id: fb12fcaf-be64-4630
+server: cloudflare
+vary: Accept-Encoding
+x-render-origin-server: Render
+cf-cache-status: DYNAMIC
+cf-ray: a567379019d85c0d-LAX
+alt-svc: h3=":443"; ma=86400
+
+Upgrade Required
+===== DNS =====
+216.24.57.18    watchtogether.onrender.com.cdn.cloudflare.net watchtogether.onrender.com
+216.24.57.16    watchtogether.onrender.com.cdn.cloudflare.net watchtogether.onrender.com
