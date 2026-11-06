@@ -1,0 +1,10 @@
+.git
+.gitignore
+**/node_modules
+**/out
+**/*.jar
+**/data
+**/*.log
+**/*.mp4
+**/*.webm
+.DS_Store
