@@ -114,8 +114,12 @@ public final class StaticFileServer {
         ex.getResponseHeaders().set("Content-Type", mime);
         ex.getResponseHeaders().set("Accept-Ranges", "bytes");
         ex.getResponseHeaders().set("X-Content-Type-Options", "nosniff");
-        /* الملفات الثابتة للمكتبات تُخزَّن طويلاً، صفحات HTML تُعاد دائماً */
-        if (mime.startsWith("text/html") || mime.equals("application/json; charset=utf-8")) {
+        /* لا نُخبّئ HTML/CSS/JS أبداً: أي تحديث للملفات يجب أن يصل للمتصفح
+           فوراً. التخزين الطويل يبقى للوسائط والخطوط والصور فقط.
+           (ملفات ZIP المُنزَّلة قديمة التاريخ، فقاعدة "أقل من دقيقة" لا تكفي) */
+        if (mime.startsWith("text/html") || mime.startsWith("text/css")
+                || mime.startsWith("application/javascript") || mime.startsWith("text/javascript")
+                || mime.startsWith("application/json")) {
             ex.getResponseHeaders().set("Cache-Control", "no-cache");
         } else {
             ex.getResponseHeaders().set("Cache-Control", age < 60_000 ? "no-cache" : "public, max-age=3600");
