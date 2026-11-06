@@ -1,0 +1,39 @@
+# =========================================================
+# WatchTogether على Render — مخطط النشر (Blueprint)
+# ---------------------------------------------------------
+# Render يقرأ هذا الملف تلقائياً عند اختيار:
+#   New  ›  Blueprint  ›  (اختر مستودع TaharBn12/bmatm)
+# فلا تحتاج إلى إعداد أي شيء يدوياً.
+#
+# ملاحظات الخطة المجانية (free):
+#   • تنام الخدمة بعد 15 دقيقة بلا طلبات، وأول طلب بعدها يستغرق ~50 ثانية.
+#   • القرص مؤقت: تُحذف data/rooms.json (الغرف) عند كل إعادة تشغيل.
+#   • الويب سوكيت مدعوم، والرابط آمن HTTPS دائماً.
+# =========================================================
+services:
+  - type: web
+    name: watchtogether
+    runtime: docker          # Render لا يشغّل Java أصلياً — نستخدم صورتنا
+    plan: free               # غيّرها إلى starter إن أردت تشغيلاً دائماً
+    region: frankfurt        # أقرب منطقة للجزائر
+    branch: main
+    autoDeploy: true         # كل دمج في main ينشر تلقائياً
+    healthCheckPath: /healthz
+    envVars:
+      - key: PORT
+        value: "10000"
+      - key: HOST
+        value: 0.0.0.0
+      - key: ROOT
+        value: /app/watch_together
+      - key: WT_PYTHON
+        value: python3
+      - key: PYTHONIOENCODING
+        value: utf-8
+      - key: PYTHONUTF8
+        value: "1"
+      - key: TZ
+        value: Africa/Algiers
+      # لحفظ الغرف على قرص دائم (خطة مدفوعة): أضف Disk بمسار /var/data ثم فعّل:
+      # - key: JAVA_TOOL_OPTIONS
+      #   value: -Dwt.data=/var/data

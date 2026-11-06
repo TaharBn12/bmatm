@@ -283,8 +283,16 @@ public final class Main {
         sb.append("  حفظ الحالات  : ").append(roomStore.getStoreFile().getAbsolutePath()).append('\n');
         sb.append("  الحالة       : /api/stats\n");
         sb.append(Py.report()).append('\n');
+        String external = System.getenv("RENDER_EXTERNAL_URL");
+        if (external == null || external.trim().isEmpty()) external = System.getenv("WT_PUBLIC_URL");
+        if (external != null && !external.trim().isEmpty()) {
+            sb.append("  الرابط العام  : ").append(external.trim()).append('\n');
+        }
         sb.append('\n');
         sb.append("  افتح في المتصفح:\n");
+        if (external != null && !external.trim().isEmpty()) {
+            sb.append("    ▸ ").append(external.trim()).append("/\n");
+        }
         sb.append("    ▸ http://localhost:").append(port).append("/\n");
         for (String ip : localIps()) sb.append("    ▸ http://").append(ip).append(':').append(port).append("/\n");
         sb.append('\n');
