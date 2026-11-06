@@ -11,34 +11,35 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.ref }}
-      - name: probe CORS end-to-end
+      - name: probe dailymotion resolve with a real id
         run: |
           {
             echo "=== $(date -u +%FT%TZ) ==="
             B=https://watchtogether-8vr3.onrender.com
             O=https://taharbn12.github.io
-            echo; echo "===== GET /healthz (بلا Origin) ====="
-            curl -sS -i --max-time 120 $B/healthz | head -20
-            echo; echo "===== GET /healthz مع Origin: $O ====="
-            curl -sS -i --max-time 120 -H "Origin: $O" $B/healthz | head -20
-            echo; echo "===== GET /api/search مع Origin (CORS الحقيقي) ====="
-            curl -sS -i --max-time 180 -H "Origin: $O" -H "Accept: application/json" \
-                 "$B/api/search?q=test&limit=2&site=youtube" | head -40
-            echo; echo "===== OPTIONS /api/resolve (preflight) ====="
-            curl -sS -i --max-time 120 -X OPTIONS -H "Origin: $O" \
-                 -H "Access-Control-Request-Method: POST" \
-                 -H "Access-Control-Request-Headers: content-type" $B/api/resolve | head -20
-            echo; echo "===== POST /api/resolve (يوتيوب حقيقي) ====="
-            curl -sS -i --max-time 180 -X POST -H "Origin: $O" -H "Content-Type: application/json" \
-                 -d '{"url":"https://www.youtube.com/watch?v=5O-vCJW1b8g"}' $B/api/resolve | head -12
-            echo; echo "===== POST /api/resolve (ديليموشن حقيقي) ====="
-            curl -sS -i --max-time 180 -X POST -H "Origin: $O" -H "Content-Type: application/json" \
-                 -d '{"url":"https://www.dailymotion.com/video/x90lnae"}' $B/api/resolve | head -12
-            echo; echo "===== POST /api/suggest ====="
-            curl -sS -i --max-time 180 -X POST -H "Origin: $O" -H "Content-Type: application/json" \
-                 -d '{"url":"https://www.youtube.com/watch?v=5O-vCJW1b8g","limit":3}' $B/api/suggest | head -12
-            echo; echo "===== GET / (التأكد من وضع API فقط) ====="
-            curl -sS -i --max-time 120 $B/ | head -15
+            echo; echo "===== GET /api/stats ====="
+            curl -sS --max-time 120 $B/api/stats | head -40
+            echo; echo "===== search dailymotion (للحصول على معرّف حقيقي) ====="
+            curl -sS --max-time 180 -H "Origin: $O" -H "Accept: application/json" \
+                 "$B/api/search?q=football&limit=3&site=dailymotion" -o dm.json
+            head -c 900 dm.json; echo
+            URL=$(python3 -c "
+            import json
+            d=json.load(open('dm.json'))
+            for it in d.get('items',[]):
+                u=it.get('url') or ''
+                if 'dailymotion.com/video/' in u or 'dai.ly/' in u:
+                    print(u); break
+            ")
+            echo "الرابط المختار: $URL"
+            echo; echo "===== POST /api/resolve لهذا الرابط ====="
+            if [ -n "$URL" ]; then
+              python3 -c "
+            import json,sys
+            print(json.dumps({'url': sys.argv[1]}))" "$URL" > body.json
+              curl -sS -i --max-time 180 -X POST -H "Origin: $O" -H "Content-Type: application/json" \
+                   --data @body.json $B/api/resolve | head -12
+            fi
           } > probe-output.txt 2>&1
           cat probe-output.txt
       - name: commit output
