@@ -1,0 +1,30 @@
+name: probe-api
+on:
+  workflow_dispatch:
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: healthz
+        run: |
+          set +e
+          echo "=== GET /healthz ==="
+          curl -sS -i --max-time 90 https://watchtogether.onrender.com/healthz | head -30
+          echo
+          echo "=== GET / ==="
+          curl -sS -i --max-time 90 https://watchtogether.onrender.com/ | head -20
+          echo
+          echo "=== GET /api/stats ==="
+          curl -sS -i --max-time 90 https://watchtogether.onrender.com/api/stats | head -20
+          echo
+          echo "=== WebSocket handshake on /healthz ==="
+          curl -sS -i --max-time 90 \
+            -H "Connection: Upgrade" -H "Upgrade: websocket" \
+            -H "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==" -H "Sec-WebSocket-Version: 13" \
+            https://watchtogether.onrender.com/healthz | head -20
+          echo
+          echo "=== WebSocket handshake on /ws ==="
+          curl -sS -i --max-time 90 \
+            -H "Connection: Upgrade" -H "Upgrade: websocket" \
+            -H "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==" -H "Sec-WebSocket-Version: 13" \
+            https://watchtogether.onrender.com/ws | head -20
