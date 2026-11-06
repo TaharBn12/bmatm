@@ -162,11 +162,17 @@
     if (localMode()) return { mode: 'local' };
     const cfg = config();
     if (cfg.javaServer && cfg.javaServer.enabled) {
-      try {
-        const url = javaEndpoint();
-        const data = await request(url, null, cfg.javaServer.timeoutMs || 2500);
-        if (data && Array.isArray(data.rooms)) return { mode: 'java', url, initial: data.rooms };
-      } catch (_) { /* Static hosting has no Java endpoint; use the configured Supabase. */ }
+      /* نفس فحص transport.js تماماً (WTServer): إن قرّر الاتصال استخدام سيرفر
+         Java يجب أن تُنشأ الغرفة عليه أيضاً، وإلا وُلدت الغرفة في Supabase
+         بينما يتصل الأصدقاء بـ WebSocket على سيرفر آخر — فيفترقون. */
+      const probed = global.WTServer ? await global.WTServer.available() : null;
+      if (probed !== false) {
+        try {
+          const url = javaEndpoint();
+          const data = await request(url, null, cfg.javaServer.requestMs || 15000);
+          if (data && Array.isArray(data.rooms)) return { mode: 'java', url, initial: data.rooms };
+        } catch (_) { /* Static hosting has no Java endpoint; use the configured Supabase. */ }
+      }
     }
     const sb = cfg.supabase;
     if (sb && sb.url && sb.anonKey && sb.ready !== false) {
