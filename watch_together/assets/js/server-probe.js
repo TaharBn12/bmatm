@@ -50,7 +50,12 @@
   function configuredBase() {
     var cfg = global.WT_CONFIG;
     var base = cfg && cfg.javaServer && cfg.javaServer.apiBase;
-    if (base) return String(base);
+    if (base && /^https?:\/\//i.test(String(base).trim())) return String(base).trim();
+    /* قيمة ناقصة (مثل '?api=https://…' أو 'localhost:8080') نتجاهلها ونكمل
+       مع ?api=/localStorage بدل أن نبني رابطاً مكسوراً يبدو كأن «لا سيرفر». */
+    if (base && global.console && console.warn) {
+      console.warn('[WTServer] javaServer.apiBase قيمة غير صالحة (يجب أن تبدأ بـ https://):', base);
+    }
     /* تجاوز سريع للتجربة على استضافة ثابتة (GitHub Pages) دون تعديل الملفات:
          ?api=https://watchtogether-xxxx.onrender.com
        أو: localStorage.setItem('wt:apiBase', 'https://...') */
