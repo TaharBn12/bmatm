@@ -13,6 +13,23 @@
 
 ---
 
+## 0) الخطوات السريعة بالترتيب (نسخة مختصرة)
+
+1. **GitHub Pages**: Settings → Pages → Source: *Deploy from a branch* → Branch `main`
+   + Folder `/ (root)` → Save. الرابط:
+   `https://TaharBn12.github.io/bmatm/watch_together/`
+2. **Supabase**: نفّذ `docs/sql/01-bootstrap.sql`، وفعّل Email في Authentication.
+3. **Render**: New + → Blueprint → المستودع → Apply → انسخ الرابط
+   `https://watchtogether-XXXX.onrender.com`، ثم أضف في Environment:
+   `WT_ALLOWED_ORIGINS = https://taharbn12.github.io`
+4. **الربط**: في `watch_together/assets/js/config.js` اجعل
+   `apiBase: 'https://watchtogether-XXXX.onrender.com'` (واترك `url: null`).
+5. **تحقّق**: `/healthz` → `ok` · الشارة «Supabase متصل» · البحث يظهر نتائجه.
+
+（التفصيل الكامل أدناه.）
+
+---
+
 ## 1) لماذا **لا تتوقف الغرفة** في هذه البنية؟
 
 لأن **الغرفة لا تمرّ بالسيرفر أصلاً**:
