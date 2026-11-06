@@ -130,7 +130,8 @@
     } catch (networkError) {
       state.reason = location.protocol === 'file:'
         ? 'الصفحة مفتوحة كملف (file://) لا عبر السيرفر'
-        : 'تعذّر الاتصال بالسيرفر على ' + (location.host || 'العنوان الحالي');
+        : 'تعذّر الاتصال بالسيرفر على ' + (location.host || 'العنوان الحالي') +
+          ' — أغلق كل نسخة قديمة (taskkill /F /IM java.exe) ثم شغّل run.bat واقرأ المنفذ من اللافتة';
       return null;
     }
     let text = '';
@@ -140,7 +141,7 @@
     if (!response.ok) {
       const message = (data && data.error) ? data.error : 'استجابة غير متوقعة (' + response.status + ')';
       if (response.status === 404 || response.status === 405 || response.status === 501) {
-        state.reason = 'السيرفر الذي تفتح منه الصفحة لا يعرض /api/search (' + response.status + ') — غالباً نسخة قديمة على منفذ آخر';
+        state.reason = await diagnoseMissing(response.status);   /* لا تستخدم status وحدها: هي دالة العرض */
         return null;
       }
       if (response.status >= 400 && response.status < 500) throw new Error(message);
@@ -152,6 +153,23 @@
     if (!data || !Array.isArray(data.items)) { state.reason = 'استجابة غير مفهومة من /api/search'; return null; }
     state.reason = '';
     return { items: data.items.map(item => normalize(item, site)).filter(Boolean), source: data.source || 'server' };
+  }
+
+  /**
+   * /api/search غير موجود (404): هل هو سيرفر Java قديم، أم ليس سيرفر Java أصلاً؟
+   * نفحص /api/healthz لأنها موجودة في كل نسخة Java حديثة.
+   */
+  async function diagnoseMissing(status) {
+    const from = location.origin && location.origin !== 'null' ? location.origin : 'ملف محلي (file://)';
+    const base = 'الصفحة مفتوحة من ' + from + '، وهذا السيرفر لا يعرض /api/search (' + status + ')';
+    let java = false;
+    try {
+      const probe = await fetch('api/healthz', { headers: { Accept: 'application/json' }, cache: 'no-store' });
+      java = !!probe && probe.ok;
+    } catch (e) { java = false; }
+    return base + ' — ' + (java
+      ? 'سيرفر Java يعمل لكنه نسخة قديمة: أعد build.bat ثم run.bat'
+      : 'هذا ليس سيرفر Java: شغّل run.bat وافتح الصفحة من العنوان الذي تطبعه اللافتة');
   }
 
   /** بديل للاستضافة الثابتة: واجهة ديليموشن العامة (يوتيوب بلا مفتاح → غير متاح) */
@@ -252,11 +270,10 @@
     const noServer = state.server === false;
     el.note.hidden = !noServer;
     if (!noServer || !el.noteText) return;
+    /* state.reason يحمل التعليمات المناسبة لكل سبب (منفذ قديم · 404 · انقطاع) */
     const where = location.protocol === 'file:'
-      ? 'أنت تفتح الصفحة كملف (file://) — لا تعمل أي نقطة /api. افتحها من سيرفر Java.'
-      : (state.reason
-        ? state.reason + ' — أغلق كل نسخة قديمة (taskkill /F /IM java.exe) ثم شغّل run.bat واقرأ المنفذ من اللافتة.'
-        : 'شغّل run.bat ثم أعد تحميل الصفحة من العنوان الذي تطبعه اللافتة.');
+      ? 'أنت تفتح الصفحة كملف (file://) — لا تعمل أي نقطة /api. شغّل run.bat ثم افتح العنوان الذي تطبعه اللافتة.'
+      : (state.reason || 'شغّل run.bat ثم أعد تحميل الصفحة من العنوان الذي تطبعه اللافتة.');
     el.noteText.textContent = state.site === 'youtube'
       ? 'بحث يوتيوب يحتاج سيرفر Java مع yt-dlp. ' + where
       : 'نتائج البحث تعمل، لكن استخراج رابط التشغيل المباشر يحتاج سيرفر Java مع yt-dlp. ' + where;
