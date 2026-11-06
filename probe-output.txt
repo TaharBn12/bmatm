@@ -1,0 +1,109 @@
+=== 2026-11-06T22:00:34Z ===
+
+===== GET /healthz (بلا Origin) =====
+HTTP/2 200 
+date: Fri, 06 Nov 2026 22:00:34 GMT
+content-type: text/plain; charset=utf-8
+access-control-allow-headers: Content-Type
+access-control-allow-methods: GET, OPTIONS
+access-control-allow-origin: *
+access-control-max-age: 600
+cf-cache-status: DYNAMIC
+rndr-id: aa8b9d16-46e0-4bf8
+server: cloudflare
+vary: Accept-Encoding
+x-render-origin-server: Render
+cf-ray: a5675f2d2c581760-SEA
+alt-svc: h3=":443"; ma=86400
+
+ok
+
+===== GET /healthz مع Origin: https://taharbn12.github.io =====
+HTTP/2 200 
+date: Fri, 06 Nov 2026 22:00:34 GMT
+content-type: text/plain; charset=utf-8
+access-control-allow-headers: Content-Type
+access-control-allow-methods: GET, OPTIONS
+access-control-allow-origin: https://taharbn12.github.io
+access-control-max-age: 600
+cf-cache-status: DYNAMIC
+rndr-id: 9b6a6504-2c3f-4ef1
+server: cloudflare
+vary: Origin
+vary: Accept-Encoding
+x-render-origin-server: Render
+cf-ray: a5675f2eab3fdc1e-SEA
+alt-svc: h3=":443"; ma=86400
+
+ok
+
+===== GET /api/search مع Origin (CORS الحقيقي) =====
+HTTP/2 200 
+date: Fri, 06 Nov 2026 22:00:39 GMT
+content-type: application/json; charset=utf-8
+access-control-allow-headers: Content-Type
+access-control-allow-methods: GET, OPTIONS
+access-control-allow-origin: https://taharbn12.github.io
+access-control-max-age: 600
+cache-control: no-store
+cf-cache-status: DYNAMIC
+rndr-id: b81a4e7e-9750-4e63
+server: cloudflare
+vary: Origin
+vary: Accept-Encoding
+x-render-origin-server: Render
+cf-ray: a5675f2fedf64d81-SEA
+alt-svc: h3=":443"; ma=86400
+
+{"query":"test","site":"youtube","source":"yt-dlp","count":2,"items":[{"id":"5O-vCJW1b8g","title":"Trump Phone Durability Test - Its worse than we thought...","url":"https://www.youtube.com/watch?v=5O-vCJW1b8g","thumb":"https://i.ytimg.com/vi/5O-vCJW1b8g/hqdefault.jpg","duration":577,"author":""},{"id":"_okYkBRnxQA","title":"Highlights | Bangladesh vs West Indies | 2nd Test | Day 2 | West Indies tour of Bangladesh 2026","url":"https://www.youtube.com/watch?v=_okYkBRnxQA","thumb":"https://i.ytimg.com/vi/_okYkBRnxQA/hqdefault.jpg","duration":909,"author":""}]}
+===== OPTIONS /api/resolve (preflight) =====
+HTTP/2 204 
+date: Fri, 06 Nov 2026 22:00:39 GMT
+access-control-allow-headers: Content-Type
+access-control-allow-methods: GET, POST, OPTIONS
+access-control-allow-origin: https://taharbn12.github.io
+access-control-max-age: 600
+rndr-id: 2495feff-6b03-4e53
+server: cloudflare
+vary: Origin
+x-render-origin-server: Render
+cf-cache-status: DYNAMIC
+cf-ray: a5675f4daae4e09f-SEA
+alt-svc: h3=":443"; ma=86400
+
+
+===== POST /api/resolve =====
+HTTP/2 422 
+date: Fri, 06 Nov 2026 22:00:42 GMT
+content-type: application/json; charset=utf-8
+access-control-allow-headers: Content-Type
+access-control-allow-methods: POST, OPTIONS
+access-control-allow-origin: https://taharbn12.github.io
+access-control-max-age: 600
+cache-control: no-store
+cf-cache-status: DYNAMIC
+rndr-id: f0ff1d20-5581-44bd
+server: cloudflare
+vary: Origin
+vary: Accept-Encoding
+x-render-origin-server: Render
+cf-ray: a5675f4f09fd2506-SEA
+alt-svc: h3=":443"; ma=86400
+
+{"error":"تعذّر استخراج فيديو عام قابل للتشغيل؛ قد يتطلب تسجيل دخول أو لا يكون مدعوماً. تأكد من تثبيت yt-dlp وتحديثه على الخادم"}
+===== GET / (التأكد من وضع API فقط) =====
+HTTP/2 200 
+date: Fri, 06 Nov 2026 22:00:42 GMT
+content-type: text/html; charset=utf-8
+access-control-allow-headers: Content-Type
+access-control-allow-methods: GET, OPTIONS
+access-control-allow-origin: *
+access-control-max-age: 600
+cache-control: no-store
+cf-cache-status: DYNAMIC
+rndr-id: 97539fe5-fbd9-4054
+server: cloudflare
+vary: Accept-Encoding
+x-render-origin-server: Render
+cf-ray: a5675f61bb4bc274-SEA
+alt-svc: h3=":443"; ma=86400
