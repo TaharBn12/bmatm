@@ -251,7 +251,12 @@
         const wasConnected = self.connected;
         self.connected = false;
         self._setStatus('offline', 'انقطع الاتصال بالسيرفر');
-        self.emit('system', { text: wasConnected ? 'انقطع الاتصال… جارٍ إعادة المحاولة' : 'تعذّر الاتصال بالسيرفر' });
+        const sleeping = global.WTServer && !global.WTServer.isPrivateHost()
+          ? ' (قد يكون السيرفر نائماً — سيستيقظ تلقائياً)' : '';
+        self.emit('system', {
+          text: wasConnected ? 'انقطع الاتصال… جارٍ إعادة المحاولة' + sleeping
+                             : 'تعذّر الاتصال بالسيرفر' + sleeping
+        });
         if (!self._closedByUser && wasConnected) {
           const delay = Math.min(8000, 800 * Math.pow(2, self._retry++));
           setTimeout(() => {
