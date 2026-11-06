@@ -39,6 +39,23 @@ final class Py {
         }
     }
 
+    /**
+     * ProcessBuilder جاهز لتشغيل yt-dlp بترميز UTF‑8.
+     *
+     * على ويندوز (خاصة باللغة العربية) يكتب yt-dlp العناوين بترميز لوحة
+     * المفاتيح (CP‑1256) بدل UTF‑8، فتفشل قراءتنا لاحقاً بـ
+     * MalformedInputException ويظهر للمستخدم «خدمة الاستخراج غير متاحة».
+     * ضبط المتغيرات أدناه يجعل Python يكتب UTF‑8 دائماً.
+     */
+    static ProcessBuilder process(List<String> tail) {
+        ProcessBuilder pb = new ProcessBuilder(ytDlp(tail));
+        try {
+            pb.environment().put("PYTHONIOENCODING", "utf-8");
+            pb.environment().put("PYTHONUTF8", "1");
+        } catch (Exception ignored) { /* بيئة مقفولة — نكمل بالافتراضي */ }
+        return pb;
+    }
+
     /** يبني أمر yt-dlp كاملاً: <python> -m yt_dlp <المعاملات> */
     static List<String> ytDlp(List<String> tail) {
         List<String> cmd = new ArrayList<>(Arrays.asList(cmd()));
@@ -87,6 +104,18 @@ final class Py {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             return false;
+        }
+    }
+
+    /**
+     * قراءة نصية متسامحة: يستبدل أي بايت غير صالح بـ U+FFFD بدل أن يرمي
+     * استثناءً. لا ينبغي أن يُسقط خرج أداة خارجية خدمتنا كلها.
+     */
+    static String readUtf8(java.nio.file.Path file) {
+        try {
+            return new String(java.nio.file.Files.readAllBytes(file), java.nio.charset.StandardCharsets.UTF_8);
+        } catch (Exception e) {
+            return "";
         }
     }
 

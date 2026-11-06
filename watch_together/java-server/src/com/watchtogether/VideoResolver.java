@@ -59,9 +59,9 @@ public final class VideoResolver {
         return "NA".equals(v) ? "" : v;
     }
 
-    /** قراءة آمنة لملف مؤقت (لا ترمي استثناءً) */
+    /** قراءة آمنة لملف مؤقت (لا ترمي استثناءً، وتتسامح مع أي ترميز) */
     private static String read(Path file) {
-        try { return Files.readString(file); } catch (Exception e) { return ""; }
+        return Py.readUtf8(file);
     }
 
     /** ملخّص قصير للسجل — لا نُغرق الطرفية بخرج طويل */
@@ -111,10 +111,10 @@ public final class VideoResolver {
             if (!acquired) { status = 429; throw new IllegalArgumentException("الخدمة مشغولة؛ أعد المحاولة بعد قليل"); }
             output = Files.createTempFile("wt-resolve-", ".tsv");
             errors = Files.createTempFile("wt-resolve-", ".err");   /* نحتفظ بخطأ yt-dlp للتشخيص */
-            p = new ProcessBuilder(Py.ytDlp(Arrays.asList(
+            p = Py.process(Arrays.asList(
                 "--ignore-config", "--no-playlist", "--skip-download", "--no-warnings", "--socket-timeout", "12", "--retries", "1",
                 "--use-extractors", "default,-generic", "-f", "best[ext=mp4][vcodec!=none][acodec!=none]/best[vcodec!=none][acodec!=none]",
-                "--print", FIELDS, "--", url)))
+                "--print", FIELDS, "--", url))
                 .redirectOutput(output.toFile()).redirectError(errors.toFile()).start();
             if (!p.waitFor(40, TimeUnit.SECONDS)) { status = 504; throw new IllegalArgumentException("انتهت مهلة استخراج الرابط"); }
             if (p.exitValue() != 0 || Files.size(output) > 131072) {
@@ -123,7 +123,7 @@ public final class VideoResolver {
                 status = 422; throw new IllegalArgumentException("تعذّر استخراج فيديو عام قابل للتشغيل؛ قد يتطلب تسجيل دخول أو لا يكون مدعوماً. تأكد من تثبيت yt-dlp وتحديثه على الخادم");
             }
             /* الخرج الآن ثلاثة حقول مفصولة بتبويب: url \t title \t thumbnail */
-            String raw = Files.readString(output);
+            String raw = read(output);
             Map<String,Object> media = parseFields(raw);
             if (media == null || !(media.get("url") instanceof String) || !((String)media.get("url")).startsWith("https://")) {
                 System.err.println("[resolve] yt-dlp لم يرجع رابطاً صالحاً: " + forLog(raw));
@@ -135,7 +135,14 @@ public final class VideoResolver {
             if (status == 200) status = 400;
             result.clear(); result.put("error", e.getMessage());
         } catch (Exception e) {
-            status = 503; result.clear(); result.put("error", "خدمة الاستخراج غير متاحة؛ ثبّت Python وyt-dlp على خادم Java");
+            /* لا نخفي السبب: نطبعه في السجل ونرسل ملخّصه في الرد */
+            System.err.println("[resolve] خطأ غير متوقّع في الاستخراج:");
+            e.printStackTrace();
+            status = 503;
+            result.clear();
+            result.put("error", "خدمة الاستخراج غير متاحة (" + e.getClass().getSimpleName() +
+                (e.getMessage() == null ? "" : ": " + e.getMessage()) +
+                ")؛ ثبّت Python وyt-dlp على خادم Java");
         } finally {
             if (p != null && p.isAlive()) p.destroyForcibly();
             if (output != null) Files.deleteIfExists(output);

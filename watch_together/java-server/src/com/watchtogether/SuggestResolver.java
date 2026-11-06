@@ -54,20 +54,22 @@ public final class SuggestResolver {
         Path out = Files.createTempFile("wt-suggest-", ".tsv");
         Process p = null;
         try {
-            List<String> cmd = Py.ytDlp(Arrays.asList(
+            List<String> cmd = new ArrayList<>(Arrays.asList(
                 "--ignore-config", "--no-warnings", "--socket-timeout", "8", "--retries", "0",
                 "--use-extractors", "default,-generic", "--flat-playlist",
                 "--print", FIELDS));
             cmd.addAll(tail);
-            p = new ProcessBuilder(cmd).redirectOutput(out.toFile())
-                                       .redirectError(ProcessBuilder.Redirect.DISCARD).start();
+            /* Py.process يضمن ترميز UTF‑8 لخراج yt-dlp على ويندوز */
+            p = Py.process(cmd).redirectOutput(out.toFile())
+                               .redirectError(ProcessBuilder.Redirect.DISCARD).start();
             if (!p.waitFor(seconds, TimeUnit.SECONDS)) {
                 p.destroyForcibly();
                 return Collections.emptyList();
             }
             if (p.exitValue() != 0 || Files.size(out) > 262144) return Collections.emptyList();
             List<String> lines = new ArrayList<>();
-            for (String line : Files.readAllLines(out, StandardCharsets.UTF_8)) {
+            /* قراءة متسامحة: أي بايت غير صالح يُستبدل ولا يُسقط الطلب */
+            for (String line : new String(Files.readAllBytes(out), StandardCharsets.UTF_8).split("\\R")) {
                 String t = line.trim();
                 if (!t.isEmpty() && !t.startsWith("NA\\t")) lines.add(t);
             }

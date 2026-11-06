@@ -117,14 +117,15 @@ public final class SearchResolver {
         try {
             String search = SEARCH_HOST + URLEncoder.encode(term, "UTF-8") + "/videos";
             out = Files.createTempFile("wt-search-", ".tsv");
-            List<String> cmd = Py.ytDlp(Arrays.asList(
+            List<String> args = new ArrayList<>(Arrays.asList(
                 "--ignore-config", "--no-warnings", "--socket-timeout", "10", "--retries", "1",
                 "--use-extractors", "default,-generic", "--flat-playlist",
                 "--playlist-end", String.valueOf(limit),
                 "--print", FIELDS, "--", search));
             Path err = Files.createTempFile("wt-search-", ".err");
-            p = new ProcessBuilder(cmd).redirectOutput(out.toFile())
-                                       .redirectError(err.toFile()).start();
+            /* Py.process يضمن ترميز UTF‑8 لخراج yt-dlp على ويندوز */
+            p = Py.process(args).redirectOutput(out.toFile())
+                                .redirectError(err.toFile()).start();
             boolean done = p.waitFor(30, TimeUnit.SECONDS);
             if (!done || p.exitValue() != 0 || Files.size(out) > 262144) {
                 /* لا نصمت: سبب الفشل هو أول ما نحتاجه عند «صفر نتائج» */
@@ -135,7 +136,7 @@ public final class SearchResolver {
             }
             Files.deleteIfExists(err);
             List<Map<String, Object>> items = new ArrayList<>();
-            for (String line : Files.readAllLines(out, StandardCharsets.UTF_8)) {
+            for (String line : read(out).split("\\R")) {
                 Map<String, Object> item = fromRow(line);
                 if (item != null) items.add(item);
                 if (items.size() >= limit) break;
@@ -306,9 +307,9 @@ public final class SearchResolver {
         return new ArrayList<>(seen.values());
     }
 
-    /** قراءة آمنة لملف مؤقت (لا ترمي استثناءً) */
+    /** قراءة آمنة لملف مؤقت (لا ترمي استثناءً، وتتسامح مع أي ترميز) */
     private static String read(Path file) {
-        try { return Files.readString(file); } catch (Exception e) { return ""; }
+        return Py.readUtf8(file);
     }
 
     /** ملخّص قصير للسجل */
