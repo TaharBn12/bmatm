@@ -131,8 +131,7 @@
     } catch (networkError) {
       state.reason = location.protocol === 'file:'
         ? 'الصفحة مفتوحة كملف (file://) لا عبر السيرفر'
-        : 'تعذّر الاتصال بالسيرفر على ' + (location.host || 'العنوان الحالي') +
-          ' — أغلق كل نسخة قديمة (taskkill /F /IM java.exe) ثم شغّل run.bat واقرأ المنفذ من اللافتة';
+        : 'تعذّر الاتصال بالسيرفر على ' + (location.host || 'العنوان الحالي');
       return null;
     }
     let text = '';
@@ -156,6 +155,19 @@
     return { items: data.items.map(item => normalize(item, site)).filter(Boolean), source: data.source || 'server' };
   }
 
+  /** هل الصفحة على جهازك أو شبكتك المحلية؟ (خلاف ذلك: استضافة عامة/ثابتة) */
+  function privateHost() {
+    if (window.WTServer && typeof window.WTServer.isPrivateHost === 'function') return window.WTServer.isPrivateHost();
+    return /^(localhost|127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|::1|\[::1\])/i
+      .test(String(location.hostname || ''));
+  }
+
+  /** عنوان السيرفر المضبوط في الإعدادات (إن وُجد) */
+  function apiBaseUrl() {
+    const js = window.WT_CONFIG && window.WT_CONFIG.javaServer;
+    return js && js.apiBase ? String(js.apiBase).replace(/\/+$/, '') : '';
+  }
+
   /**
    * /api/search غير موجود (404): هل هو سيرفر Java قديم، أم ليس سيرفر Java أصلاً؟
    * نفحص /api/healthz لأنها موجودة في كل نسخة Java حديثة.
@@ -163,6 +175,9 @@
   async function diagnoseMissing(status) {
     const from = location.origin && location.origin !== 'null' ? location.origin : 'ملف محلي (file://)';
     const base = 'الصفحة مفتوحة من ' + from + '، وهذا السيرفر لا يعرض /api/search (' + status + ')';
+    if (!privateHost()) {
+      return base + ' — استضافة ثابتة: اضبط javaServer.apiBase بعنوان سيرفر Render في assets/js/config.js';
+    }
     let java = false;
     try {
       const health = (window.WTServer && window.WTServer.api) ? window.WTServer.api('healthz') : 'healthz';
@@ -237,7 +252,9 @@
         el.emptyText.textContent = state.site === 'youtube'
           ? (state.server === false
               ? 'بحث يوتيوب يحتاج سيرفر Java مع yt-dlp' + (state.reason ? ' — ' + state.reason : '') +
-                ' — افتح الصفحة من العنوان الذي تطبعه لافتة run.bat (مثل http://localhost:8081/search.html)'
+                (privateHost()
+                  ? ' — افتح الصفحة من العنوان الذي تطبعه لافتة run.bat (مثل http://localhost:8081/search.html)'
+                  : ' — على استضافة ثابتة: اضبط javaServer.apiBase بعنوان سيرفر Render في assets/js/config.js')
               : 'لم يُرجع يوتيوب نتائج عن «' + query + '» — حدّث yt-dlp ثم أعد المحاولة: py -m pip install -U yt-dlp')
           : 'لا نتائج لـ «' + query + '» — جرّب كلمة أخرى';
         status('');
@@ -272,17 +289,20 @@
     const noServer = state.server === false;
     el.note.hidden = !noServer;
     if (!noServer || !el.noteText) return;
-    /* state.reason يحمل التعليمات المناسبة لكل سبب (منفذ قديم · 404 · انقطاع) */
-    let where = location.protocol === 'file:'
-      ? 'أنت تفتح الصفحة كملف (file://) — لا تعمل أي نقطة /api. شغّل run.bat ثم افتح العنوان الذي تطبعه اللافتة.'
-      : (state.reason || 'شغّل run.bat ثم أعد تحميل الصفحة من العنوان الذي تطبعه اللافتة.');
-    /* على استضافة ثابتة (GitHub Pages) لا يكفي run.bat: نحتاج عنوان السيرفر */
-    const cfgBase = window.WT_CONFIG && window.WT_CONFIG.javaServer && window.WT_CONFIG.javaServer.apiBase;
-    const override = window.WTServer && typeof window.WTServer.api === 'function'
-      ? window.WTServer.api('healthz') : '';
-    if (!cfgBase && !/^https?:\/\//i.test(String(override))) {
-      where += ' على استضافة ثابتة: اضبط javaServer.apiBase في assets/js/config.js بعنوان سيرفر Render،' +
-               ' أو جرّب مؤقتاً بإضافة ?api=https://<عنوان السيرفر> للرابط.';
+    /* التوجيه يختلف جذرياً بين «جهازك» و«استضافة ثابتة» */
+    let where;
+    const api = apiBaseUrl();
+    if (location.protocol === 'file:') {
+      where = 'أنت تفتح الصفحة كملف (file://) — لا تعمل أي نقطة /api. شغّل run.bat ثم افتح العنوان الذي تطبعه اللافتة.';
+    } else if (!privateHost()) {
+      where = (api
+        ? 'تعذّر الوصول إلى السيرفر ' + api + (state.reason ? ' — ' + state.reason : '') +
+          '. تأكد أنه يعمل (افتح ' + api + '/healthz) وأن نطاق الموقع مضاف إلى WT_ALLOWED_ORIGINS.'
+        : 'هذه استضافة ثابتة (' + (location.host || '') + ') ولا تحتوي أي نقطة /api. ' +
+          'اضبط javaServer.apiBase بعنوان سيرفر Render في assets/js/config.js' +
+          ' — أو جرّب الآن بإضافة ?api=https://<عنوان السيرفر> للرابط.');
+    } else {
+      where = (state.reason || '') + ' — أغلق كل نسخة قديمة (taskkill /F /IM java.exe) ثم شغّل run.bat واقرأ المنفذ من اللافتة.';
     }
     el.noteText.textContent = state.site === 'youtube'
       ? 'بحث يوتيوب يحتاج سيرفر Java مع yt-dlp. ' + where
