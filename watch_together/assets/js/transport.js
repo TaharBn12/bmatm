@@ -1380,21 +1380,31 @@
     meta = meta || {};
     meta.clientId = meta.clientId || U.uid('client');
 
-    const candidates = [];
     const skipServers = forceLocal();
+    const javaEnabled = !!cfg.javaServer && cfg.javaServer.enabled !== false;
+    const supaReady = !!(cfg.supabase && cfg.supabase.url && cfg.supabase.anonKey && cfg.supabase.ready !== false);
 
-    const wsCandidate = (tag, ms) => ({
-      tag,
-      make: () => new WsTransport(wsUrlForRoom(cfg.javaServer)),
-      timeout: ms
-    });
-    const wsTimeout = cfg.javaServer.timeoutMs || 2500;
+    /* فحص shared: هل هذا النطاق يخدمه سيرفر Java؟ (يوقظ النسخة النائمة على Render) */
+    const probe = (skipServers || !javaEnabled || !global.WTServer)
+      ? Promise.resolve(false)
+      : global.WTServer.available(onStatus);
 
-    if (!skipServers && cfg.javaServer && cfg.javaServer.enabled) {
-      candidates.push(wsCandidate('ws', wsTimeout));
-    }
-    if (!skipServers && cfg.supabase && cfg.supabase.url && cfg.supabase.anonKey && cfg.supabase.ready !== false) {
-      candidates.push({
+    /* على استضافة عامة (Render وغيرها) نحتاج مهلات أطول: أول اتصال بعد
+       نوم الخدمة يستغرق عشرات الثواني، ومهلة 2.5 ثانية كانت تسقطنا إلى
+       Supabase ثم «الوضع المحلي» فيتفرّق الأصدقاء بين عوالم مختلفة. */
+    const probeStart = probe.then(javaHere => {
+      const candidates = [];
+      const publicHost = global.WTServer ? !global.WTServer.isPrivateHost() : false;
+      const wsTimeout = cfg.javaServer.timeoutMs || 2500;
+      const firstMs = publicHost ? Math.max(wsTimeout, 12000) : wsTimeout;
+      const retryMs = publicHost ? Math.max(wsTimeout * 3, 20000) : Math.max(6000, wsTimeout * 3);
+
+      const wsCandidate = (tag, ms) => ({
+        tag,
+        make: () => new WsTransport(wsUrlForRoom(cfg.javaServer)),
+        timeout: ms
+      });
+      const supaCandidate = {
         tag: 'supabase',
         make: () => new SupabaseTransport(cfg.supabase),
         timeout: 7000,
@@ -1402,16 +1412,24 @@
            → نعتبر النتيجة «غير مؤكدة» ونمنح WebSocket فرصةً أطول قبل الاستسلام،
            حتى لا ينتهي الضيف وحيداً في غرفة فارغة على سيرفر آخر */
         verify: (result) => !!(result && (result.found || result.degraded))
-      });
-      if (!skipServers && cfg.javaServer && cfg.javaServer.enabled) {
-        candidates.push(wsCandidate('ws-retry', Math.max(6000, wsTimeout * 3)));
+      };
+
+      if (!skipServers && javaHere) {
+        /* السيرفر يستجيب من نفس النطاق: نبقى عليه — لا Supabase ولا محلي */
+        candidates.push(wsCandidate('ws', firstMs));
+        candidates.push(wsCandidate('ws-retry', retryMs));
+        if (supaReady) candidates.push(supaCandidate);      /* ملاذ أخير فقط */
+      } else if (!skipServers) {
+        if (supaReady) candidates.push(supaCandidate);
+        if (javaEnabled) candidates.push(wsCandidate('ws-retry', retryMs));
       }
-    }
+      return candidates;
+    });
 
     let i = 0;
     let unsure = null;    /* نتيجة صالحة لكن غير مؤكدة نعود إليها إن فشل ما بعدها */
 
-    const tryNext = () => {
+    const tryNext = () => probeStart.then(candidates => {
       if (i >= candidates.length) {
         if (unsure) return Promise.resolve(unsure);
         onStatus && onStatus({ state: 'local', detail: 'تعذّر الاتصال بأي سيرفر — تم التحويل للوضع المحلي' });
@@ -1451,7 +1469,7 @@
           return tryNext();
         }
       );
-    };
+    });
 
     return tryNext();
   }

@@ -164,7 +164,7 @@
     const base = 'الصفحة مفتوحة من ' + from + '، وهذا السيرفر لا يعرض /api/search (' + status + ')';
     let java = false;
     try {
-      const probe = await fetch('api/healthz', { headers: { Accept: 'application/json' }, cache: 'no-store' });
+      const probe = await fetch('healthz', { headers: { Accept: 'text/plain' }, cache: 'no-store' });
       java = !!probe && probe.ok;
     } catch (e) { java = false; }
     return base + ' — ' + (java
