@@ -43,6 +43,7 @@
   const state = {
     query: '', site: 'dailymotion', items: [], loading: false,
     server: null,            /* null = لم يُختبر · true = سيرفر Java · false = استضافة ثابتة */
+    token: 0,                /* رقم مسلسل للبحث الجاري — يمنع نتائج قديمة من التغطية على جديدة */
     direct: new Map(),       /* معرّف الفيديو ← رابط التشغيل */
     current: null, busyId: null
   };
@@ -121,7 +122,9 @@
     let data = null;
     try { data = JSON.parse(text); } catch (e) { data = null; }
     if (!response.ok) {
-      if (data && data.error) throw new Error(data.error);
+      /* 4xx = خطأ من عندنا (كلمة قصيرة، تجاوز الحد…) → نُظهره.
+         5xx = الخدمة نفسها معطّلة (yt-dlp/Python) → نجرّب المتصفح إن أمكن. */
+      if (data && data.error && response.status >= 400 && response.status < 500) throw new Error(data.error);
       return null;                                   /* ليست نقطة خدمة — نجرّب المتصفح إن أمكن */
     }
     if (!data || !Array.isArray(data.items)) return null;
@@ -140,9 +143,12 @@
   }
 
   async function runSearch(term) {
-    if (state.loading) return;
     const query = String(term || '').trim();
     if (query.length < 2) { status('اكتب كلمتين على الأقل للبحث', true); el.input.focus(); return; }
+    /* رقم مسلسل للطلب: أي بحث أحدث يُلغي نتائج البحث الذي سبقه.
+       بدونه، تبديل المصدر أثناء بحث جارٍ كان يُتجاهل بسبب حاجز state.loading
+       فتبقى نتائج المصدر القديم معروضة تحت تبويب المصدر الجديد. */
+    const token = ++state.token;
     state.loading = true;
     state.query = query;
     el.go.disabled = true;
@@ -153,8 +159,10 @@
       let result = null;
       try {
         result = await fromServer(query, LIMIT, state.site);
+        if (token !== state.token) return;            /* بحث أحدث تولّى العرض */
         state.server = result !== null;
       } catch (error) {
+        if (token !== state.token) return;
         state.server = null;
         throw error;                                  /* خطأ صريح من السيرفر (400/429/…) */
       }
@@ -164,6 +172,7 @@
           result = { items: [], source: 'none' };
         } else {
           result = await fromDailymotion(query, LIMIT);
+          if (token !== state.token) return;
         }
       }
       state.items = result.items;
@@ -172,8 +181,10 @@
         el.results.innerHTML = '';
         el.results.setAttribute('aria-busy', 'false');
         el.empty.hidden = false;
-        el.emptyText.textContent = state.site === 'youtube' && state.server === false
-          ? 'بحث يوتيوب يحتاج سيرفر Java مع yt-dlp — الاستضافة الثابتة وحدها لا تكفي'
+        el.emptyText.textContent = state.site === 'youtube'
+          ? (state.server === false
+              ? 'بحث يوتيوب يحتاج سيرفر Java مع yt-dlp — الاستضافة الثابتة وحدها لا تكفي'
+              : 'لم يُرجع يوتيوب نتائج عن «' + query + '» — حدّث yt-dlp ثم أعد المحاولة: py -m pip install -U yt-dlp')
           : 'لا نتائج لـ «' + query + '» — جرّب كلمة أخرى';
         status('');
       } else {
@@ -186,14 +197,17 @@
       }
       renderChips();
     } catch (error) {
+      if (token !== state.token) return;
       el.results.innerHTML = '';
       el.results.setAttribute('aria-busy', 'false');
       el.empty.hidden = false;
       el.emptyText.textContent = 'تعذّر البحث — تحقّق من الاتصال ثم أعد المحاولة';
       status(error && error.message ? error.message : 'تعذّر البحث', true);
     } finally {
-      state.loading = false;
-      el.go.disabled = false;
+      if (token === state.token) {
+        state.loading = false;
+        el.go.disabled = false;
+      }
     }
   }
 
