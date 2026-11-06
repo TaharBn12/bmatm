@@ -40,7 +40,8 @@ window.WT_CONFIG = {
        وأضف نطاق الموقع إلى WT_ALLOWED_ORIGINS على السيرفر.
        (الغرف نفسها تعمل عبر Supabase فلا تحتاج هذا العنوان)
        اجعله null إن كنت تشغّل السيرفر على نفس نطاق الموقع. */
-    apiBase: '?api=https://watchtogether.onrender.com',
+    /* العنوان وحده — بلا ?api= وبدون شرطة مائلة في آخره */
+    apiBase: 'https://watchtogether.onrender.com',
     timeoutMs: 2500,
     /* استضافة عامة (Render مثلاً): الخدمة المجانية تنام بعد 15 دقيقة خمول
        وأول طلب يستغرق عشرات الثواني. فحص قصير هنا يعني السقوط إلى Supabase
