@@ -20,8 +20,8 @@
       const response = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url: raw }), signal: ctrl.signal });
       if (response.status === 426) {   /* العنوان لا يخدم HTTP: ليس سيرفر API */
         throw new Error('السيرفر ' + String(endpoint).replace(/\/api\/resolve$/, '') +
-          ' ردّ 426 Upgrade Required من حافة Render — أي أن الخدمة معلّقة (Suspended) أو أن نشرها فشل. ' +
-          'افتح لوحة Render ← الخدمة ← Events/Logs وتأكد أن حالتها Live.');
+          ' ردّ 426 Upgrade Required — أي أنه لا يخدم طلبات HTTP (خدمة WebSocket أو عنوان خدمة أخرى). ' +
+          'انسخ عنوان خدمتك من لوحة Render وجرّبه بـ ?api=<العنوان>.');
       }
       let data;
       try { data = await response.json(); } catch (_) {
