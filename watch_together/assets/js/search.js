@@ -43,6 +43,7 @@
   const state = {
     query: '', site: 'dailymotion', items: [], loading: false,
     server: null,            /* null = لم يُختبر · true = سيرفر Java · false = استضافة ثابتة */
+    reason: '',              /* سبب تعذّر الوصول إلى /api/search (نص تشخيصي) */
     token: 0,                /* رقم مسلسل للبحث الجاري — يمنع نتائج قديمة من التغطية على جديدة */
     direct: new Map(),       /* معرّف الفيديو ← رابط التشغيل */
     current: null, busyId: null
@@ -114,20 +115,42 @@
     };
   }
 
-  /** المحاولة الأولى: سيرفر Java (yt-dlp، أو واجهة ديليموشن عبر السيرفر) */
+  /**
+   * المحاولة الأولى: سيرفر Java (yt-dlp، أو واجهة ديليموشن عبر السيرفر).
+   * نفرّق بدقّة بين ثلاث حالات كانت تُظهر كلها رسالة واحدة مبهمة:
+   *   1) لا سيرفر أصلاً (ملف file://، منفذ خاطئ، سيرفر قديم) → null
+   *   2) السيرفر موجود لكن خدمة البحث معطّلة (5xx) → خطأ serverDown
+   *   3) خطأ من عندنا (4xx) → خطأ عادي
+   */
   async function fromServer(term, limit, site) {
     const url = 'api/search?q=' + encodeURIComponent(term) + '&limit=' + limit + '&site=' + encodeURIComponent(site);
-    const response = await fetch(url, { headers: { Accept: 'application/json' }, cache: 'no-store' });
-    const text = await response.text();
+    let response = null;
+    try {
+      response = await fetch(url, { headers: { Accept: 'application/json' }, cache: 'no-store' });
+    } catch (networkError) {
+      state.reason = location.protocol === 'file:'
+        ? 'الصفحة مفتوحة كملف (file://) لا عبر السيرفر'
+        : 'تعذّر الاتصال بالسيرفر على ' + (location.host || 'العنوان الحالي');
+      return null;
+    }
+    let text = '';
+    try { text = await response.text(); } catch (e) { text = ''; }
     let data = null;
     try { data = JSON.parse(text); } catch (e) { data = null; }
     if (!response.ok) {
-      /* 4xx = خطأ من عندنا (كلمة قصيرة، تجاوز الحد…) → نُظهره.
-         5xx = الخدمة نفسها معطّلة (yt-dlp/Python) → نجرّب المتصفح إن أمكن. */
-      if (data && data.error && response.status >= 400 && response.status < 500) throw new Error(data.error);
-      return null;                                   /* ليست نقطة خدمة — نجرّب المتصفح إن أمكن */
+      const message = (data && data.error) ? data.error : 'استجابة غير متوقعة (' + response.status + ')';
+      if (response.status === 404 || response.status === 405 || response.status === 501) {
+        state.reason = 'السيرفر الذي تفتح منه الصفحة لا يعرض /api/search (' + response.status + ') — غالباً نسخة قديمة على منفذ آخر';
+        return null;
+      }
+      if (response.status >= 400 && response.status < 500) throw new Error(message);
+      const error = new Error(message);              /* 5xx: السيرفر موجود لكن yt-dlp/Python معطّل */
+      error.serverDown = true;
+      error.status = response.status;
+      throw error;
     }
-    if (!data || !Array.isArray(data.items)) return null;
+    if (!data || !Array.isArray(data.items)) { state.reason = 'استجابة غير مفهومة من /api/search'; return null; }
+    state.reason = '';
     return { items: data.items.map(item => normalize(item, site)).filter(Boolean), source: data.source || 'server' };
   }
 
@@ -163,8 +186,18 @@
         state.server = result !== null;
       } catch (error) {
         if (token !== state.token) return;
-        state.server = null;
-        throw error;                                  /* خطأ صريح من السيرفر (400/429/…) */
+        if (error && error.serverDown) {
+          /* السيرفر موجود، لكن خدمة البحث فيه معطّلة (yt-dlp/Python) — لا نقول «استضافة ثابتة» */
+          state.server = true;
+          if (state.site !== 'dailymotion') throw error;            /* يوتيوب: لا بديل في المتصفح */
+          try {
+            result = await fromDailymotion(query, LIMIT);           /* بديل المتصفح لديليموشن */
+            if (token !== state.token) return;
+          } catch (browserError) { throw error; }
+        } else {
+          state.server = null;
+          throw error;                                 /* خطأ صريح من السيرفر (400/429/…) */
+        }
       }
       if (!result) {
         state.server = false;
@@ -183,7 +216,8 @@
         el.empty.hidden = false;
         el.emptyText.textContent = state.site === 'youtube'
           ? (state.server === false
-              ? 'بحث يوتيوب يحتاج سيرفر Java مع yt-dlp — الاستضافة الثابتة وحدها لا تكفي'
+              ? 'بحث يوتيوب يحتاج سيرفر Java مع yt-dlp' + (state.reason ? ' — ' + state.reason : '') +
+                ' — افتح الصفحة من العنوان الذي تطبعه لافتة run.bat (مثل http://localhost:8081/search.html)'
               : 'لم يُرجع يوتيوب نتائج عن «' + query + '» — حدّث yt-dlp ثم أعد المحاولة: py -m pip install -U yt-dlp')
           : 'لا نتائج لـ «' + query + '» — جرّب كلمة أخرى';
         status('');
@@ -201,7 +235,10 @@
       el.results.innerHTML = '';
       el.results.setAttribute('aria-busy', 'false');
       el.empty.hidden = false;
-      el.emptyText.textContent = 'تعذّر البحث — تحقّق من الاتصال ثم أعد المحاولة';
+      el.emptyText.textContent = error && error.serverDown
+        ? 'خدمة البحث على السيرفر معطّلة (' + (error.status || '5xx') + '): ' + (error.message || '') +
+          ' — حدّث yt-dlp: py -m pip install -U yt-dlp'
+        : 'تعذّر البحث — تحقّق من الاتصال ثم أعد المحاولة';
       status(error && error.message ? error.message : 'تعذّر البحث', true);
     } finally {
       if (token === state.token) {
@@ -215,9 +252,14 @@
     const noServer = state.server === false;
     el.note.hidden = !noServer;
     if (!noServer || !el.noteText) return;
+    const where = location.protocol === 'file:'
+      ? 'أنت تفتح الصفحة كملف (file://) — لا تعمل أي نقطة /api. افتحها من سيرفر Java.'
+      : (state.reason
+        ? state.reason + ' — أغلق كل نسخة قديمة (taskkill /F /IM java.exe) ثم شغّل run.bat واقرأ المنفذ من اللافتة.'
+        : 'شغّل run.bat ثم أعد تحميل الصفحة من العنوان الذي تطبعه اللافتة.');
     el.noteText.textContent = state.site === 'youtube'
-      ? 'بحث يوتيوب يحتاج سيرفر Java مع yt-dlp. شغّل run.bat ثم أعد تحميل الصفحة.'
-      : 'نتائج البحث تعمل، لكن استخراج رابط التشغيل المباشر يحتاج تشغيل الموقع من سيرفر Java مع yt-dlp. شغّل run.bat ثم أعد تحميل الصفحة.';
+      ? 'بحث يوتيوب يحتاج سيرفر Java مع yt-dlp. ' + where
+      : 'نتائج البحث تعمل، لكن استخراج رابط التشغيل المباشر يحتاج سيرفر Java مع yt-dlp. ' + where;
   }
 
   /* ============================== 3) العرض ============================== */
