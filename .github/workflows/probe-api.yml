@@ -2,30 +2,34 @@ name: probe-api
 on:
   push:
   workflow_dispatch:
+permissions:
+  contents: write
 jobs:
   probe:
     runs-on: ubuntu-latest
     steps:
-      - name: healthz
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
+      - name: probe and save output
         run: |
-          set +e
-          echo "=== GET /healthz ==="
-          curl -sS -i --max-time 90 https://watchtogether.onrender.com/healthz | head -30
-          echo
-          echo "=== GET / ==="
-          curl -sS -i --max-time 90 https://watchtogether.onrender.com/ | head -20
-          echo
-          echo "=== GET /api/stats ==="
-          curl -sS -i --max-time 90 https://watchtogether.onrender.com/api/stats | head -20
-          echo
-          echo "=== WebSocket handshake on /healthz ==="
-          curl -sS -i --max-time 90 \
-            -H "Connection: Upgrade" -H "Upgrade: websocket" \
-            -H "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==" -H "Sec-WebSocket-Version: 13" \
-            https://watchtogether.onrender.com/healthz | head -20
-          echo
-          echo "=== WebSocket handshake on /ws ==="
-          curl -sS -i --max-time 90 \
-            -H "Connection: Upgrade" -H "Upgrade: websocket" \
-            -H "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==" -H "Sec-WebSocket-Version: 13" \
-            https://watchtogether.onrender.com/ws | head -20
+          {
+            echo "=== $(date -u +%FT%TZ) ==="
+            B=https://watchtogether.onrender.com
+            echo; echo "===== GET /healthz =====";   curl -sS -i --max-time 120 $B/healthz | head -30
+            echo; echo "===== GET / =====";          curl -sS -i --max-time 120 $B/ | head -25
+            echo; echo "===== GET /api/stats ====="; curl -sS -i --max-time 120 $B/api/stats | head -25
+            echo; echo "===== GET /api/search ====="; curl -sS -i --max-time 120 "$B/api/search?q=test&limit=1&site=youtube" | head -25
+            echo; echo "===== WS handshake /ws ====="
+            curl -sS -i --max-time 120 -H "Connection: Upgrade" -H "Upgrade: websocket" \
+                 -H "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==" -H "Sec-WebSocket-Version: 13" $B/ws | head -25
+            echo; echo "===== DNS ====="; getent hosts watchtogether.onrender.com || true
+          } > probe-output.txt 2>&1
+          cat probe-output.txt
+      - name: commit output
+        run: |
+          git config user.name "Arena Agent"
+          git config user.email "agent@arena.ai"
+          git add probe-output.txt
+          git commit -m "probe output [skip ci]" || echo "nothing to commit"
+          git push origin HEAD:"${GITHUB_REF#refs/heads/}"
