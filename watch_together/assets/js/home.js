@@ -6,11 +6,12 @@
   const el = {
     panel: $('creator'), toggle: $('createToggle'), toggleIcon: $('createToggleIcon'),
     form: $('createForm'), title: $('roomTitle'), url: $('videoUrl'), submit: $('createBtn'), error: $('createError'),
+    resolved: $('resolvedHint'), resolvedLink: $('resolvedLink'), copyResolved: $('copyResolved'), resolvedMeta: $('resolvedMeta'),
     list: $('roomsList'), empty: $('roomsEmpty'), emptyText: $('roomsEmptyText'), count: $('roomsCount'),
     status: $('homeStatus'), refresh: $('refreshRooms'),
     dialog: $('roomActionDialog'), dialogContent: $('roomActionContent')
   };
-  const state = { rooms: [], mode: '', generation: 0, creating: false, dialogBusy: false, returnFocus: null };
+  const state = { rooms: [], mode: '', generation: 0, creating: false, dialogBusy: false, returnFocus: null, pending: null };
   const submitLabel = el.submit.innerHTML;
 
   function currentAccount() {
@@ -42,6 +43,7 @@
     el.toggleIcon.innerHTML = IC.html(open ? 'x' : 'plus', 26);
     if (open) el.title.focus({ preventScroll: true });
     else if (restoreFocus !== false) el.toggle.focus({ preventScroll: true });
+    clearResolvedPreview();
   }
 
   function showStatus(message, error) {
@@ -192,6 +194,36 @@
     }
   }
 
+  function showResolvedPreview(url, title) {
+    if (!el.resolved) return;
+    el.resolvedLink.href = url;
+    el.resolvedLink.textContent = url;
+    el.resolvedMeta.textContent = title ? ('العنوان: ' + U.esc(title)) : '';
+    el.resolved.hidden = false;
+    el.submit.disabled = false;
+    el.submit.innerHTML = '<span class="ic" data-icon="plus" data-size="18"></span> إنشاء الغرفة بهذا الرابط';
+    let btn = $('resetResolved');
+    if (!btn) {
+      btn = document.createElement('button');
+      btn.type = 'button';
+      btn.id = 'resetResolved';
+      btn.className = 'btn btn--ghost';
+      btn.textContent = 'تعديل البيانات';
+      el.form.appendChild(btn);
+      btn.addEventListener('click', clearResolvedPreview);
+    }
+    btn.hidden = false;
+  }
+
+  function clearResolvedPreview() {
+    state.pending = null;
+    if (el.resolved) el.resolved.hidden = true;
+    const btn = $('resetResolved');
+    if (btn) btn.hidden = true;
+    el.submit.disabled = false;
+    el.submit.innerHTML = submitLabel;
+  }
+
   const cards = window.WTRoomCards.create(el.list, {
     isAuthenticated: () => !!currentAccount(),
     onAction: handleRoomAction
@@ -261,6 +293,23 @@
     event.stopPropagation(); // Replacing the SVG must not make this same click look like an outside click.
     setCreatorOpen(el.panel.hidden);
   });
+  el.title.addEventListener('input', clearResolvedPreview);
+  el.url.addEventListener('input', clearResolvedPreview);
+  el.copyResolved.addEventListener('click', async () => {
+    const url = el.resolvedLink ? el.resolvedLink.textContent : '';
+    if (!url) return;
+    try {
+      await navigator.clipboard.writeText(url);
+    } catch (error) {
+      const ta = document.createElement('textarea');
+      ta.value = url; ta.hidden = true; document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      ta.remove();
+    }
+    el.copyResolved.textContent = 'تم النسخ';
+    setTimeout(() => { if (el.copyResolved) el.copyResolved.textContent = 'نسخ الرابط'; }, 1500);
+  });
   document.addEventListener('keydown', event => {
     if (event.key === 'Escape' && !el.panel.hidden) { event.preventDefault(); setCreatorOpen(false); }
   });
@@ -293,13 +342,14 @@
     if (raw && !U.parseWatchUrl(raw)) { el.error.textContent = 'أدخل رابط فيديو صالحاً'; el.url.focus(); return; }
     const quality = el.videoQuality ? el.videoQuality.value : '720';
     const importPlaylist = el.importPlaylist ? el.importPlaylist.checked : false;
-    state.creating = true;
-    el.submit.disabled = true;
-    el.submit.innerHTML = '<span class="spinner" style="width:16px;height:16px;border-width:2px"></span> جارٍ الإضافة…';
-    let pendingPlaylist = null;
-    try {
+    if (!state.pending && raw) {
+      /* الخطوة 1: استخراج الرابط المباشر وعرضه قبل إنشاء الغرفة */
+      state.creating = true;
+      el.submit.disabled = true;
+      el.submit.innerHTML = '<span class="spinner" style="width:16px;height:16px;border-width:2px"></span> جارٍ استخراج الرابط…';
+      let pendingPlaylist = null;
       let videoUrl = '';
-      if (raw) {
+      try {
         const media = await window.WTResolve(raw, { quality });
         if (media.parsed.kind === 'youtube-playlist' && importPlaylist && Array.isArray(media.playlist) && media.playlist.length) {
           const first = media.playlist[0];
@@ -313,10 +363,29 @@
           videoUrl = media.parsed.src;
           if (media.parsed.kind === 'youtube' && !/^https?:\/\//i.test(videoUrl)) videoUrl = 'https://www.youtube.com/watch?v=' + media.parsed.id;
         }
+        state.pending = { title, videoUrl, pendingPlaylist };
+        showResolvedPreview(videoUrl, media.title || '');
+        return;
+      } catch (error) {
+        el.error.textContent = error.message || 'تعذّرت إضافة الغرفة — أعد المحاولة';
+        if (el.panel.hidden) showStatus(el.error.textContent, true);
+      } finally {
+        state.creating = false;
+        el.submit.disabled = false;
+        el.submit.innerHTML = submitLabel;
       }
-      const room = await Rooms.create({ title, videoUrl, hostName: user.name || user.email || '' });
-      if (pendingPlaylist && pendingPlaylist.length) {
-        try { sessionStorage.setItem('wt:playlist:' + room.id, JSON.stringify(pendingPlaylist)); } catch (_) { }
+      return;
+    }
+
+    /* الخطوة 2: تأكيد الإنشاء بالرابط المستخرج (أو بدون رابط) */
+    const pending = state.pending;
+    state.creating = true;
+    el.submit.disabled = true;
+    el.submit.innerHTML = '<span class="spinner" style="width:16px;height:16px;border-width:2px"></span> جارٍ الإضافة…';
+    try {
+      const room = await Rooms.create({ title: pending ? pending.title : title, videoUrl: pending ? pending.videoUrl : '', hostName: user.name || user.email || '' });
+      if (pending && pending.pendingPlaylist && pending.pendingPlaylist.length) {
+        try { sessionStorage.setItem('wt:playlist:' + room.id, JSON.stringify(pending.pendingPlaylist)); } catch (_) { }
       }
       ++state.generation; // A request begun before creation must not erase the new card.
       state.mode = room.mode;
@@ -336,7 +405,9 @@
     } finally {
       state.creating = false;
       el.submit.disabled = false;
-      el.submit.innerHTML = submitLabel;
+      el.submit.innerHTML = state.pending
+        ? '<span class="ic" data-icon="plus" data-size="18"></span> إنشاء الغرفة بهذا الرابط'
+        : submitLabel;
     }
   });
 
