@@ -94,6 +94,18 @@
         <label class="label" for="videoUrl">رابط الفيديو <span class="label__opt">(اختياري)</span></label>
         <input class="input input--ltr" id="videoUrl" type="url" inputmode="url" spellcheck="false" placeholder="https://…">
       </div>
+      <div>
+        <label class="label" for="videoQuality">جودة الفيديو <span class="label__opt">(تُطبّق على روابط يوتيوب والرييلز)</span></label>
+        <select class="input" id="videoQuality" name="videoQuality">
+          <option value="360">360p — توفير البيانات</option>
+          <option value="720" selected>720p — متوازن (الموصى به)</option>
+          <option value="1080">1080p — أعلى جودة</option>
+        </select>
+      </div>
+      <div class="room-dialog__choice" style="margin-top:8px">
+        <input type="checkbox" id="importPlaylist" name="importPlaylist">
+        <span><strong>استيراد قائمة التشغيل كاملة</strong><small>إذا كان الرابط قائمة تشغيل يوتيوب، تُضاف جميع فيديوهاتها إلى قائمة انتظار الغرفة.</small></span>
+      </div>
       <p class="form-error" id="createError" role="alert"></p>
       <button class="btn btn--primary btn--block" type="submit" id="createBtn">
         <span class="ic" data-icon="plus" data-size="18"></span> إضافة الغرفة

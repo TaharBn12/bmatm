@@ -291,17 +291,33 @@
     if (!title) { el.error.textContent = 'أدخل اسم الغرفة'; el.title.focus(); return; }
     const raw = el.url.value.trim();
     if (raw && !U.parseWatchUrl(raw)) { el.error.textContent = 'أدخل رابط فيديو صالحاً'; el.url.focus(); return; }
+    const quality = el.videoQuality ? el.videoQuality.value : '720';
+    const importPlaylist = el.importPlaylist ? el.importPlaylist.checked : false;
     state.creating = true;
     el.submit.disabled = true;
     el.submit.innerHTML = '<span class="spinner" style="width:16px;height:16px;border-width:2px"></span> جارٍ الإضافة…';
+    let pendingPlaylist = null;
     try {
       let videoUrl = '';
       if (raw) {
-        const media = await window.WTResolve(raw);
-        videoUrl = media.parsed.src;
-        if (media.parsed.kind === 'youtube' && !/^https?:\/\//i.test(videoUrl)) videoUrl = 'https://www.youtube.com/watch?v=' + media.parsed.id;
+        const media = await window.WTResolve(raw, { quality });
+        if (media.parsed.kind === 'youtube-playlist' && importPlaylist && Array.isArray(media.playlist) && media.playlist.length) {
+          const first = media.playlist[0];
+          videoUrl = first.url || first.src;
+          pendingPlaylist = media.playlist.slice(1).map(item => ({
+            id: U.randomCode ? U.randomCode(8) : String(Math.random()),
+            url: item.url || item.src,
+            title: item.title || item.n || ''
+          }));
+        } else {
+          videoUrl = media.parsed.src;
+          if (media.parsed.kind === 'youtube' && !/^https?:\/\//i.test(videoUrl)) videoUrl = 'https://www.youtube.com/watch?v=' + media.parsed.id;
+        }
       }
       const room = await Rooms.create({ title, videoUrl, hostName: user.name || user.email || '' });
+      if (pendingPlaylist && pendingPlaylist.length) {
+        try { sessionStorage.setItem('wt:playlist:' + room.id, JSON.stringify(pendingPlaylist)); } catch (_) { }
+      }
       ++state.generation; // A request begun before creation must not erase the new card.
       state.mode = room.mode;
       state.rooms = [room].concat(state.rooms.filter(item => item.id !== room.id)).slice(0, 100);
@@ -310,6 +326,7 @@
       el.list.setAttribute('aria-busy', 'false');
       el.refresh.disabled = false;
       el.title.value = ''; el.url.value = '';
+      if (el.importPlaylist) el.importPlaylist.checked = false;
       setCreatorOpen(false, false);
       const link = el.list.querySelector('[data-room-id="' + CSS.escape(room.id) + '"] .room-tile__link');
       if (link) link.focus({ preventScroll: true });

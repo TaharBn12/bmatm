@@ -99,11 +99,21 @@
       const url = String(raw || '').trim();
       if (!url) return null;
 
-      /* 1) YouTube */
+      /* 1) قائمة تشغيل يوتيوب */
+      const pl = Util.parseYouTubePlaylist(url);
+      if (pl) return { kind: 'youtube-playlist', id: pl, src: url, provider: 'YouTube', label: 'قائمة تشغيل يوتيوب' };
+
+      /* 2) YouTube (فيديو فردي، شورت، بث مباشر) */
       const yt = Util.parseYouTube(url);
       if (yt) return { kind: 'youtube', id: yt, src: url, provider: 'YouTube', label: 'يوتيوب' };
 
-      /* 2) HLS */
+      /* 3) تيك توك */
+      if (/tiktok\.com|vm\.tiktok\.com/i.test(url)) return { kind: 'tiktok', src: url, provider: 'TikTok', label: 'تيك توك' };
+
+      /* 4) رييلز إنستغرام */
+      if (/instagram\.com\/(reel|reels)\//i.test(url)) return { kind: 'instagram-reel', src: url, provider: 'Instagram', label: 'رييلز إنستغرام' };
+
+      /* 5) HLS */
       if (/\.m3u8(\?|$)/i.test(url)) return { kind: 'hls', src: url, provider: 'HLS', label: 'بث HLS' };
 
       /* 3) ملفات فيديو مباشرة */
@@ -129,6 +139,17 @@
       m = s.match(/(?:youtube\.com\/(?:watch\?(?:.*&)?v=|live\/|shorts\/|embed\/|v\/))([a-zA-Z0-9_-]{11})/i);
       if (m) return m[1];
       m = s.match(/youtu\.be\/([a-zA-Z0-9_-]{11})/i);
+      if (m) return m[1];
+      return null;
+    },
+
+    /* معرف قائمة تشغيل يوتيوب من رابط list= */
+    parseYouTubePlaylist(url) {
+      const s = String(url || '').trim();
+      if (!s) return null;
+      let m = s.match(/[?&]list=([A-Za-z0-9_-]+)/);
+      if (m) return m[1];
+      m = s.match(/youtube\.com\/playlist\?list=([A-Za-z0-9_-]+)/i);
       if (m) return m[1];
       return null;
     },
