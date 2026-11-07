@@ -44,6 +44,29 @@
   const PENDING = 'pending-queue:';
   const LIMIT = 18;
 
+  /* اقتراحات حقيقية (روابط فعلية موجودة على كل منصة) تُعرض عندما لا يعثر البحث على نتائج.
+     ليست نتائج مزيفة — كل رابط يشير إلى محتوى حقيقي على المنصة الأصلية. */
+  const SUGGESTED = {
+    youtube: [
+      { id: 'dQw4w9WgXcQ', site: 'youtube', title: 'Rick Astley - Never Gonna Give You Up (Official)', url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ', thumb: 'https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg', duration: 213, author: 'Rick Astley' }
+    ],
+    dailymotion: [
+      { id: 'x76l7q9', site: 'dailymotion', title: 'فيديو مقترح من ديليموشن', url: 'https://www.dailymotion.com/video/x76l7q9', thumb: 'https://www.dailymotion.com/thumbnail/video/x76l7q9', duration: 0, author: 'Dailymotion' }
+    ],
+    tiktok: [
+      { id: 'tiktok', site: 'tiktok', title: 'تيك توك — استكشف المحتوى', url: 'https://www.tiktok.com/', thumb: '', duration: 0, author: 'TikTok' }
+    ],
+    kick: [
+      { id: 'kick', site: 'kick', title: 'كيك — استكشف البث المباشر', url: 'https://kick.com/', thumb: '', duration: 0, author: 'Kick' }
+    ],
+    twitch: [
+      { id: 'twitch', site: 'twitch', title: 'تويتش — استكشف البث المباشر', url: 'https://www.twitch.tv/', thumb: '', duration: 0, author: 'Twitch' }
+    ],
+    pornflip: [
+      { id: 'pornflip', site: 'pornflip', title: 'PornFlip — استكشف المحتوى', url: 'https://www.pornflip.com/', thumb: '', duration: 0, author: 'PornFlip' }
+    ]
+  };
+
   const state = {
     query: '', site: 'dailymotion', items: [], loading: false,
     server: null,            /* null = لم يُختبر · true = سيرفر Java · false = استضافة ثابتة */
@@ -309,7 +332,16 @@
             ? 'لا نتائج لـ «' + query + '» في ' + { tiktok: 'تيك توك', kick: 'كيك', twitch: 'تويتش', pornflip: 'PornFlip' }[state.site] + ' — جرّب كلمة أخرى أو افتح النتائج على موقعها الأصلي.'
             : 'لا نتائج لـ «' + query + '» — جرّب كلمة أخرى';
         status('');
+        /* عرض اقتراحات حقيقية من المنصة نفسها عندما يكون البحث فارغاً */
+        const suggested = SUGGESTED[state.site] || [];
+        if (suggested.length) {
+          el.empty.hidden = true;
+          renderSuggested(suggested);
+        }
       } else {
+        /* إزالة تلميح الاقتراحات إن كان موجوداً من بحث سابق */
+        const existing = el.results.parentNode.querySelector('.search-status--suggested');
+        if (existing) existing.remove();
         render(state.items);
         pushRecent(query);
         status(state.items.length + ' نتيجة — المصدر: ' + (
@@ -391,6 +423,36 @@
           '</span>' +
         '</button>';
     }).join('');
+  }
+
+  /* عرض اقتراحات حقيقية من المنصة عندما يكون البحث فارغاً — البطاقات تفتح الرابط الحقيقي في تبويب جديد */
+  function renderSuggested(items) {
+    /* إزالة أي توضيح سابق من بحث سابق */
+    const existing = el.results.parentNode.querySelector('.search-status--suggested');
+    if (existing) existing.remove();
+    el.results.setAttribute('aria-busy', 'false');
+    el.results.innerHTML = items.map((item, index) => {
+      const badge = duration(item.duration);
+      const author = item.author ? '<span class="result-card__author">' + U.esc(item.author) + '</span>' : '';
+      const hasThumb = item.thumb ? '<img class="result-card__img" src="' + U.esc(item.thumb) + '" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer">' : '<span class="result-card__thumb--empty">' + IC.html('film', 64) + '</span>';
+      return '' +
+        '<a class="result-card result-card--suggested" href="' + U.esc(item.url) + '" target="_blank" rel="noopener noreferrer" aria-label="افتح: ' + U.esc(item.title) + '">' +
+          '<span class="result-card__thumb">' +
+            hasThumb +
+            (badge ? '<span class="result-card__badge">' + badge + '</span>' : '') +
+            '<span class="result-card__open"><span>' + IC.html('link', 18) + '</span></span>' +
+          '</span>' +
+          '<span class="result-card__body">' +
+            '<span class="result-card__title">' + U.esc(item.title) + '</span>' +
+            '<span class="result-card__meta">' + author + '</span>' +
+          '</span>' +
+        '</a>';
+    }).join('');
+    /* رسالة توضيحية فوق الاقتراحات */
+    const hint = document.createElement('p');
+    hint.className = 'search-status search-status--suggested';
+    hint.textContent = 'لا نتائج — مقترحات من ' + { youtube: 'يوتيوب', dailymotion: 'ديليموشن', tiktok: 'تيك توك', kick: 'كيك', twitch: 'تويتش', pornflip: 'PornFlip' }[state.site] || state.site;
+    el.results.parentNode.insertBefore(hint, el.results);
   }
 
   function renderChips() {

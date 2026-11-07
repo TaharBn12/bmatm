@@ -564,3 +564,43 @@
   .result-card--skeleton .result-card__thumb,
   .result-card--skeleton .sk-line { animation: none; }
 }
+
+/* ---------- بطاقات الاقتراحات الحقيقية ---------- */
+.result-card--suggested {
+  color: inherit;
+  text-decoration: none;
+}
+.result-card--suggested:hover {
+  transform: translateY(-3px);
+  border-color: rgba(197, 165, 114, .3);
+  box-shadow: 0 16px 34px rgba(0, 0, 0, .42);
+}
+.result-card__thumb--empty {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(140deg, #10161f, #0b0f16);
+  color: var(--muted-2);
+}
+.result-card__thumb--empty svg {
+  width: 48px;
+  height: 48px;
+}
+.result-card__open {
+  position: absolute;
+  inset-block-end: 8px;
+  inset-inline-end: 8px;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: rgba(197, 165, 114, .9);
+  color: #141006;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, .4);
+}
+.result-card__open svg {
+  width: 16px;
+  height: 16px;
+}
