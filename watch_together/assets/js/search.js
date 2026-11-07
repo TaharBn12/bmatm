@@ -284,7 +284,7 @@
       }
       if (!result) {
         state.server = false;
-        if (state.site === 'youtube') {
+        if (state.site === 'youtube' || state.site === 'pornflip') {
           result = { items: [], source: 'none' };
         } else {
           result = await fromDailymotion(query, LIMIT);
