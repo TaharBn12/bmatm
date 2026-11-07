@@ -1,9 +1,39 @@
 /* Same-origin extraction, with cancellable accessible progress dialog. */
 (function () {
   'use strict';
-  window.WTResolve = async function (raw) {
+  window.WTResolve = async function (raw, opts) {
+    opts = opts || {};
     const parsed = WTUtil.parseWatchUrl(raw);
     if (!parsed) throw new Error('أدخل رابط فيديو صالحاً');
+    /* قوائم التشغيل تُستخرج عبر الخادم حتى لو لم تكن من نوع embed. */
+    if (parsed.kind === 'youtube-playlist') {
+      const dialog = document.createElement('dialog');
+      dialog.className = 'resolve-dialog glass';
+      dialog.innerHTML = '<h2>تجهيز قائمة التشغيل</h2><p role="status"><span class="spinner"></span> جارٍ قراءة قائمة التشغيل…</p><p>قد يستغرق ذلك حتى 40 ثانية. لا تغلق الصفحة.</p><button type="button" class="btn btn--ghost">إلغاء</button>';
+      document.body.append(dialog);
+      const ctrl = new AbortController();
+      const cancel = () => ctrl.abort();
+      dialog.querySelector('button').onclick = cancel;
+      dialog.addEventListener('cancel', cancel);
+      const timer = setTimeout(cancel, 45000);
+      dialog.showModal();
+      try {
+        const endpoint = (window.WTServer && window.WTServer.api) ? window.WTServer.api('api/resolve') : 'api/resolve';
+        const response = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url: raw, playlist: true, quality: opts.quality || '720' }), signal: ctrl.signal });
+        if (response.status === 426) {
+          throw new Error('السيرفر ' + String(endpoint).replace(/\/api\/resolve$/, '') +
+            ' ردّ 426 Upgrade Required — أي أنه لا يخدم طلبات HTTP (خدمة WebSocket أو عنوان خدمة أخرى). ' +
+            'انسخ عنوان خدمتك من لوحة Render وجرّبه بـ ?api=<العنوان>.');
+        }
+        let data;
+        try { data = await response.json(); } catch (_) { throw new Error('الاستخراج يحتاج خادم Java مع yt-dlp؛ الاستضافة الثابتة وحدها لا تكفي'); }
+        if (!response.ok || !data.playlist || !Array.isArray(data.items) || !data.items.length) throw new Error(data.error || 'تعذّر قراءة قائمة التشغيل');
+        return { parsed: { kind: 'youtube-playlist', id: parsed.id, src: raw, provider: 'YouTube', label: 'قائمة تشغيل يوتيوب' }, playlist: data.items, sourceUrl: raw, count: data.count };
+      } catch (e) {
+        if (e.name === 'AbortError') throw new Error('أُلغي الطلب أو انتهت مهلة الانتظار؛ يمكنك إعادة المحاولة');
+        throw e;
+      } finally { clearTimeout(timer); dialog.close(); dialog.remove(); }
+    }
     if (parsed.kind !== 'embed') return { parsed, title: '' };
     const dialog = document.createElement('dialog');
     dialog.className = 'resolve-dialog glass';
@@ -17,11 +47,11 @@
     dialog.showModal();
     try {
       const endpoint = (window.WTServer && window.WTServer.api) ? window.WTServer.api('api/resolve') : 'api/resolve';
-      const response = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url: raw }), signal: ctrl.signal });
+      const response = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url: raw, quality: opts.quality || '720' }), signal: ctrl.signal });
       if (response.status === 426) {   /* العنوان لا يخدم HTTP: ليس سيرفر API */
         throw new Error('السيرفر ' + String(endpoint).replace(/\/api\/resolve$/, '') +
           ' ردّ 426 Upgrade Required — أي أنه لا يخدم طلبات HTTP (خدمة WebSocket أو عنوان خدمة أخرى). ' +
-          'انسخ عنوان خدمتك من لوحة Render وجرّبه بـ ?api=<العنوان>.');
+          'انسخ عنوان خدمتك من لوحة Render وجرّبه بـ ?api=<العنوان>.');  
       }
       let data;
       try { data = await response.json(); } catch (_) {

@@ -506,6 +506,22 @@
       bindTransport(transport);
       session.ready = true;
 
+      /* تطبيق عناصر قائمة التشغيل المؤجلة من استيراد قائمة تشغيل يوتيوب (الصفحة الرئيسية) */
+      try {
+        const pending = sessionStorage.getItem('wt:playlist:' + roomId);
+        if (pending) {
+          const items = JSON.parse(pending);
+          if (Array.isArray(items) && items.length) {
+            for (const item of items) {
+              if (session.transport && typeof session.transport.addQueueItem === 'function') {
+                await session.transport.addQueueItem({ id: item.id, url: item.url, title: item.title || '' });
+              }
+            }
+            sessionStorage.removeItem('wt:playlist:' + roomId);
+          }
+        }
+      } catch (_) { /* التخزين المؤقت غير متاح — تُتجاهل عناصر قائمة التشغيل المؤجلة */ }
+
       /* تنبيه صريح: الوضع المحلي يعني أن الأصدقاء لن يلتحقوا بك */
       if (transport.kind === 'local') warnLocalMode();
 
