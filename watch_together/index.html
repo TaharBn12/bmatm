@@ -94,6 +94,12 @@
         <label class="label" for="videoUrl">رابط الفيديو <span class="label__opt">(اختياري)</span></label>
         <input class="input input--ltr" id="videoUrl" type="url" inputmode="url" spellcheck="false" placeholder="https://…">
       </div>
+      <div id="resolvedHint" class="room-dialog__choice" hidden>
+        <span class="label">الرابط المستخرج من المصدر</span>
+        <a id="resolvedLink" class="input input--ltr" target="_blank" rel="noopener"></a>
+        <button class="btn btn--ghost btn--small" type="button" id="copyResolved">نسخ الرابط</button>
+        <p id="resolvedMeta" class="room-dialog__hint"></p>
+      </div>
       <div>
         <label class="label" for="videoQuality">جودة الفيديو <span class="label__opt">(تُطبّق على روابط يوتيوب والرييلز)</span></label>
         <select class="input" id="videoQuality" name="videoQuality">

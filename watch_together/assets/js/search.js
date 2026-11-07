@@ -35,10 +35,6 @@
 
   const QUICK_DM = ['وثائقيات', 'موسيقى', 'طبخ', 'رياضة', 'تقنية', 'أفلام قصيرة'];
   const QUICK_YT = ['محاضرات', 'قرآن', 'أغاني', 'برمجة', 'طبخ', 'رياضة'];
-  const QUICK_TIKTOK = ['مطبخ', 'رقص', 'كوميديا', 'رياضة', 'تقنية', 'DIY'];
-  const QUICK_KICK = ['العاب', 'تفاعل', 'موسيقى', 'برمجة', 'لايف', 'رياضة'];
-  const QUICK_TWITCH = ['العاب', 'بث مباشر', 'تفاعل', 'برمجة', 'موسيقى', 'رياضة'];
-  const QUICK_PORNFLIP = ['مطابقة', 'جديد', 'مشاهير', 'فئات', 'عالي الدقة'];
   const RECENT_KEY = 'search:recent';
   const SITE_KEY = 'search:site';
   const PENDING = 'pending-queue:';
@@ -53,18 +49,6 @@
     dailymotion: [
       { id: 'x76l7q9', site: 'dailymotion', title: 'فيديو مقترح من ديليموشن', url: 'https://www.dailymotion.com/video/x76l7q9', thumb: 'https://www.dailymotion.com/thumbnail/video/x76l7q9', duration: 0, author: 'Dailymotion' }
     ],
-    tiktok: [
-      { id: 'tiktok', site: 'tiktok', title: 'تيك توك — استكشف المحتوى', url: 'https://www.tiktok.com/', thumb: '', duration: 0, author: 'TikTok' }
-    ],
-    kick: [
-      { id: 'kick', site: 'kick', title: 'كيك — استكشف البث المباشر', url: 'https://kick.com/', thumb: '', duration: 0, author: 'Kick' }
-    ],
-    twitch: [
-      { id: 'twitch', site: 'twitch', title: 'تويتش — استكشف البث المباشر', url: 'https://www.twitch.tv/', thumb: '', duration: 0, author: 'Twitch' }
-    ],
-    pornflip: [
-      { id: 'pornflip', site: 'pornflip', title: 'PornFlip — استكشف المحتوى', url: 'https://www.pornflip.com/', thumb: '', duration: 0, author: 'PornFlip' }
-    ]
   };
 
   const state = {
@@ -127,33 +111,20 @@
     if (!id) return null;
     const isYT = site === 'youtube';
     const isDM = site === 'dailymotion';
-    const isTT = site === 'tiktok';
-    const isKick = site === 'kick';
-    const isTwitch = site === 'twitch';
-    const isPF = site === 'pornflip';
-    /* يوتيوب: معرف 11 محرفاً صارم. ديليموشن: أحرف وأرقام حتى 32.
-       تيك توك/كيك/تويتش/PornFlip: أي نص غير فارغ (المعرف قد يكون رقم طويل أو اسم قناة). */
+    /* يوتيوب: معرف 11 محرفاً صارم. ديليموشن: أحرف وأرقام حتى 32. */
     if (isYT && !/^[A-Za-z0-9_-]{11}$/.test(id)) return null;
     if (isDM && !/^[a-zA-Z0-9]{1,32}$/.test(id)) return null;
     let url = String(raw.url || '').trim();
     if (!url) {
       if (isYT) url = 'https://www.youtube.com/watch?v=' + id;
       else if (isDM) url = 'https://www.dailymotion.com/video/' + id;
-      else if (isTT) url = 'https://www.tiktok.com/video/' + id;
-      else if (isKick) url = 'https://kick.com/' + id;
-      else if (isTwitch) url = 'https://www.twitch.tv/' + id;
-      else if (isPF) url = 'https://www.pornflip.com/video/' + id;
     }
     let thumb = String(raw.thumb || '').trim();
     if (!thumb && isYT) thumb = 'https://i.ytimg.com/vi/' + id + '/hqdefault.jpg';
     if (!thumb && isDM) thumb = 'https://www.dailymotion.com/thumbnail/video/' + id;
-    if (!thumb && isTT) thumb = 'https://www.tiktok.com/thumbnail/video/' + id;
-    if (!thumb && isKick) thumb = 'https://kick.com/thumbnail/' + id;
-    if (!thumb && isTwitch) thumb = 'https://static-cdn.jtvnw.net/previews-ttv/live_user_' + id + '-320x180.jpg';
-    if (!thumb && isPF) thumb = 'https://www.pornflip.com/thumb/' + id + '.jpg';
     let author = String(raw.author || raw.owner || '').trim();
     if (author === 'undefined' || author === 'null') author = '';
-    const siteName = isYT ? 'youtube' : isDM ? 'dailymotion' : isTT ? 'tiktok' : isKick ? 'kick' : isTwitch ? 'twitch' : 'pornflip';
+    const siteName = isYT ? 'youtube' : 'dailymotion';
     return {
       id: id, site: siteName,
       title: String(raw.title || '').trim() || 'بدون عنوان',
@@ -307,7 +278,7 @@
       }
       if (!result) {
         state.server = false;
-        if (state.site === 'youtube' || state.site === 'pornflip') {
+        if (state.site === 'youtube') {
           result = { items: [], source: 'none' };
         } else {
           result = await fromDailymotion(query, LIMIT);
@@ -328,9 +299,7 @@
                   : ' — على استضافة ثابتة: اضبط javaServer.apiBase بعنوان سيرفر Render في assets/js/config.js') +
                 ' — حدّث yt-dlp ثم أعد المحاولة: py -m pip install -U yt-dlp'
               : 'لم يُرجع يوتيوب نتائج عن «' + query + '» — حدّث yt-dlp ثم أعد المحاولة: py -m pip install -U yt-dlp')
-          : state.server === false && ['tiktok','kick','twitch','pornflip'].includes(state.site)
-            ? 'لا نتائج لـ «' + query + '» في ' + { tiktok: 'تيك توك', kick: 'كيك', twitch: 'تويتش', pornflip: 'PornFlip' }[state.site] + ' — جرّب كلمة أخرى أو افتح النتائج على موقعها الأصلي.'
-            : 'لا نتائج لـ «' + query + '» — جرّب كلمة أخرى';
+          : 'لا نتائج لـ «' + query + '» في ديليموشن — جرّب كلمة أخرى.';
         status('');
         /* عرض اقتراحات حقيقية من المنصة نفسها عندما يكون البحث فارغاً */
         const suggested = SUGGESTED[state.site] || [];
@@ -390,15 +359,7 @@
     }
     const siteMsg = state.site === 'youtube'
       ? 'بحث يوتيوب يحتاج سيرفر Java مع yt-dlp. '
-      : state.site === 'dailymotion'
-        ? 'نتائج البحث تعمل، لكن استخراج رابط التشغيل المباشر يحتاج سيرفر Java مع yt-dlp. '
-        : state.site === 'tiktok'
-          ? 'تيك توك: النتائج تُفتح على تيك توك مباشرة؛ يمكن استخراج رابط التشغيل عبر السيرفر إن كان يعمل. '
-          : state.site === 'kick'
-            ? 'كيك: النتائج تُفتح على كيك مباشرة؛ البث المباشر يعمل عبر متصفحك دون استخراج رابط. '
-            : state.site === 'twitch'
-              ? 'تويتش: النتائج تُفتح على تويتش مباشرة؛ البث المباشر يعمل عبر متصفحك دون استخراج رابط. '
-              : 'PornFlip: النتائج تُفتح على PornFlip مباشرة؛ يمكن استخراج رابط التشغيل عبر السيرفر إن كان يعمل. ';
+      : 'نتائج البحث تعمل، لكن استخراج رابط التشغيل المباشر يحتاج سيرفر Java مع yt-dlp. ';
     el.noteText.textContent = siteMsg + where;
   }
 
@@ -451,17 +412,13 @@
     /* رسالة توضيحية فوق الاقتراحات */
     const hint = document.createElement('p');
     hint.className = 'search-status search-status--suggested';
-    hint.textContent = 'لا نتائج — مقترحات من ' + { youtube: 'يوتيوب', dailymotion: 'ديليموشن', tiktok: 'تيك توك', kick: 'كيك', twitch: 'تويتش', pornflip: 'PornFlip' }[state.site] || state.site;
+    hint.textContent = 'لا نتائج — مقترحات من ' + { youtube: 'يوتيوب', dailymotion: 'ديليموشن' }[state.site] || state.site;
     el.results.parentNode.insertBefore(hint, el.results);
   }
 
   function renderChips() {
     const list = recent();
     const quick = state.site === 'youtube' ? QUICK_YT
-      : state.site === 'tiktok' ? QUICK_TIKTOK
-      : state.site === 'kick' ? QUICK_KICK
-      : state.site === 'twitch' ? QUICK_TWITCH
-      : state.site === 'pornflip' ? QUICK_PORNFLIP
       : QUICK_DM;
     const terms = list.concat(quick.filter(v => list.indexOf(v) < 0)).slice(0, 8);
     el.chips.innerHTML = terms.map(term => {
@@ -481,10 +438,10 @@
     });
   }
 
-  const SITE_LABEL_AR = { youtube: 'يوتيوب', dailymotion: 'ديليموشن', tiktok: 'تيك توك', kick: 'كيك', twitch: 'تويتش', pornflip: 'PornFlip' };
+  const SITE_LABEL_AR = { youtube: 'يوتيوب', dailymotion: 'ديليموشن' };
 
   function setSite(site, run) {
-    state.site = ['youtube','dailymotion','tiktok','kick','twitch','pornflip'].includes(site) ? site : 'dailymotion';
+    state.site = ['youtube','dailymotion'].includes(site) ? site : 'dailymotion';
     store(SITE_KEY, state.site);
     const badge = $('searchSourceBadge');
     if (badge) badge.textContent = SITE_LABEL_AR[state.site];
@@ -602,11 +559,7 @@
       el.source.href = item.url;
       el.source.hidden = false;
       el.source.textContent = 'افتح على ' + {
-        dailymotion: 'ديليموشن',
-        tiktok: 'تيك توك',
-        kick: 'كيك',
-        twitch: 'تويتش',
-        pornflip: 'PornFlip'
+        dailymotion: 'ديليموشن'
       }[item.site] || 'الموقع الأصلي';
     }
   }
@@ -810,14 +763,14 @@
   /* ============================== 7) البداية ============================== */
 
   const savedSite = store(SITE_KEY);
-  if (['youtube','dailymotion','tiktok','kick','twitch','pornflip'].includes(savedSite)) state.site = savedSite;
+  if (['youtube','dailymotion'].includes(savedSite)) state.site = savedSite;
   const badge = $('searchSourceBadge');
   if (badge) badge.textContent = SITE_LABEL_AR[state.site];
   renderTabs();
   renderChips();
 
   const params = new URLSearchParams(location.search);
-  if (params.get('site')) { const s = params.get('site'); if (['youtube','dailymotion','tiktok','kick','twitch','pornflip'].includes(s)) state.site = s; }
+  if (params.get('site')) { const s = params.get('site'); if (['youtube','dailymotion'].includes(s)) state.site = s; }
   if (badge) badge.textContent = SITE_LABEL_AR[state.site];
   renderTabs();
   const initial = params.get('q');
