@@ -38,6 +38,7 @@
   const QUICK_TIKTOK = ['مطبخ', 'رقص', 'كوميديا', 'رياضة', 'تقنية', 'DIY'];
   const QUICK_KICK = ['العاب', 'تفاعل', 'موسيقى', 'برمجة', 'لايف', 'رياضة'];
   const QUICK_TWITCH = ['العاب', 'بث مباشر', 'تفاعل', 'برمجة', 'موسيقى', 'رياضة'];
+  const QUICK_PORNFLIP = ['مطابقة', 'جديد', 'مشاهير', 'فئات', 'عالي الدقة'];
   const RECENT_KEY = 'search:recent';
   const SITE_KEY = 'search:site';
   const PENDING = 'pending-queue:';
@@ -106,8 +107,9 @@
     const isTT = site === 'tiktok';
     const isKick = site === 'kick';
     const isTwitch = site === 'twitch';
+    const isPF = site === 'pornflip';
     /* يوتيوب: معرف 11 محرفاً صارم. ديليموشن: أحرف وأرقام حتى 32.
-       تيك توك/كيك/تويتش: أي نص غير فارغ (المعرف قد يكون رقم طويل أو اسم قناة). */
+       تيك توك/كيك/تويتش/PornFlip: أي نص غير فارغ (المعرف قد يكون رقم طويل أو اسم قناة). */
     if (isYT && !/^[A-Za-z0-9_-]{11}$/.test(id)) return null;
     if (isDM && !/^[a-zA-Z0-9]{1,32}$/.test(id)) return null;
     let url = String(raw.url || '').trim();
@@ -117,6 +119,7 @@
       else if (isTT) url = 'https://www.tiktok.com/video/' + id;
       else if (isKick) url = 'https://kick.com/' + id;
       else if (isTwitch) url = 'https://www.twitch.tv/' + id;
+      else if (isPF) url = 'https://www.pornflip.com/video/' + id;
     }
     let thumb = String(raw.thumb || '').trim();
     if (!thumb && isYT) thumb = 'https://i.ytimg.com/vi/' + id + '/hqdefault.jpg';
@@ -124,9 +127,10 @@
     if (!thumb && isTT) thumb = 'https://www.tiktok.com/thumbnail/video/' + id;
     if (!thumb && isKick) thumb = 'https://kick.com/thumbnail/' + id;
     if (!thumb && isTwitch) thumb = 'https://static-cdn.jtvnw.net/previews-ttv/live_user_' + id + '-320x180.jpg';
+    if (!thumb && isPF) thumb = 'https://www.pornflip.com/thumb/' + id + '.jpg';
     let author = String(raw.author || raw.owner || '').trim();
     if (author === 'undefined' || author === 'null') author = '';
-    const siteName = isYT ? 'youtube' : isDM ? 'dailymotion' : isTT ? 'tiktok' : isKick ? 'kick' : 'twitch';
+    const siteName = isYT ? 'youtube' : isDM ? 'dailymotion' : isTT ? 'tiktok' : isKick ? 'kick' : isTwitch ? 'twitch' : 'pornflip';
     return {
       id: id, site: siteName,
       title: String(raw.title || '').trim() || 'بدون عنوان',
@@ -301,8 +305,8 @@
                   : ' — على استضافة ثابتة: اضبط javaServer.apiBase بعنوان سيرفر Render في assets/js/config.js') +
                 ' — حدّث yt-dlp ثم أعد المحاولة: py -m pip install -U yt-dlp'
               : 'لم يُرجع يوتيوب نتائج عن «' + query + '» — حدّث yt-dlp ثم أعد المحاولة: py -m pip install -U yt-dlp')
-          : state.server === false && ['tiktok','kick','twitch'].includes(state.site)
-            ? 'لا نتائج لـ «' + query + '» في ' + { tiktok: 'تيك توك', kick: 'كيك', twitch: 'تويتش' }[state.site] + ' — جرّب كلمة أخرى أو افتح النتائج على موقعها الأصلي.'
+          : state.server === false && ['tiktok','kick','twitch','pornflip'].includes(state.site)
+            ? 'لا نتائج لـ «' + query + '» في ' + { tiktok: 'تيك توك', kick: 'كيك', twitch: 'تويتش', pornflip: 'PornFlip' }[state.site] + ' — جرّب كلمة أخرى أو افتح النتائج على موقعها الأصلي.'
             : 'لا نتائج لـ «' + query + '» — جرّب كلمة أخرى';
         status('');
       } else {
@@ -360,7 +364,9 @@
           ? 'تيك توك: النتائج تُفتح على تيك توك مباشرة؛ يمكن استخراج رابط التشغيل عبر السيرفر إن كان يعمل. '
           : state.site === 'kick'
             ? 'كيك: النتائج تُفتح على كيك مباشرة؛ البث المباشر يعمل عبر متصفحك دون استخراج رابط. '
-            : 'تويتش: النتائج تُفتح على تويتش مباشرة؛ البث المباشر يعمل عبر متصفحك دون استخراج رابط. ';
+            : state.site === 'twitch'
+              ? 'تويتش: النتائج تُفتح على تويتش مباشرة؛ البث المباشر يعمل عبر متصفحك دون استخراج رابط. '
+              : 'PornFlip: النتائج تُفتح على PornFlip مباشرة؛ يمكن استخراج رابط التشغيل عبر السيرفر إن كان يعمل. ';
     el.noteText.textContent = siteMsg + where;
   }
 
@@ -393,6 +399,7 @@
       : state.site === 'tiktok' ? QUICK_TIKTOK
       : state.site === 'kick' ? QUICK_KICK
       : state.site === 'twitch' ? QUICK_TWITCH
+      : state.site === 'pornflip' ? QUICK_PORNFLIP
       : QUICK_DM;
     const terms = list.concat(quick.filter(v => list.indexOf(v) < 0)).slice(0, 8);
     el.chips.innerHTML = terms.map(term => {
@@ -412,10 +419,10 @@
     });
   }
 
-  const SITE_LABEL_AR = { youtube: 'يوتيوب', dailymotion: 'ديليموشن', tiktok: 'تيك توك', kick: 'كيك', twitch: 'تويتش' };
+  const SITE_LABEL_AR = { youtube: 'يوتيوب', dailymotion: 'ديليموشن', tiktok: 'تيك توك', kick: 'كيك', twitch: 'تويتش', pornflip: 'PornFlip' };
 
   function setSite(site, run) {
-    state.site = ['youtube','dailymotion','tiktok','kick','twitch'].includes(site) ? site : 'dailymotion';
+    state.site = ['youtube','dailymotion','tiktok','kick','twitch','pornflip'].includes(site) ? site : 'dailymotion';
     store(SITE_KEY, state.site);
     const badge = $('searchSourceBadge');
     if (badge) badge.textContent = SITE_LABEL_AR[state.site];
@@ -536,7 +543,8 @@
         dailymotion: 'ديليموشن',
         tiktok: 'تيك توك',
         kick: 'كيك',
-        twitch: 'تويتش'
+        twitch: 'تويتش',
+        pornflip: 'PornFlip'
       }[item.site] || 'الموقع الأصلي';
     }
   }
@@ -740,14 +748,14 @@
   /* ============================== 7) البداية ============================== */
 
   const savedSite = store(SITE_KEY);
-  if (['youtube','dailymotion','tiktok','kick','twitch'].includes(savedSite)) state.site = savedSite;
+  if (['youtube','dailymotion','tiktok','kick','twitch','pornflip'].includes(savedSite)) state.site = savedSite;
   const badge = $('searchSourceBadge');
   if (badge) badge.textContent = SITE_LABEL_AR[state.site];
   renderTabs();
   renderChips();
 
   const params = new URLSearchParams(location.search);
-  if (params.get('site')) { const s = params.get('site'); if (['youtube','dailymotion','tiktok','kick','twitch'].includes(s)) state.site = s; }
+  if (params.get('site')) { const s = params.get('site'); if (['youtube','dailymotion','tiktok','kick','twitch','pornflip'].includes(s)) state.site = s; }
   if (badge) badge.textContent = SITE_LABEL_AR[state.site];
   renderTabs();
   const initial = params.get('q');

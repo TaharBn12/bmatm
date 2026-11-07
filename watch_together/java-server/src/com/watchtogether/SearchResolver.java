@@ -54,6 +54,9 @@ public final class SearchResolver {
     private static final String TWITCH_WATCH = "https://www.twitch.tv/";
     private static final String TWITCH_SEARCH = "https://www.twitch.tv/search?term=";
     private static final String TWITCH_THUMB = "https://static-cdn.jtvnw.net/previews-ttv/live_user_";
+    private static final String PF_WATCH = "https://www.pornflip.com/video/";
+    private static final String PF_SEARCH = "https://www.pornflip.com/search?q=";
+    private static final String PF_THUMB = "https://www.pornflip.com/thumbs/";
 
     private static final Semaphore SLOTS = new Semaphore(2);
     private static long windowStart = System.currentTimeMillis();
@@ -83,23 +86,24 @@ public final class SearchResolver {
             boolean tiktok = site.equals("tiktok") || site.equals("تيك");
             boolean kick = site.equals("kick");
             boolean twitch = site.equals("twitch") || site.equals("تويتش");
+            boolean pornflip = site.equals("pornflip") || site.equals("بورن فليب");
 
             if (!permit()) { status = 429; throw new IllegalArgumentException("تم تجاوز حدّ البحث؛ انتظر قليلاً"); }
             acquired = SLOTS.tryAcquire();
             if (!acquired) { status = 429; throw new IllegalArgumentException("الخدمة مشغولة؛ أعد المحاولة بعد قليل"); }
 
-            List<Map<String, Object>> items = viaYtDlp(term, limit, youtube, tiktok, kick, twitch);
+            List<Map<String, Object>> items = viaYtDlp(term, limit, youtube, tiktok, kick, twitch, pornflip);
             String source = "yt-dlp";
-            String resolvedSite = youtube ? "youtube" : tiktok ? "tiktok" : kick ? "kick" : twitch ? "twitch" : "dailymotion";
-            if (items.isEmpty() && !youtube && !tiktok && !kick && !twitch) {
+            String resolvedSite = youtube ? "youtube" : tiktok ? "tiktok" : kick ? "kick" : twitch ? "twitch" : pornflip ? "pornflip" : "dailymotion";
+            if (items.isEmpty() && !youtube && !tiktok && !kick && !twitch && !pornflip) {
                 items = viaApi(term, limit);
                 source = "dailymotion-api";
-            } else if (!items.isEmpty() && !youtube && !tiktok && !kick && !twitch) {
+            } else if (!items.isEmpty() && !youtube && !tiktok && !kick && !twitch && !pornflip) {
                 enrich(items);
             }
             result.put("query", term);
             result.put("site", resolvedSite);
-            result.put("source", items.isEmpty() && (youtube || tiktok || kick || twitch) ? "none" : source);
+            result.put("source", items.isEmpty() && (youtube || tiktok || kick || twitch || pornflip) ? "none" : source);
             result.put("count", items.size());
             result.put("items", items);
         } catch (IllegalArgumentException e) {
@@ -126,7 +130,7 @@ public final class SearchResolver {
     /* =========================================================
        1) البحث عبر yt-dlp (مستخرج dailymotion:search)
        ========================================================= */
-    private static List<Map<String, Object>> viaYtDlp(String term, int limit, boolean youtube, boolean tiktok, boolean kick, boolean twitch) {
+    private static List<Map<String, Object>> viaYtDlp(String term, int limit, boolean youtube, boolean tiktok, boolean kick, boolean twitch, boolean pornflip) {
         Path out = null;
         Process p = null;
         try {
@@ -135,6 +139,7 @@ public final class SearchResolver {
                تيك توك: صفحة الوسم tiktok.com/tag/كلمة
                كيك: kick.com/search?q=كلمة
                تويتش: twitch.tv/search?term=كلمة
+               PornFlip: pornflip.com/search?q=كلمة
                ديليموشن: dailymotion.com/search/كلمة/videos */
             String search;
             if (youtube) {
@@ -145,6 +150,8 @@ public final class SearchResolver {
                 search = KICK_SEARCH + URLEncoder.encode(term, "UTF-8");
             } else if (twitch) {
                 search = TWITCH_SEARCH + URLEncoder.encode(term, "UTF-8");
+            } else if (pornflip) {
+                search = PF_SEARCH + URLEncoder.encode(term, "UTF-8");
             } else {
                 search = SEARCH_HOST + URLEncoder.encode(term, "UTF-8") + "/videos";
             }
@@ -169,7 +176,7 @@ public final class SearchResolver {
             Files.deleteIfExists(err);
             List<Map<String, Object>> items = new ArrayList<>();
             for (String line : read(out).split("\\R")) {
-                Map<String, Object> item = fromRow(line, youtube, tiktok, kick, twitch);
+                Map<String, Object> item = fromRow(line, youtube, tiktok, kick, twitch, pornflip);
                 if (item != null) items.add(item);
                 if (items.size() >= limit) break;
             }
@@ -186,7 +193,7 @@ public final class SearchResolver {
      * سطر من yt-dlp: id \t title \t url \t duration
      * العنوان والرابط يُبنيان من المعرّف نفسه، فلا نثق بروابط يكتبها الوسيط.
      */
-    private static Map<String, Object> fromRow(String line, boolean youtube, boolean tiktok, boolean kick, boolean twitch) {
+    private static Map<String, Object> fromRow(String line, boolean youtube, boolean tiktok, boolean kick, boolean twitch, boolean pornflip) {
         if (line == null) return null;
         String t = line.trim();
         if (t.isEmpty()) return null;
@@ -195,7 +202,7 @@ public final class SearchResolver {
         String title = col(parts, 1);
         long duration = 0;
         try { duration = Long.parseLong(col(parts, 3)); } catch (Exception ignored) { }
-        if (id.isEmpty() || !isId(id, youtube, tiktok, kick, twitch)) return null;
+        if (id.isEmpty() || !isId(id, youtube, tiktok, kick, twitch, pornflip)) return null;
         if (title.isEmpty() || "NA".equals(title)) title = "";
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("id", id);
@@ -204,6 +211,7 @@ public final class SearchResolver {
         else if (tiktok) { m.put("url", TT_WATCH + id); m.put("thumb", THUMB + id); }
         else if (kick) { m.put("url", KICK_WATCH + id); m.put("thumb", THUMB + id); }
         else if (twitch) { m.put("url", TWITCH_WATCH + id); m.put("thumb", TWITCH_THUMB + id + "-320x180.jpg"); }
+        else if (pornflip) { m.put("url", PF_WATCH + id); m.put("thumb", PF_THUMB + id + ".jpg"); }
         else { m.put("url", DM_WATCH + id); m.put("thumb", THUMB + id); }
         m.put("duration", duration);
         m.put("author", "");
@@ -358,12 +366,12 @@ public final class SearchResolver {
     }
 
     /** معرّف يوتيوب: 11 محرفاً صارم · ديليموشن: حروف وأرقام حتى 32 · تيك توك/كيك/تويتش: أي نص غير فارغ */
-    private static boolean isId(String id, boolean youtube, boolean tiktok, boolean kick, boolean twitch) {
+    private static boolean isId(String id, boolean youtube, boolean tiktok, boolean kick, boolean twitch, boolean pornflip) {
         if (id == null) return false;
         String v = id.trim();
         if (v.isEmpty()) return false;
         if (youtube) return v.length() == 11 && v.matches("[A-Za-z0-9_-]{11}");
-        if (tiktok || kick || twitch) return true; /* أي معرف غير فارغ مقبول لهذه المنصات */
+        if (tiktok || kick || twitch || pornflip) return true; /* أي معرف غير فارغ مقبول لهذه المنصات */
         if (v.length() > 32) return false;
         for (int i = 0; i < v.length(); i++) {
             char c = v.charAt(i);

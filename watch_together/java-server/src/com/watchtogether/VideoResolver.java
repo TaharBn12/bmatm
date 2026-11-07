@@ -15,7 +15,7 @@ public final class VideoResolver {
         "youtube.com", "www.youtube.com", "m.youtube.com", "youtu.be",
         "vimeo.com", "dailymotion.com", "dai.ly", "tiktok.com", "www.tiktok.com", "vm.tiktok.com",
         "twitter.com", "x.com", "facebook.com", "fb.watch", "instagram.com", "www.instagram.com",
-        "kick.com", "www.kick.com", "twitch.tv", "www.twitch.tv"));
+        "kick.com", "www.kick.com", "twitch.tv", "www.twitch.tv", "pornflip.com", "www.pornflip.com"));
 
     /**
      * خرج yt-dlp بفواصل تبويب لا بصيغة JSON.
