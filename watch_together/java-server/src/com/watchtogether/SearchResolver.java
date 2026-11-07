@@ -217,7 +217,7 @@ public final class SearchResolver {
         StringBuilder ids = new StringBuilder();
         for (Map<String, Object> item : items) {
             String id = String.valueOf(item.get("id"));
-            if (isId(id, false)) { if (ids.length() > 0) ids.append(','); ids.append(id); }
+            if (isId(id, false, false, false, false)) { if (ids.length() > 0) ids.append(','); ids.append(id); }
         }
         if (ids.length() == 0) return;
         Object data = httpJson(API + "?ids=" + ids + "&limit=" + Math.min(100, items.size() + 4)
@@ -265,7 +265,7 @@ public final class SearchResolver {
             Map<String, Object> v = Json.asMap(entry);
             if (v == null) continue;
             String id = Json.str(v, "id", "");
-            if (!isId(id, false)) continue;
+            if (!isId(id, false, false, false, false)) continue;
             String author = Json.str(v, "owner.username", "");
             if (author.isEmpty()) author = Json.str(Json.asMap(v.get("owner")), "username", "");
             Map<String, Object> m = new LinkedHashMap<>();
