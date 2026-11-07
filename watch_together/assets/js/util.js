@@ -116,7 +116,10 @@
       /* 5) تويتش (بث مباشر أو فيديو) */
       if (/twitch\.tv\/(?:videos\/[0-9]+|[a-zA-Z0-9_]+)/i.test(url)) return { kind: 'twitch', src: url, provider: 'Twitch', label: 'تويتش' };
 
-      /* 6) رييلز إنستغرام */
+      /* 6) PornFlip */
+      if (/pornflip\.com\/(?:video|videos)\/[a-zA-Z0-9_-]+/i.test(url)) return { kind: 'pornflip', src: url, provider: 'PornFlip', label: 'PornFlip' };
+
+      /* 7) رييلز إنستغرام */
       if (/instagram\.com\/(reel|reels)\//i.test(url)) return { kind: 'instagram-reel', src: url, provider: 'Instagram', label: 'رييلز إنستغرام' };
 
       /* 5) HLS */
