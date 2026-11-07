@@ -35,6 +35,9 @@
 
   const QUICK_DM = ['وثائقيات', 'موسيقى', 'طبخ', 'رياضة', 'تقنية', 'أفلام قصيرة'];
   const QUICK_YT = ['محاضرات', 'قرآن', 'أغاني', 'برمجة', 'طبخ', 'رياضة'];
+  const QUICK_TIKTOK = ['مطبخ', 'رقص', 'كوميديا', 'رياضة', 'تقنية', 'DIY'];
+  const QUICK_KICK = ['العاب', 'تفاعل', 'موسيقى', 'برمجة', 'لايف', 'رياضة'];
+  const QUICK_TWITCH = ['العاب', 'بث مباشر', 'تفاعل', 'برمجة', 'موسيقى', 'رياضة'];
   const RECENT_KEY = 'search:recent';
   const SITE_KEY = 'search:site';
   const PENDING = 'pending-queue:';
@@ -98,17 +101,34 @@
     if (!raw || typeof raw !== 'object') return null;
     const id = String(raw.id || '').trim();
     if (!id) return null;
-    const youtube = site === 'youtube';
-    if (youtube ? !/^[A-Za-z0-9_-]{11}$/.test(id) : !/^[a-zA-Z0-9]{1,32}$/.test(id)) return null;
-    const url = youtube ? 'https://www.youtube.com/watch?v=' + id
-      : (String(raw.url || '').trim() || 'https://www.dailymotion.com/video/' + id);
+    const isYT = site === 'youtube';
+    const isDM = site === 'dailymotion';
+    const isTT = site === 'tiktok';
+    const isKick = site === 'kick';
+    const isTwitch = site === 'twitch';
+    /* يوتيوب: معرف 11 محرفاً صارم. ديليموشن: أحرف وأرقام حتى 32.
+       تيك توك/كيك/تويتش: أي نص غير فارغ (المعرف قد يكون رقم طويل أو اسم قناة). */
+    if (isYT && !/^[A-Za-z0-9_-]{11}$/.test(id)) return null;
+    if (isDM && !/^[a-zA-Z0-9]{1,32}$/.test(id)) return null;
+    let url = String(raw.url || '').trim();
+    if (!url) {
+      if (isYT) url = 'https://www.youtube.com/watch?v=' + id;
+      else if (isDM) url = 'https://www.dailymotion.com/video/' + id;
+      else if (isTT) url = 'https://www.tiktok.com/video/' + id;
+      else if (isKick) url = 'https://kick.com/' + id;
+      else if (isTwitch) url = 'https://www.twitch.tv/' + id;
+    }
     let thumb = String(raw.thumb || '').trim();
-    if (!thumb && youtube) thumb = 'https://i.ytimg.com/vi/' + id + '/hqdefault.jpg';
-    if (!thumb) thumb = 'https://www.dailymotion.com/thumbnail/video/' + id;
+    if (!thumb && isYT) thumb = 'https://i.ytimg.com/vi/' + id + '/hqdefault.jpg';
+    if (!thumb && isDM) thumb = 'https://www.dailymotion.com/thumbnail/video/' + id;
+    if (!thumb && isTT) thumb = 'https://www.tiktok.com/thumbnail/video/' + id;
+    if (!thumb && isKick) thumb = 'https://kick.com/thumbnail/' + id;
+    if (!thumb && isTwitch) thumb = 'https://static-cdn.jtvnw.net/previews-ttv/live_user_' + id + '-320x180.jpg';
     let author = String(raw.author || raw.owner || '').trim();
     if (author === 'undefined' || author === 'null') author = '';
+    const siteName = isYT ? 'youtube' : isDM ? 'dailymotion' : isTT ? 'tiktok' : isKick ? 'kick' : 'twitch';
     return {
-      id: id, site: youtube ? 'youtube' : 'dailymotion',
+      id: id, site: siteName,
       title: String(raw.title || '').trim() || 'بدون عنوان',
       url: url, thumb: thumb,
       duration: Number(raw.duration) || 0, author: author
@@ -278,9 +298,12 @@
               ? 'بحث يوتيوب يحتاج سيرفر Java مع yt-dlp' + (state.reason ? ' — ' + state.reason : '') +
                 (privateHost()
                   ? ' — افتح الصفحة من العنوان الذي تطبعه لافتة run.bat (مثل http://localhost:8081/search.html)'
-                  : ' — على استضافة ثابتة: اضبط javaServer.apiBase بعنوان سيرفر Render في assets/js/config.js')
+                  : ' — على استضافة ثابتة: اضبط javaServer.apiBase بعنوان سيرفر Render في assets/js/config.js') +
+                ' — حدّث yt-dlp ثم أعد المحاولة: py -m pip install -U yt-dlp'
               : 'لم يُرجع يوتيوب نتائج عن «' + query + '» — حدّث yt-dlp ثم أعد المحاولة: py -m pip install -U yt-dlp')
-          : 'لا نتائج لـ «' + query + '» — جرّب كلمة أخرى';
+          : state.server === false && ['tiktok','kick','twitch'].includes(state.site)
+            ? 'لا نتائج لـ «' + query + '» في ' + { tiktok: 'تيك توك', kick: 'كيك', twitch: 'تويتش' }[state.site] + ' — جرّب كلمة أخرى أو افتح النتائج على موقعها الأصلي.'
+            : 'لا نتائج لـ «' + query + '» — جرّب كلمة أخرى';
         status('');
       } else {
         render(state.items);
@@ -329,9 +352,16 @@
     } else {
       where = (state.reason || '') + ' — أغلق كل نسخة قديمة (taskkill /F /IM java.exe) ثم شغّل run.bat واقرأ المنفذ من اللافتة.';
     }
-    el.noteText.textContent = state.site === 'youtube'
-      ? 'بحث يوتيوب يحتاج سيرفر Java مع yt-dlp. ' + where
-      : 'نتائج البحث تعمل، لكن استخراج رابط التشغيل المباشر يحتاج سيرفر Java مع yt-dlp. ' + where;
+    const siteMsg = state.site === 'youtube'
+      ? 'بحث يوتيوب يحتاج سيرفر Java مع yt-dlp. '
+      : state.site === 'dailymotion'
+        ? 'نتائج البحث تعمل، لكن استخراج رابط التشغيل المباشر يحتاج سيرفر Java مع yt-dlp. '
+        : state.site === 'tiktok'
+          ? 'تيك توك: النتائج تُفتح على تيك توك مباشرة؛ يمكن استخراج رابط التشغيل عبر السيرفر إن كان يعمل. '
+          : state.site === 'kick'
+            ? 'كيك: النتائج تُفتح على كيك مباشرة؛ البث المباشر يعمل عبر متصفحك دون استخراج رابط. '
+            : 'تويتش: النتائج تُفتح على تويتش مباشرة؛ البث المباشر يعمل عبر متصفحك دون استخراج رابط. ';
+    el.noteText.textContent = siteMsg + where;
   }
 
   /* ============================== 3) العرض ============================== */
@@ -359,7 +389,11 @@
 
   function renderChips() {
     const list = recent();
-    const quick = state.site === 'youtube' ? QUICK_YT : QUICK_DM;
+    const quick = state.site === 'youtube' ? QUICK_YT
+      : state.site === 'tiktok' ? QUICK_TIKTOK
+      : state.site === 'kick' ? QUICK_KICK
+      : state.site === 'twitch' ? QUICK_TWITCH
+      : QUICK_DM;
     const terms = list.concat(quick.filter(v => list.indexOf(v) < 0)).slice(0, 8);
     el.chips.innerHTML = terms.map(term => {
       const isRecent = list.indexOf(term) >= 0;
@@ -378,9 +412,13 @@
     });
   }
 
+  const SITE_LABEL_AR = { youtube: 'يوتيوب', dailymotion: 'ديليموشن', tiktok: 'تيك توك', kick: 'كيك', twitch: 'تويتش' };
+
   function setSite(site, run) {
-    state.site = site === 'youtube' ? 'youtube' : 'dailymotion';
+    state.site = ['youtube','dailymotion','tiktok','kick','twitch'].includes(site) ? site : 'dailymotion';
     store(SITE_KEY, state.site);
+    const badge = $('searchSourceBadge');
+    if (badge) badge.textContent = SITE_LABEL_AR[state.site];
     renderTabs();
     renderChips();
     updateNote();
@@ -419,6 +457,7 @@
     el.queue.disabled = true;
     el.copy.disabled = true;
     el.source.href = item.url;
+    el.source.hidden = true;
     el.hint.hidden = true;
     if (typeof el.dialog.showModal === 'function') el.dialog.showModal();
     else el.dialog.setAttribute('open', '');
@@ -449,10 +488,12 @@
       f.src = 'https://www.youtube.com/embed/' + state.current.id + '?rel=0&autoplay=1';
       f.hidden = false;
       el.video.hidden = true;
+      el.source.hidden = true;
     } else {
       el.video.hidden = false;
       el.video.src = url;
       if (el.frame) el.frame.hidden = true;
+      el.source.hidden = true;
       const played = el.video.play();
       if (played && typeof played.catch === 'function') played.catch(() => { /* يمنع المتصفح التشغيل التلقائي */ });
     }
@@ -467,17 +508,36 @@
       ready(item.url, 'يُشغَّل يوتيوب بمشغّله الرسمي — لا حاجة لاستخراج رابط مباشر.');
       return;
     }
+    /* تيك توك/كيك/تويتش/ديليموشن: نحاول استخراج رابط التشغيل عبر السيرفر (yt-dlp).
+       إن تعذّر الاستعرض (لا سيرفر، أو المنصة غير مدعومة)، نعرض زر «افتح على موقعها الأصلي». */
     const cached = state.direct.get(item.id);
-    if (cached) { ready(cached, 'الرابط المباشر مؤقّت (توقيع من ديليموشن) — صالح للتشغيل الآن فقط.'); return; }
+    if (cached) {
+      ready(cached, item.site === 'dailymotion'
+        ? 'الرابط المباشر مؤقّت (توقيع من ديليموشن) — صالح للتشغيل الآن فقط.'
+        : 'الرابط المباشر مؤقّت — صالح للتشغيل الآن فقط.');
+      return;
+    }
     try {
       if (!window.WTResolve) throw new Error('خدمة الاستخراج غير متاحة في هذه النسخة');
       const media = await window.WTResolve(item.url);
       const src = media && media.parsed && media.parsed.src;
       if (!src) throw new Error('لم يرجع السيرفر رابط تشغيل');
       state.direct.set(item.id, src);
-      ready(src, 'الرابط المباشر مؤقّت (توقيع من ديليموشن) — صالح للتشغيل الآن فقط.');
+      ready(src, item.site === 'dailymotion'
+        ? 'الرابط المباشر مؤقّت (توقيع من ديليموشن) — صالح للتشغيل الآن فقط.'
+        : 'الرابط المباشر مؤقّت — صالح للتشغيل الآن فقط.');
     } catch (error) {
-      showError(error && error.message ? error.message : 'تعذّر استخراج رابط التشغيل');
+      showError(item.site === 'youtube'
+        ? 'تعذّر تجهيز مشغّل يوتيوب.'
+        : 'تعذّر استخراج رابط التشغيل — يمكنك فتح الفيديو على موقعها الأصلي من الزر بالأسفل.');
+      el.source.href = item.url;
+      el.source.hidden = false;
+      el.source.textContent = 'افتح على ' + {
+        dailymotion: 'ديليموشن',
+        tiktok: 'تيك توك',
+        kick: 'كيك',
+        twitch: 'تويتش'
+      }[item.site] || 'الموقع الأصلي';
     }
   }
 
@@ -680,12 +740,15 @@
   /* ============================== 7) البداية ============================== */
 
   const savedSite = store(SITE_KEY);
-  if (savedSite === 'youtube' || savedSite === 'dailymotion') state.site = savedSite;
+  if (['youtube','dailymotion','tiktok','kick','twitch'].includes(savedSite)) state.site = savedSite;
+  const badge = $('searchSourceBadge');
+  if (badge) badge.textContent = SITE_LABEL_AR[state.site];
   renderTabs();
   renderChips();
 
   const params = new URLSearchParams(location.search);
-  if (params.get('site')) { const s = params.get('site'); if (s === 'youtube' || s === 'dailymotion') state.site = s; }
+  if (params.get('site')) { const s = params.get('site'); if (['youtube','dailymotion','tiktok','kick','twitch'].includes(s)) state.site = s; }
+  if (badge) badge.textContent = SITE_LABEL_AR[state.site];
   renderTabs();
   const initial = params.get('q');
   if (initial) {

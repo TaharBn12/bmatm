@@ -110,7 +110,13 @@
       /* 3) تيك توك */
       if (/tiktok\.com|vm\.tiktok\.com/i.test(url)) return { kind: 'tiktok', src: url, provider: 'TikTok', label: 'تيك توك' };
 
-      /* 4) رييلز إنستغرام */
+      /* 4) كيك (بث مباشر) */
+      if (/kick\.com\/(?:[a-zA-Z0-9_]+|categories\/[a-zA-Z0-9_]+)/i.test(url)) return { kind: 'kick', src: url, provider: 'Kick', label: 'كيك' };
+
+      /* 5) تويتش (بث مباشر أو فيديو) */
+      if (/twitch\.tv\/(?:videos\/[0-9]+|[a-zA-Z0-9_]+)/i.test(url)) return { kind: 'twitch', src: url, provider: 'Twitch', label: 'تويتش' };
+
+      /* 6) رييلز إنستغرام */
       if (/instagram\.com\/(reel|reels)\//i.test(url)) return { kind: 'instagram-reel', src: url, provider: 'Instagram', label: 'رييلز إنستغرام' };
 
       /* 5) HLS */
