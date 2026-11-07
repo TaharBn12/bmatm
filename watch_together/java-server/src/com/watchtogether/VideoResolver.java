@@ -14,7 +14,8 @@ public final class VideoResolver {
     private static final Set<String> HOSTS = new HashSet<>(Arrays.asList(
         "youtube.com", "www.youtube.com", "m.youtube.com", "youtu.be",
         "vimeo.com", "dailymotion.com", "dai.ly", "tiktok.com", "www.tiktok.com", "vm.tiktok.com",
-        "twitter.com", "x.com", "facebook.com", "fb.watch", "instagram.com", "www.instagram.com"));
+        "twitter.com", "x.com", "facebook.com", "fb.watch", "instagram.com", "www.instagram.com",
+        "kick.com", "www.kick.com", "twitch.tv", "www.twitch.tv"));
 
     /**
      * خرج yt-dlp بفواصل تبويب لا بصيغة JSON.

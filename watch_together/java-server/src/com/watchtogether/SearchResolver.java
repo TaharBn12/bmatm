@@ -47,6 +47,13 @@ public final class SearchResolver {
     private static final String DM_WATCH = "https://www.dailymotion.com/video/";
     private static final String YT_WATCH = "https://www.youtube.com/watch?v=";
     private static final String YT_THUMB = "https://i.ytimg.com/vi/";
+    private static final String TT_WATCH = "https://www.tiktok.com/video/";
+    private static final String TT_SEARCH = "https://www.tiktok.com/tag/";
+    private static final String KICK_WATCH = "https://kick.com/";
+    private static final String KICK_SEARCH = "https://kick.com/search?q=";
+    private static final String TWITCH_WATCH = "https://www.twitch.tv/";
+    private static final String TWITCH_SEARCH = "https://www.twitch.tv/search?term=";
+    private static final String TWITCH_THUMB = "https://static-cdn.jtvnw.net/previews-ttv/live_user_";
 
     private static final Semaphore SLOTS = new Semaphore(2);
     private static long windowStart = System.currentTimeMillis();
@@ -73,22 +80,26 @@ public final class SearchResolver {
             int limit = intParam(query.get("limit"), DEFAULT_LIMIT, 1, MAX_LIMIT);
             String site = (query.get("site") == null ? "" : query.get("site")).trim().toLowerCase();
             boolean youtube = site.equals("youtube") || site.equals("yt") || site.equals("يوتيوب");
+            boolean tiktok = site.equals("tiktok") || site.equals("تيك");
+            boolean kick = site.equals("kick");
+            boolean twitch = site.equals("twitch") || site.equals("تويتش");
 
             if (!permit()) { status = 429; throw new IllegalArgumentException("تم تجاوز حدّ البحث؛ انتظر قليلاً"); }
             acquired = SLOTS.tryAcquire();
             if (!acquired) { status = 429; throw new IllegalArgumentException("الخدمة مشغولة؛ أعد المحاولة بعد قليل"); }
 
-            List<Map<String, Object>> items = viaYtDlp(term, limit, youtube);
+            List<Map<String, Object>> items = viaYtDlp(term, limit, youtube, tiktok, kick, twitch);
             String source = "yt-dlp";
-            if (items.isEmpty() && !youtube) {
+            String resolvedSite = youtube ? "youtube" : tiktok ? "tiktok" : kick ? "kick" : twitch ? "twitch" : "dailymotion";
+            if (items.isEmpty() && !youtube && !tiktok && !kick && !twitch) {
                 items = viaApi(term, limit);
                 source = "dailymotion-api";
-            } else if (!items.isEmpty() && !youtube) {
+            } else if (!items.isEmpty() && !youtube && !tiktok && !kick && !twitch) {
                 enrich(items);
             }
             result.put("query", term);
-            result.put("site", youtube ? "youtube" : "dailymotion");
-            result.put("source", items.isEmpty() && youtube ? "none" : source);
+            result.put("site", resolvedSite);
+            result.put("source", items.isEmpty() && (youtube || tiktok || kick || twitch) ? "none" : source);
             result.put("count", items.size());
             result.put("items", items);
         } catch (IllegalArgumentException e) {
@@ -115,15 +126,28 @@ public final class SearchResolver {
     /* =========================================================
        1) البحث عبر yt-dlp (مستخرج dailymotion:search)
        ========================================================= */
-    private static List<Map<String, Object>> viaYtDlp(String term, int limit, boolean youtube) {
+    private static List<Map<String, Object>> viaYtDlp(String term, int limit, boolean youtube, boolean tiktok, boolean kick, boolean twitch) {
         Path out = null;
         Process p = null;
         try {
-            /* يوتيوب: ytsearchN:<كلمة> — بلا مفتاح API، عبر yt-dlp نفسه.
-               ديليموشن: صفحة البحث عبر مستخرج dailymotion:search. */
-            String search = youtube
-                ? "ytsearch" + Math.max(1, limit) + ":" + term
-                : SEARCH_HOST + URLEncoder.encode(term, "UTF-8") + "/videos";
+            /* كل منصة لها رابط بحث خاص بها يُمرَّر إلى yt-dlp:
+               يوتيوب: ytsearchN:كلمة
+               تيك توك: صفحة الوسم tiktok.com/tag/كلمة
+               كيك: kick.com/search?q=كلمة
+               تويتش: twitch.tv/search?term=كلمة
+               ديليموشن: dailymotion.com/search/كلمة/videos */
+            String search;
+            if (youtube) {
+                search = "ytsearch" + Math.max(1, limit) + ":" + term;
+            } else if (tiktok) {
+                search = TT_SEARCH + URLEncoder.encode(term, "UTF-8") + "/videos";
+            } else if (kick) {
+                search = KICK_SEARCH + URLEncoder.encode(term, "UTF-8");
+            } else if (twitch) {
+                search = TWITCH_SEARCH + URLEncoder.encode(term, "UTF-8");
+            } else {
+                search = SEARCH_HOST + URLEncoder.encode(term, "UTF-8") + "/videos";
+            }
             out = Files.createTempFile("wt-search-", ".tsv");
             List<String> args = new ArrayList<>(Arrays.asList(
                 "--ignore-config", "--no-warnings", "--socket-timeout", "10", "--retries", "1",
@@ -145,7 +169,7 @@ public final class SearchResolver {
             Files.deleteIfExists(err);
             List<Map<String, Object>> items = new ArrayList<>();
             for (String line : read(out).split("\\R")) {
-                Map<String, Object> item = fromRow(line, youtube);
+                Map<String, Object> item = fromRow(line, youtube, tiktok, kick, twitch);
                 if (item != null) items.add(item);
                 if (items.size() >= limit) break;
             }
@@ -162,7 +186,7 @@ public final class SearchResolver {
      * سطر من yt-dlp: id \t title \t url \t duration
      * العنوان والرابط يُبنيان من المعرّف نفسه، فلا نثق بروابط يكتبها الوسيط.
      */
-    private static Map<String, Object> fromRow(String line, boolean youtube) {
+    private static Map<String, Object> fromRow(String line, boolean youtube, boolean tiktok, boolean kick, boolean twitch) {
         if (line == null) return null;
         String t = line.trim();
         if (t.isEmpty()) return null;
@@ -171,13 +195,16 @@ public final class SearchResolver {
         String title = col(parts, 1);
         long duration = 0;
         try { duration = Long.parseLong(col(parts, 3)); } catch (Exception ignored) { }
-        if (id.isEmpty() || !isId(id, youtube)) return null;
+        if (id.isEmpty() || !isId(id, youtube, tiktok, kick, twitch)) return null;
         if (title.isEmpty() || "NA".equals(title)) title = "";
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("id", id);
         m.put("title", title);
-        m.put("url", youtube ? YT_WATCH + id : DM_WATCH + id);
-        m.put("thumb", youtube ? YT_THUMB + id + "/hqdefault.jpg" : THUMB + id);
+        if (youtube) { m.put("url", YT_WATCH + id); m.put("thumb", YT_THUMB + id + "/hqdefault.jpg"); }
+        else if (tiktok) { m.put("url", TT_WATCH + id); m.put("thumb", THUMB + id); }
+        else if (kick) { m.put("url", KICK_WATCH + id); m.put("thumb", THUMB + id); }
+        else if (twitch) { m.put("url", TWITCH_WATCH + id); m.put("thumb", TWITCH_THUMB + id + "-320x180.jpg"); }
+        else { m.put("url", DM_WATCH + id); m.put("thumb", THUMB + id); }
         m.put("duration", duration);
         m.put("author", "");
         return m;
@@ -330,12 +357,13 @@ public final class SearchResolver {
         return "NA".equals(v) ? "" : v;
     }
 
-    /** معرّف ديليموشن: حروف وأرقام · معرّف يوتيوب: 11 محرفاً من [A-Za-z0-9_-] */
-    private static boolean isId(String id, boolean youtube) {
+    /** معرّف يوتيوب: 11 محرفاً صارم · ديليموشن: حروف وأرقام حتى 32 · تيك توك/كيك/تويتش: أي نص غير فارغ */
+    private static boolean isId(String id, boolean youtube, boolean tiktok, boolean kick, boolean twitch) {
         if (id == null) return false;
         String v = id.trim();
         if (v.isEmpty()) return false;
         if (youtube) return v.length() == 11 && v.matches("[A-Za-z0-9_-]{11}");
+        if (tiktok || kick || twitch) return true; /* أي معرف غير فارغ مقبول لهذه المنصات */
         if (v.length() > 32) return false;
         for (int i = 0; i < v.length(); i++) {
             char c = v.charAt(i);
