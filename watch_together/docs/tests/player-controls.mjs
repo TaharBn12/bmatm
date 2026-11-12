@@ -32,6 +32,10 @@ for (const id of ['volRange', 'playPauseBtn', 'muteBtn', 'curTime', 'durTime', '
 }
 assert.match(js, /if \(el\.videoFullscreen\) el\.videoFullscreen\.addEventListener/);
 assert.match(js, /document\.exitFullscreen/);
+assert.match(css, /#stage:fullscreen \.player\s*\{[^}]*max-height:\s*none/s,
+  'fullscreen player is not capped by the room layout height');
+assert.match(css, /#stage:fullscreen \.ctrlbar\s*\{[^}]*flex:\s*0 0 auto/s,
+  'fullscreen controls stay pinned to the bottom without leaving a gap');
 assert.match(js, /el\.player\.addEventListener\('click'/);
 assert.match(js, /player\.load\(parsed, \{ autoplay: !!opts\.autoplay, controls: false \}\)/);
 assert.match(js, /el\.ctrlbar\.hidden = parsed\.kind === 'embed'/);
