@@ -135,6 +135,21 @@ try {
   assert.ok(blocked.events.some(event => event.type === 'autoplay-blocked'), 'autoplay failure must reach the room UI');
   checks++;
 
+  const duplicatePlay = make();
+  const duplicateLoad = duplicatePlay.player.load(file('duplicate-play'));
+  duplicatePlay.player._video.dispatch('loadedmetadata');
+  await duplicateLoad;
+  let playCalls = 0;
+  duplicatePlay.player._video.play = () => {
+    playCalls++;
+    duplicatePlay.player._video.paused = false;
+    return Promise.resolve();
+  };
+  const playResults = await Promise.all([duplicatePlay.player.play(), duplicatePlay.player.play()]);
+  assert.deepEqual(playResults, [true, true]);
+  assert.equal(playCalls, 1, 'parallel room sync requests reuse an already-started video');
+  checks++;
+
   const interrupted = make();
   const interruptedLoad = interrupted.player.load(file('interrupted'));
   interrupted.player._video.dispatch('loadedmetadata');

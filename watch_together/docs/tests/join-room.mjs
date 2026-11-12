@@ -320,12 +320,20 @@ const chatText = (env) => env.byId.get('chatBody').children
 async function testWebSocket() {
   const server = makeWsServer();
   const ownerToken = 'd'.repeat(64);
+  /* Match the real page's successful /healthz probe so these clients exercise
+     WebSocket instead of accepting a degraded Supabase fallback. */
+  const globals = { WTServer: {
+    available: async () => true,
+    isPrivateHost: () => true,
+    keepAlive() { }
+  } };
   const host = createRoomEnv({
     search: `?id=${ROOM}&host=1&v=${encodeURIComponent(VIDEO_A)}`,
     WebSocket: server.FakeWebSocket,
+    globals,
     store: { ['wt:owner:' + ROOM]: JSON.stringify(ownerToken) }
   });
-  const guest = createRoomEnv({ search: `?id=${ROOM}`, WebSocket: server.FakeWebSocket });
+  const guest = createRoomEnv({ search: `?id=${ROOM}`, WebSocket: server.FakeWebSocket, globals });
   setAccountName(guest, 'طهّار');
 
   await enter(host, 'أمين');

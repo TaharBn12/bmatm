@@ -302,6 +302,10 @@
       if (this._yt && this._yt.playVideo) this._yt.playVideo();
       else if (this._video) {
         const video = this._video;
+        /* Room state can request play from both the load-ready callback and a
+           sync update. Once the browser has accepted play(), reuse that state
+           instead of issuing a second request that can be cancelled by pause(). */
+        if (!video.paused && !video.ended) return Promise.resolve(true);
         return Promise.resolve(video.play()).then(() => true, (err) => {
           /* A play() promise is routinely aborted when pause()/load() wins a race.
              That's a cancelled request, not a media failure, so don't show the
