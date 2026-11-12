@@ -303,13 +303,18 @@
       else if (this._video) {
         const video = this._video;
         return Promise.resolve(video.play()).then(() => true, (err) => {
-          if (this._video === video) this._fire('onEvent', {
+          /* A play() promise is routinely aborted when pause()/load() wins a race.
+             That's a cancelled request, not a media failure, so don't show the
+             browser's raw English AbortError to the user. */
+          if (this._video === video && err.name !== 'AbortError') this._fire('onEvent', {
             type: err.name === 'NotAllowedError' ? 'autoplay-blocked' : 'error', source: 'player', message: err.message
           });
           return false;
         });
       }
-    } catch (e) { this._fire('onEvent', { type: 'error', source: 'player', message: e.message }); }
+    } catch (e) {
+      if (!e || e.name !== 'AbortError') this._fire('onEvent', { type: 'error', source: 'player', message: e.message });
+    }
   };
   UnifiedPlayer.prototype.pause = function () {
     try {
