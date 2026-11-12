@@ -297,6 +297,22 @@ try {
     /* Real decode, fullscreen, play/pause, pointer seeking and keyboard seeking. */
     await page.click('#videoFullscreenBtn');
     await waitFor(page, () => document.fullscreenElement?.id === 'stage');
+    const fullscreenLayout = await page.evaluate(() => {
+      const rect = id => document.getElementById(id).getBoundingClientRect();
+      const stage = rect('stage'), player = rect('player'), ctrlbar = rect('ctrlbar');
+      return {
+        viewportHeight: window.innerHeight,
+        stage: { top: stage.top, height: stage.height, bottom: stage.bottom },
+        player: { bottom: player.bottom, height: player.height },
+        ctrlbar: { top: ctrlbar.top, bottom: ctrlbar.bottom }
+      };
+    });
+    assert.ok(Math.abs(fullscreenLayout.stage.top) <= 1 &&
+      Math.abs(fullscreenLayout.stage.height - fullscreenLayout.viewportHeight) <= 1,
+      `fullscreen stage fills the viewport: ${JSON.stringify(fullscreenLayout)}`);
+    assert.ok(Math.abs(fullscreenLayout.player.bottom - fullscreenLayout.ctrlbar.top) <= 1 &&
+      Math.abs(fullscreenLayout.ctrlbar.bottom - fullscreenLayout.stage.bottom) <= 1,
+      `fullscreen video and controls meet the bottom edge without a black gap: ${JSON.stringify(fullscreenLayout)}`);
     await page.click('#videoFullscreenBtn');
     await waitFor(page, () => !document.fullscreenElement);
     await page.click('#centerPlayBtn');

@@ -2316,8 +2316,17 @@ body.drawer-open { overscroll-behavior: none; }
   .video-fullscreen { width: 44px; height: 44px; }
 }
 .video-fullscreen:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
-#stage:fullscreen { width: 100%; height: 100%; background: #000; display: flex; flex-direction: column; }
-#stage:fullscreen .player { flex: 1; width: 100%; height: auto; aspect-ratio: auto; }
+#stage:fullscreen {
+  width: 100%; height: 100vh; height: 100dvh;
+  max-width: none; max-height: none; min-height: 0;
+  background: #000; display: flex; flex-direction: column;
+}
+#stage:fullscreen .player {
+  flex: 1 1 0%; min-width: 0; min-height: 0;
+  width: 100%; height: auto; max-width: none; max-height: none;
+  aspect-ratio: auto;
+}
+#stage:fullscreen .ctrlbar { flex: 0 0 auto; width: 100%; }
 #ctrlbar { gap: 0; }
 .room-main > #chat { flex: 0 0 auto; height: auto; min-height: 0; }
 /* Four compact Messenger-style rows (4 × 34px + 3 × 6px = 154px); long messages scroll instead of moving the box/player. */
