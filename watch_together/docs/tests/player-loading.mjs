@@ -135,5 +135,16 @@ try {
   assert.ok(blocked.events.some(event => event.type === 'autoplay-blocked'), 'autoplay failure must reach the room UI');
   checks++;
 
+  const interrupted = make();
+  const interruptedLoad = interrupted.player.load(file('interrupted'));
+  interrupted.player._video.dispatch('loadedmetadata');
+  await interruptedLoad;
+  interrupted.player._video.play = () => Promise.reject(Object.assign(
+    new Error('The play() request was interrupted by a call to pause.'), { name: 'AbortError' }
+  ));
+  assert.equal(await interrupted.player.play(), false);
+  assert.equal(interrupted.events.length, 0, 'an interrupted play request is not shown as a playback error');
+  checks++;
+
   console.log(`Player loading: ${checks} regression scenarios passed`);
 } finally { envs.forEach(env => env.dispose()); }
