@@ -130,14 +130,10 @@
 
   function settingsForm(room) {
     const privateChecked = room.isPrivate ? ' checked' : '';
-    const ownerChecked = room.controlMode !== 'everyone' ? ' checked' : '';
-    const everyoneChecked = room.controlMode === 'everyone' ? ' checked' : '';
     const body = '<form class="room-dialog__form" data-room-action-form="settings">' +
       '<label class="room-dialog__choice"><input type="checkbox" name="isPrivate"' + privateChecked + '><span><strong>غرفة خاصة — رابط الدعوة فقط</strong><small>لن تظهر هذه الغرفة في قائمة الغرف العامة. يستطيع من يملك رابط الدعوة الانضمام.</small></span></label>' +
-      '<div><span class="label">من يستطيع التحكم بالمشاهدة؟</span><div class="room-dialog__choices">' +
-      '<label class="room-dialog__choice"><input type="radio" name="controlMode" value="owner"' + ownerChecked + '><span><strong>المنشئ فقط</strong><small>يبقى التحكم بيد المنشئ والمنظّمين الذين عيّنهم.</small></span></label>' +
-      '<label class="room-dialog__choice"><input type="radio" name="controlMode" value="everyone"' + everyoneChecked + '><span><strong>جميع المشاركين</strong><small>يمكن لأي مشارك منضم التحكم في التشغيل والإيقاف والتقديم.</small></span></label>' +
-      '</div></div><p class="room-dialog__error" data-form-error role="alert"></p>' +
+      '<p class="room-dialog__hint">التحكم بالمشاهدة متاح لجميع المشاركين المنضمّين إلى الغرفة.</p>' +
+      '<p class="room-dialog__error" data-form-error role="alert"></p>' +
       '<div class="room-dialog__actions"><button class="btn btn--ghost" type="button" data-dialog-close>إلغاء</button><button class="btn btn--primary" type="submit">حفظ الإعدادات</button></div></form>';
     showDialog('إعدادات «' + room.title + '»', 'تُحفظ الخيارات على الخادم وتُطبّق على الغرفة نفسها.', body, 'إعدادات الغرفة');
   }
@@ -246,7 +242,7 @@
     try {
       if (action === 'settings') {
         const data = new FormData(form);
-        await Rooms.update(roomId, { isPrivate: data.has('isPrivate'), controlMode: data.get('controlMode') || 'owner' });
+        await Rooms.update(roomId, { isPrivate: data.has('isPrivate') });
         closeDialog();
         await refreshRooms();
         U.toast('تم حفظ إعدادات الغرفة', 'success', 2200);

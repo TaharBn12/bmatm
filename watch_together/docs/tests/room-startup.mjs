@@ -152,5 +152,33 @@ try {
   assert.equal(attendance.sandbox.WTUtil.store.get(lease), undefined, 'closing the connection removes its lease immediately');
   checks++;
 
+  /* Leave waits for attendance cleanup before closing transport and redirecting. */
+  const leaving = make();
+  enter(leaving);
+  await wait(35);
+  const leavingTransport = leaving.sandbox.WTRoom.session.transport;
+  const originalSend = leavingTransport._bc.bind(leavingTransport);
+  const leaveOrder = {};
+  leavingTransport._bc = message => {
+    if (message.type !== 'leave') return originalSend(message);
+    leaveOrder.started = Date.now();
+    return new Promise(resolve => setTimeout(() => {
+      originalSend(message);
+      leaveOrder.delivered = Date.now();
+      resolve();
+    }, 100));
+  };
+  const originalClose = leavingTransport.close.bind(leavingTransport);
+  leavingTransport.close = () => { originalClose(); leaveOrder.closed = Date.now(); };
+  leaving.byId.get('leaveBtn').dispatch('click', {});
+  assert.equal(leaving.byId.get('leaveBtn').disabled, true, 'leave disables repeat clicks during cleanup');
+  assert.equal(leaving.sandbox.location.href, '', 'redirect is held until cleanup resolves');
+  await wait(140);
+  assert.ok(leaveOrder.started && leaveOrder.delivered - leaveOrder.started >= 90 && leaveOrder.closed >= leaveOrder.delivered,
+    `transport closes only after attendance is removed: ${JSON.stringify(leaveOrder)}`);
+  assert.equal(leaving.sandbox.location.href, 'index.html', 'the room redirects after cleanup');
+  assert.equal(leaving.sandbox.WTRoom.session.leaving, true, 'presence pulses stop as soon as exit begins');
+  checks++;
+
   console.log(`Room startup: ${checks} regression scenarios passed`);
 } finally { envs.forEach(env => env.dispose()); }

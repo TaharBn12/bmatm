@@ -121,7 +121,7 @@
         <button class="player-action" id="addVideoBtn" type="button" aria-label="إضافة فيديو جديد" title="إضافة فيديو جديد">
           <span class="ic" data-icon="search" data-size="19"></span><span>إضافة فيديو</span>
         </button>
-        <button class="player-action" id="messagesBtn" type="button" aria-label="تكبير الرسائل" title="تكبير الرسائل (D)" aria-expanded="false" aria-controls="chat">
+        <button class="player-action" id="messagesBtn" type="button" aria-label="فتح المحادثة" title="فتح المحادثة (D)" aria-expanded="false" aria-controls="chat">
           <span class="ic" id="messagesIcon" data-icon="chatDown" data-size="19"></span><span>الرسائل</span><span class="player-action__count" id="messagesCount" hidden>0</span>
         </button>
         <button class="player-action" id="playlistBtn" type="button" aria-label="عرض قائمة التشغيل" title="قائمة التشغيل">
@@ -195,57 +195,67 @@
       </div>
 
 
-      <!-- الرسائل: مباشرة تحت المشغّل — الهدف من الموقع التفرّج مع صديق والحديث -->
-      <section class="chat glass" id="chat">
-        <div class="chat__head">
-          <h2 class="chat__title"><span class="ic" data-icon="chat" data-size="18"></span> الرسائل</h2>
-          <span class="badge" id="chatCount">0</span>
-          <span class="chat__spacer"></span>
-          <button class="btn btn--sm btn--ghost btn--icon-sm" id="refreshChatBtn" type="button" title="تحديث الرسائل" aria-label="تحديث الرسائل">
-            <span class="ic" data-icon="sync" data-size="16"></span>
-          </button>
-          <button class="btn btn--sm btn--ghost btn--icon-sm" id="clearChatBtn" title="مسح الشاشة عندك فقط" aria-label="مسح">
-            <span class="ic" data-icon="trash" data-size="16"></span>
-          </button>
-        </div>
-
-        <div class="chat__body" id="chatBody">
-          <div class="chat__empty" id="chatEmpty">
-            <span class="ic" data-icon="chat" data-size="34"></span>
-            لا توجد رسائل بعد — ابدأ الحديث مع المنضمين.
+      <!-- فقاعة دردشة عائمة؛ تبقى مستقلة عن تخطيط المشغّل وتُنقل إلى المسرح عند ملء الشاشة -->
+      <div class="chat-widget" id="chatWidget">
+        <button class="chat-fab" id="chatFab" type="button" aria-label="فتح المحادثة" title="افتح المحادثة أو اسحب الفقاعة لتحريكها"
+                aria-controls="chat" aria-expanded="false" aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown Alt+ArrowLeft Alt+ArrowRight">
+          <span class="ic" data-icon="chat" data-size="25"></span>
+          <span class="chat-fab__count" id="chatFabCount" hidden>0</span>
+        </button>
+        <section class="chat glass" id="chat" aria-label="محادثة الغرفة" aria-hidden="true" hidden>
+          <div class="chat__head">
+            <h2 class="chat__title"><span class="ic" data-icon="chat" data-size="18"></span> الرسائل</h2>
+            <span class="badge" id="chatCount">0</span>
+            <span class="chat__spacer"></span>
+            <button class="btn btn--sm btn--ghost btn--icon-sm" id="refreshChatBtn" type="button" title="تحديث الرسائل" aria-label="تحديث الرسائل">
+              <span class="ic" data-icon="sync" data-size="16"></span>
+            </button>
+            <button class="btn btn--sm btn--ghost btn--icon-sm" id="clearChatBtn" title="مسح الشاشة عندك فقط" aria-label="مسح">
+              <span class="ic" data-icon="trash" data-size="16"></span>
+            </button>
+            <button class="btn btn--sm btn--ghost btn--icon-sm chat__close" id="chatCloseBtn" type="button" title="تصغير المحادثة" aria-label="تصغير المحادثة">
+              <span class="ic" data-icon="x" data-size="17"></span>
+            </button>
           </div>
-        </div>
 
-        <div class="chat__foot">
-          <!-- شريط الرد/التعديل فوق خانة الكتابة -->
-          <div class="composer-bar" id="composerBar" hidden>
-            <span class="ic composer-bar__ic" data-icon="chat" data-size="16"></span>
-            <div class="composer-bar__body">
-              <strong id="composerBarLabel">الرد على</strong>
-              <span id="composerBarText"></span>
+          <div class="chat__body" id="chatBody" role="log" aria-live="polite" aria-relevant="additions text">
+            <div class="chat__empty" id="chatEmpty">
+              <span class="ic" data-icon="chat" data-size="34"></span>
+              لا توجد رسائل بعد — ابدأ الحديث مع المنضمين.
             </div>
-            <button class="composer-bar__x" id="composerBarCancel" type="button" title="إلغاء" aria-label="إلغاء">
-              <span class="ic" data-icon="x" data-size="15"></span>
-            </button>
           </div>
 
-          <!-- المرفقات الجاهزة/ قيد الرفع (صور وفيديو) -->
-          <div class="media-tray" id="mediaTray" hidden aria-live="polite" aria-label="المرفقات"></div>
+          <div class="chat__foot">
+            <!-- شريط الرد/التعديل فوق خانة الكتابة -->
+            <div class="composer-bar" id="composerBar" hidden>
+              <span class="ic composer-bar__ic" data-icon="chat" data-size="16"></span>
+              <div class="composer-bar__body">
+                <strong id="composerBarLabel">الرد على</strong>
+                <span id="composerBarText"></span>
+              </div>
+              <button class="composer-bar__x" id="composerBarCancel" type="button" title="إلغاء" aria-label="إلغاء">
+                <span class="ic" data-icon="x" data-size="15"></span>
+              </button>
+            </div>
 
-          <form class="chat__form" id="chatForm" autocomplete="off">
-            <button class="chat__attach" id="attachBtn" type="button" title="إرفاق صورة أو فيديو" aria-label="إرفاق صورة أو فيديو">
-              <span class="ic" data-icon="paperclip" data-size="19"></span>
-            </button>
-            <input type="file" id="mediaInput" accept="image/*,video/*" multiple hidden>
-            <textarea class="chat__input" id="chatInput" rows="1" maxlength="600"
-                      placeholder="اكتب رسالتك"></textarea>
-            <button class="chat__send" type="submit" id="chatSend" title="إرسال" aria-label="إرسال">
-              <span class="ic" data-icon="send" data-size="19"></span>
-            </button>
-          </form>
-          <div class="typing" id="typing"></div>
-        </div>
-      </section>
+            <!-- المرفقات الجاهزة/ قيد الرفع (صور وفيديو) -->
+            <div class="media-tray" id="mediaTray" hidden aria-live="polite" aria-label="المرفقات"></div>
+
+            <form class="chat__form" id="chatForm" autocomplete="off">
+              <button class="chat__attach" id="attachBtn" type="button" title="إرفاق صورة أو فيديو" aria-label="إرفاق صورة أو فيديو">
+                <span class="ic" data-icon="paperclip" data-size="19"></span>
+              </button>
+              <input type="file" id="mediaInput" accept="image/*,video/*" multiple hidden>
+              <textarea class="chat__input" id="chatInput" rows="1" maxlength="600"
+                        placeholder="اكتب رسالتك"></textarea>
+              <button class="chat__send" type="submit" id="chatSend" title="إرسال" aria-label="إرسال">
+                <span class="ic" data-icon="send" data-size="19"></span>
+              </button>
+            </form>
+            <div class="typing" id="typing"></div>
+          </div>
+        </section>
+      </div>
     </main>
 
   </div>
@@ -381,12 +391,12 @@
   <script src="assets/js/server-probe.js?v=1.5.0"></script>
   <script src="assets/js/icons.js?v=3.2.0"></script>
   <script src="assets/js/auth.js?v=3.2.0"></script>
-  <script src="assets/js/transport.js?v=3.4.0"></script>
+  <script src="assets/js/transport.js?v=3.6.0"></script>
   <script src="assets/js/player.js?v=3.1.2"></script>
   <script src="assets/js/suggest.js?v=1.1.0"></script>
-  <script src="assets/js/upnext.js?v=1.2.0"></script>
+  <script src="assets/js/upnext.js?v=1.3.0"></script>
   <script src="assets/js/media.js?v=3.1.5"></script>
-  <script src="assets/js/room.js?v=3.6.1"></script>
+  <script src="assets/js/room.js?v=3.7.0"></script>
   <script src="assets/js/site.js?v=1.0.2"></script>
 </body>
 </html>

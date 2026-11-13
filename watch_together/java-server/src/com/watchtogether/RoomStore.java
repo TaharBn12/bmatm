@@ -61,7 +61,7 @@ public final class RoomStore implements WebSocketServer.Listener {
         volatile String title;
         volatile String videoUrl = "";
         volatile boolean isPrivate = false;
-        volatile String controlMode = "owner";
+        volatile String controlMode = "everyone";
         volatile long createdAt = System.currentTimeMillis();
         final Set<WsConnection> members = Collections.newSetFromMap(new ConcurrentHashMap<>());
         final List<Map<String, Object>> history = Collections.synchronizedList(new ArrayList<>());
@@ -69,7 +69,7 @@ public final class RoomStore implements WebSocketServer.Listener {
         final Map<String, RoomMember> memberInfo = new ConcurrentHashMap<>();
         /** SHA-256 للأسرار فقط؛ لا تُحفظ مفاتيح التحكم بصيغتها الأصلية. */
         volatile String ownerTokenHash;
-        /** آخر حالة مزامنة (منشئ الغرفة والمنظّمون فقط يكتبونها) */
+        /** آخر حالة مزامنة؛ يمكن لكل اتصال منضمّ ومتحقق منه تحديثها. */
         volatile Map<String, Object> state;
         volatile String hostId;
         volatile String hostName;
@@ -92,11 +92,17 @@ public final class RoomStore implements WebSocketServer.Listener {
     private final ScheduledExecutorService janitor;
     /** ملف حفظ حالات الغرف حتى لا تضيع عند إعادة تشغيل الخادم */
     private final File storeFile;
+    private final SupabaseIdentityVerifier identityVerifier;
 
-    public RoomStore() { this(new File(System.getProperty("wt.data", "data"), "rooms.json")); }
+    public RoomStore() {
+        this(new File(System.getProperty("wt.data", "data"), "rooms.json"), SupabaseIdentityVerifier.fromEnvironment());
+    }
 
-    public RoomStore(File storeFile) {
+    public RoomStore(File storeFile) { this(storeFile, SupabaseIdentityVerifier.fromEnvironment()); }
+
+    RoomStore(File storeFile, SupabaseIdentityVerifier identityVerifier) {
         this.storeFile = storeFile;
+        this.identityVerifier = identityVerifier;
         janitor = Executors.newSingleThreadScheduledExecutor(r -> {
             Thread t = new Thread(r, "room-janitor");
             t.setDaemon(true);
@@ -147,8 +153,8 @@ public final class RoomStore implements WebSocketServer.Listener {
                 r.title = Json.str(rec, "title", "غرفة " + r.id);
                 r.videoUrl = Json.str(rec, "videoUrl", "");
                 r.isPrivate = Json.bool(rec, "isPrivate", false);
-                String savedControl = Json.str(rec, "controlMode", "owner");
-                r.controlMode = "everyone".equals(savedControl) ? "everyone" : "owner";
+                /* Older persisted rooms may still say owner; playback is now always shared. */
+                r.controlMode = "everyone";
                 if (rec.get("createdAt") instanceof Number) r.createdAt = ((Number) rec.get("createdAt")).longValue();
                 Object ownerHash = rec.get("ownerTokenHash");
                 r.ownerTokenHash = ownerHash == null ? null : String.valueOf(ownerHash);
@@ -275,6 +281,12 @@ public final class RoomStore implements WebSocketServer.Listener {
         }
     }
 
+    /* A room-scoped pseudonym groups tabs for display only; it never grants authority. */
+    private static String presenceUserKey(String roomId, String userId) {
+        if (userId == null || !userId.matches("(?i)[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")) return "";
+        return tokenHash("wt-presence-v1:" + roomId + ":" + userId.toLowerCase(java.util.Locale.ROOT));
+    }
+
     private static boolean tokenMatches(String expectedHash, String suppliedHash) {
         if (expectedHash == null || suppliedHash == null) return false;
         return MessageDigest.isEqual(expectedHash.getBytes(StandardCharsets.US_ASCII),
@@ -289,10 +301,19 @@ public final class RoomStore implements WebSocketServer.Listener {
         for (WsConnection connection : r.members) {
             Object seen = connection.attrs.get("lastSeen");
             String id = Json.str(connection.attrs, "clientId", "");
+            String userKey = Json.str(connection.attrs, "userKey", "");
             if (connection.isClosed() || id.isEmpty() || !(seen instanceof Number)
                     || now - ((Number) seen).longValue() > PRESENCE_TTL_MS) continue;
-            current.put(id, Json.map("id", id, "name", Json.str(connection.attrs, "name", "زائر")));
+            String identity = userKey.isEmpty() ? "client:" + id : "user:" + userKey;
+            Map<String, Object> person = Json.map("id", id, "name", Json.str(connection.attrs, "name", "زائر"));
+            if (!userKey.isEmpty()) person.put("userKey", userKey);
+            Map<String, Object> previous = current.get(identity);
+            if (previous == null || ((Number) seen).longValue() >= ((Number) previous.get("lastSeen")).longValue()) {
+                person.put("lastSeen", ((Number) seen).longValue());
+                current.put(identity, person);
+            }
         }
+        current.values().forEach(person -> person.remove("lastSeen"));
         List<Map<String, Object>> people = new ArrayList<>(current.values());
         people.sort((a, b) -> String.valueOf(a.get("id")).compareTo(String.valueOf(b.get("id"))));
         int count = people.size();
@@ -389,7 +410,7 @@ public final class RoomStore implements WebSocketServer.Listener {
         synchronized (r) {
             if (rawTitle != null) r.title = title;
             if (rawPrivate != null) r.isPrivate = (Boolean) rawPrivate;
-            if (controlMode != null) r.controlMode = controlMode;
+            r.controlMode = "everyone"; // legacy request fields cannot restore owner-only playback.
             if (rawVideo != null) {
                 synchronized (r.queue) {
                     if (!r.queue.isEmpty()) throw new IllegalStateException("أفرغ قائمة التشغيل قبل تغيير رابط المشاهدة");
@@ -513,6 +534,9 @@ public final class RoomStore implements WebSocketServer.Listener {
             conn.close(1008, "invalid member token");
             return;
         }
+        /* Resolve identity from the bearer token; a userId field from the browser is never trusted. */
+        String verifiedUserId = identityVerifier == null ? "" : identityVerifier.verifiedUserId(Json.str(msg, "accessToken", ""));
+        String userKey = presenceUserKey(roomId, verifiedUserId);
         String ownerHash = tokenHash(ownerToken);
         String memberHash = tokenHash(memberToken);
         boolean claimsRoom = Json.bool(msg, "host", false) && !ownerToken.isEmpty();
@@ -543,6 +567,7 @@ public final class RoomStore implements WebSocketServer.Listener {
 
         conn.attrs.put("room", roomId);
         conn.attrs.put("clientId", clientId);
+        conn.attrs.put("userKey", userKey);
         conn.attrs.put("name", name);
         conn.attrs.put("role", role);
         conn.attrs.put("host", "owner".equals(role));
@@ -594,10 +619,8 @@ public final class RoomStore implements WebSocketServer.Listener {
         String name = Json.str(conn.attrs, "name", "مضيف");
         Map<String, Object> stored;
         synchronized (r) {
-            String role = Json.str(conn.attrs, "role", "viewer");
-            if (!"owner".equals(role) && !"organizer".equals(role)
-                    && !("everyone".equals(r.controlMode) && "viewer".equals(role))) {
-                conn.send(Json.map("type", "error", "code", "permission", "action", "state", "message", "التحكم متاح لمنشئ الغرفة والمنظّمين فقط", "state", r.state));
+            if (!r.members.contains(conn) || !roomId.equals(conn.attrs.get("room"))) {
+                conn.send(Json.map("type", "error", "code", "permission", "action", "state", "message", "انضم إلى الغرفة أولاً", "state", r.state));
                 return;
             }
             long rev = r.rev.incrementAndGet();
@@ -792,13 +815,13 @@ public final class RoomStore implements WebSocketServer.Listener {
             return;
         }
 
-        /* آخر من تحكّم غادر؛ تبقى الصلاحية محصورة بالمنشئ والمنظّمين. */
+        /* آخر من حدّث الحالة غادر؛ يبقى كل مشارك منضم قادراً على المتابعة. */
         Object clientId = conn.attrs.get("clientId");
         if (clientId != null && clientId.equals(r.hostId)) {
             r.hostId = null;
             r.hostName = null;
             broadcast(r, Json.map("type", "system",
-                    "text", "غادر آخر من تحكّم — تبقى الصلاحية للمنشئ والمنظّمين"), null);
+                    "text", "غادر آخر من حدّث الحالة — يمكن للمشاركين المنضمّين متابعة التحكم"), null);
         }
     }
 
@@ -809,6 +832,7 @@ public final class RoomStore implements WebSocketServer.Listener {
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("type", "presence");
         m.put("clientId", conn.attrs.get("clientId"));
+        m.put("userKey", conn.attrs.get("userKey"));
         m.put("name", conn.attrs.get("name"));
         m.put("host", Boolean.TRUE.equals(conn.attrs.get("host")));
         m.put("role", Json.str(conn.attrs, "role", "viewer"));
@@ -827,6 +851,7 @@ public final class RoomStore implements WebSocketServer.Listener {
         for (WsConnection c : r.members) {
             Map<String, Object> m = new LinkedHashMap<>();
             m.put("id", c.attrs.get("clientId"));
+            m.put("userKey", c.attrs.get("userKey"));
             m.put("name", c.attrs.get("name"));
             m.put("host", Boolean.TRUE.equals(c.attrs.get("host")));
             m.put("role", Json.str(c.attrs, "role", "viewer"));

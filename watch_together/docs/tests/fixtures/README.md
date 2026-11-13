@@ -15,11 +15,13 @@ ffmpeg -f lavfi -i testsrc2=size=160x90:rate=5 -t 12 -an \
 ## Optional Java catalogue check
 
 `RoomCatalogueCheck.java` is a JDK-only test for public fields, owner-token
-conflicts, invalid URLs, five-avatar/live-count snapshots, current video,
-empty-room cleanup and metadata persistence across a
-store restart. It uses a temporary directory and deletes its data on success.
-It does **not** test the Java WebSocket upgrade. Compile/run instructions are
-in the project README's testing section.
+conflicts, invalid URLs, joined-viewer playback control, rejection of unjoined
+state writes, five-avatar/live-account snapshots, current video, empty-room
+cleanup and metadata persistence across a store restart. Its mock Supabase Auth
+endpoint verifies account grouping across distinct access tokens, cache reuse,
+and rejection of a browser-claimed user ID. It uses temporary storage and
+deletes its data on success. It does **not** test the Java WebSocket upgrade.
+Compile/run instructions are in the project README's testing section.
 
 ## HLS preview fixture
 

@@ -342,7 +342,7 @@
         const actionSignature = (room.isOwner ? 'owner' : 'viewer') + ':' + (typeof options.isAuthenticated === 'function' ? !!options.isAuthenticated() : true);
         if (item.actionSignature !== actionSignature) { renderActions(item, room); item.actionSignature = actionSignature; }
         item.node.classList.toggle('is-private-room', !!room.isPrivate);
-        item.node.setAttribute('data-control-mode', room.controlMode || 'owner');
+        item.node.setAttribute('data-control-mode', 'everyone');
         const people = peopleMarkup(room);
         if (people !== item.people.innerHTML) item.people.innerHTML = people;
         if (item.source !== room.videoUrl) {

@@ -207,7 +207,7 @@
       ws.onopen = () => {
         self._retry = 0;
         self._send({ type: 'join', room: roomId, client: self.meta.clientId, name: self.meta.name,
-          host: !!self.meta.host, ownerToken: self.meta.ownerToken || '',
+          accessToken: self.meta.accessToken || '', host: !!self.meta.host, ownerToken: self.meta.ownerToken || '',
           memberToken: self.meta.memberToken || self.meta.ownerToken || '' });
       };
 
@@ -223,7 +223,7 @@
           self.emit('roles', msg.members || []);
           self.emit('queue', msg.queue || []);
           resolve({ state: msg.state || null, messages: msg.messages || [], members: msg.members || [],
-            roles: msg.members || [], queue: msg.queue || [], role: self.role, controlMode: msg.controlMode || 'owner',
+            roles: msg.members || [], queue: msg.queue || [], role: self.role, controlMode: 'everyone',
             room: msg.roomInfo || (msg.room && typeof msg.room === 'object' ? msg.room : null) });
           return;
         }
@@ -261,7 +261,14 @@
           const delay = Math.min(8000, 800 * Math.pow(2, self._retry++));
           setTimeout(() => {
             if (self._closedByUser) return;
-            self.connect(roomId, meta).then(
+            const auth = global.WTAuth;
+            const refresh = auth && typeof auth.validSession === 'function'
+              ? Promise.resolve().then(() => auth.validSession()).catch(() => null) : Promise.resolve(null);
+            Promise.resolve(refresh).then(current => {
+              if (current && current.access_token && current.user && !current.user.guest
+                  && meta.userId && current.user.id === meta.userId) meta.accessToken = current.access_token;
+              return self.connect(roomId, meta);
+            }).then(
               () => self.emit('system', { text: 'تمت إعادة الاتصال ✓' }),
               () => { }
             );
@@ -331,6 +338,7 @@
     this._restConnected = false;
     this._lastRolesSig = null;
     this._lastQueueSig = null;
+    this._controlMode = 'everyone'; // retained only for protocol compatibility
     this._pendingState = null;
     this._pendingWrite = null;
     this._pendingChats = [];
@@ -428,6 +436,16 @@
     });
   };
 
+  SupabaseTransport.prototype._roomMembers = function () {
+    const path = `/rest/v1/room_members?room_id=eq.${encodeURIComponent(this.roomId)}&select=client_id,display_name,role,user_key&order=updated_at.asc`;
+    const legacyPath = `/rest/v1/room_members?room_id=eq.${encodeURIComponent(this.roomId)}&select=client_id,display_name,role&order=updated_at.asc`;
+    return this._fetch(path).catch(error => {
+      /* Older projects need the supplied 04-room-management.sql migration. */
+      if (!error || (error.status !== 400 && error.status !== 404 && error.code !== 'PGRST204')) throw error;
+      return this._fetch(legacyPath);
+    });
+  };
+
   SupabaseTransport.prototype._loadRoom = function (initial) {
     const self = this;
     const meta = this.meta || {};
@@ -477,13 +495,12 @@
             setTimeout(() => { if (!self._closedByUser) self.emit('system', { text: 'الدردشة غير متاحة مؤقتاً؛ ستتم إعادة المحاولة تلقائياً.' }); }, 50);
             return [];
           }),
-        this._fetch(`/rest/v1/room_members?room_id=eq.${encodeURIComponent(self.roomId)}&select=client_id,display_name,role&order=updated_at.asc`)
-          .catch(() => Array.isArray(join.members) ? join.members : []),
+        this._roomMembers().catch(() => Array.isArray(join.members) ? join.members : []),
         this._fetch(`/rest/v1/room_queue?room_id=eq.${encodeURIComponent(self.roomId)}&select=*&order=id.asc&limit=100`)
           .catch(() => [])
       ]).then(([row, messages, roles, queue]) => {
         const state = row && row.state ? row.state : null;
-        self._controlMode = row && row.control_mode === 'everyone' ? 'everyone' : 'owner';
+        self._controlMode = 'everyone';
         self._lastStateSig = state ? U.stateSig(state) : null;
         self._found = !!row;
         self._initialized = true;
@@ -497,9 +514,9 @@
         return {
           state, messages, queue: queue || [], roles: roles || join.members || [],
           role: join.role || 'viewer', found: !!row, serverTime: join.serverTime, keepTransport: true,
-          controlMode: row && row.control_mode,
+          controlMode: 'everyone',
           room: row && { title: row.title, videoUrl: row.video_url, hostName: row.host_name,
-            isPrivate: !!row.is_private, controlMode: row.control_mode }
+            isPrivate: !!row.is_private, controlMode: 'everyone' }
         };
       });
     });
@@ -575,7 +592,7 @@
       }
       if (result.roles) self.emit('roles', result.roles);
       if (result.queue) self.emit('queue', result.queue);
-      if (result.found) self.emit('members', (result.roles || []).map(r => ({ id: r.client_id || r.id, name: r.display_name || r.name, role: r.role })));
+      /* room_members is a durable role registry, not live attendance; presence supplies active people. */
       if (self._pendingState) self._flushPendingState().catch(() => { });
       self._networkFailures = 0;
       self._recoveryDelay = 1000;
@@ -799,7 +816,7 @@
     const msgReq = this._msgsReady
       ? this._fetch(`/rest/v1/messages?room_id=eq.${encodeURIComponent(this.roomId)}&select=*&order=id.asc&limit=50&id=gt.${this._lastMsgId || 0}`).catch(() => [])
       : Promise.resolve([]);
-    const rolesReq = this._fetch(`/rest/v1/room_members?room_id=eq.${encodeURIComponent(this.roomId)}&select=client_id,display_name,role&order=updated_at.asc`).catch(() => null);
+    const rolesReq = this._roomMembers().catch(() => null);
     const queueReq = this._fetch(`/rest/v1/room_queue?room_id=eq.${encodeURIComponent(this.roomId)}&select=*&order=id.asc&limit=100`).catch(() => null);
 
     return Promise.all([stateReq, msgReq, rolesReq, queueReq]).then(([rows, messages, roles, queue]) => {
@@ -810,7 +827,7 @@
       self.lastError = null;
       const row = rows && !Array.isArray(rows) ? rows : rows && rows[0];
       if (row) {
-        const controlMode = row.control_mode === 'everyone' ? 'everyone' : 'owner';
+        const controlMode = 'everyone';
         if (controlMode !== self._controlMode) { self._controlMode = controlMode; self.emit('settings', { controlMode }); }
         self._found = true;
         if (row.state) {
@@ -830,7 +847,7 @@
         });
       });
       if (Array.isArray(roles)) {
-        const sig = JSON.stringify(roles.map(r => [r.client_id, r.role]));
+        const sig = JSON.stringify(roles.map(r => [r.client_id, r.role, r.user_key]));
         if (sig !== self._lastRolesSig) { self._lastRolesSig = sig; self.emit('roles', roles); }
       }
       if (Array.isArray(queue)) {
@@ -923,15 +940,14 @@
             ts: Date.parse(rec.created_at) || Date.now(), kind: rec.kind || 'chat', client: rec.client_id || null,
             media: mediaFromRow(rec) });
         } else if (c.table === 'rooms') {
-          const controlMode = rec.control_mode === 'everyone' ? 'everyone' : 'owner';
+          const controlMode = 'everyone';
           if (controlMode !== self._controlMode) { self._controlMode = controlMode; self.emit('settings', { controlMode }); }
           self._found = true;
           if (!rec.state) return;
           const sig = U.stateSig(rec.state);
           if (sig !== self._lastStateSig) { self._lastStateSig = sig; self.emit('state', rec.state); }
         } else if (c.table === 'room_members') {
-          self._fetch(`/rest/v1/room_members?room_id=eq.${encodeURIComponent(self.roomId)}&select=client_id,display_name,role&order=updated_at.asc`)
-            .then(rows => self.emit('roles', rows || [])).catch(() => { });
+          self._roomMembers().then(rows => self.emit('roles', rows || [])).catch(() => { });
         } else if (c.table === 'room_queue') {
           self._fetch(`/rest/v1/room_queue?room_id=eq.${encodeURIComponent(self.roomId)}&select=*&order=id.asc&limit=100`)
             .then(rows => self.emit('queue', rows || [])).catch(() => { });
@@ -1170,7 +1186,7 @@
 
   SupabaseTransport.prototype._readRoles = function () {
     const self = this;
-    return this._fetch(`/rest/v1/room_members?room_id=eq.${encodeURIComponent(this.roomId)}&select=client_id,display_name,role&order=updated_at.asc`)
+    return this._roomMembers()
       .then(rows => { const list = rows || []; self.emit('roles', list); return list; });
   };
 
@@ -1289,7 +1305,7 @@
 
   LocalTransport.prototype._bc = function (obj) {
     /* Per-connection leases avoid one tab overwriting another tab's attendance. */
-    if (obj.type === 'presence' && !this._closedByUser) U.store.set(this._presenceKey, { name: obj.name, lastSeen: Date.now() });
+    if (obj.type === 'presence' && !this._closedByUser) U.store.set(this._presenceKey, { name: obj.name, userKey: obj.userKey || '', lastSeen: Date.now() });
     else if (obj.type === 'leave') U.store.del(this._presenceKey);
     obj.from = this.meta.clientId;
     try { this.bc && this.bc.postMessage(obj); } catch (e) { }

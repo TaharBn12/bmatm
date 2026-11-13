@@ -227,12 +227,12 @@ const run = async () => {
   CH.addChatMessage({ id: 'window-long', client: 'window-test', name: 'فاحص', text: 'رسالة طويلة '.repeat(45), ts: Date.now(), kind: 'chat' });
   t('الرسالة الطويلة لا ترفع ارتفاع صندوق الرسائل', chatBody.style.height === '');
   byId.get('messagesBtn').dispatch('click', {});
-  t('إخفاء الفيديو يترك ارتفاع النافذة للتصميم المتجاوب', sandbox.WTRoom.session.focusMode && chatBody.style.height === '');
+  t('فتح المحادثة لا يغيّر تخطيط المشغّل ولا يفرض ارتفاعاً على الرسائل', sandbox.WTRoom.session.chatOpen && chatBody.style.height === '');
   t('الرسائل الأقدم تبقى موجودة للتمرير', chatBody.children.filter(row => row.classList.contains('msg')).length === 14);
   byId.get('messagesBtn').dispatch('click', {});
-  t('إظهار الفيديو يعيد وضع أربع رسائل دون قياس طول النص', !sandbox.WTRoom.session.focusMode && chatBody.style.height === '');
+  t('إغلاق لوحة Messenger لا يغيّر تخطيط الفيديو أو الرسائل', !sandbox.WTRoom.session.chatOpen && chatBody.style.height === '');
   documentStub.dispatch('keydown', { key: 'd', target: { tagName: 'BODY', isContentEditable: false } });
-  t('اختصار إخفاء الفيديو لا يضيف ارتفاعاً مباشراً', sandbox.WTRoom.session.focusMode && chatBody.style.height === '');
+  t('اختصار D يفتح المحادثة العائمة بلا إخفاء الفيديو', sandbox.WTRoom.session.chatOpen && chatBody.style.height === '');
   byId.get('clearChatBtn').dispatch('click', {});
   t('مسح المحادثة لا يحتاج إعادة ضبط ارتفاع النافذة', chatBody.style.height === '');
 
@@ -318,7 +318,7 @@ const run = async () => {
   t('تعديل الرسالة يحافظ على تفاعلاتها', chipFor(later, '🔥')?.textContent === '🔥 1' && later.dataset.text === 'رسالة معدلة');
   chatBody.dispatch('contextmenu', { clientX: 100, clientY: 180, target: later });
   documentStub.dispatch('keydown', { key: 'Escape' });
-  t('Escape يغلق منتقي التفاعل دون إخفاء الفيديو', reactionMenu.hidden && !sandbox.WTRoom.session.focusMode);
+  t('Escape يغلق منتقي التفاعل دون إغلاق المحادثة أو إخفاء الفيديو', reactionMenu.hidden && !sandbox.WTRoom.session.chatOpen);
   CH.deleteMessage(later);
   t('حذف الرسالة يزيل التفاعلات', !later.querySelector('.msg__reactions') && !later.querySelector('.msg__react-add'));
   t('الرسالة المحذوفة لا تقبل تفاعلاً جديداً', !CH.toggleMessageReaction(later, '👍'));

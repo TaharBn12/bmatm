@@ -7,22 +7,19 @@
 begin;
 
 alter table public.rooms add column if not exists is_private boolean not null default false;
-alter table public.rooms add column if not exists control_mode text not null default 'owner';
+alter table public.rooms add column if not exists control_mode text not null default 'everyone';
 alter table public.rooms add column if not exists creator_id uuid;
+alter table public.rooms alter column control_mode set default 'everyone';
+alter table public.presence add column if not exists user_key text;
+alter table public.room_members add column if not exists user_key text;
 
-update public.rooms set control_mode = 'owner'
-where control_mode is null or control_mode not in ('owner', 'everyone');
+-- Playback control is no longer configurable: every valid room member can use it.
+update public.rooms set control_mode = 'everyone'
+where control_mode is distinct from 'everyone';
 
-DO $$
-begin
-  if not exists (
-    select 1 from pg_constraint
-    where conrelid = 'public.rooms'::regclass and conname = 'rooms_control_mode_check'
-  ) then
-    alter table public.rooms add constraint rooms_control_mode_check
-      check (control_mode in ('owner', 'everyone'));
-  end if;
-end $$;
+alter table public.rooms drop constraint if exists rooms_control_mode_check;
+alter table public.rooms add constraint rooms_control_mode_check
+  check (control_mode = 'everyone');
 
 -- البلاغات خاصة بالمراجعين؛ لا توجد قراءة/كتابة مباشرة عبر PostgREST.
 create table if not exists public.room_reports (
@@ -52,6 +49,30 @@ drop policy if exists rooms_read on public.rooms;
 create policy rooms_read on public.rooms for select to anon, authenticated using (not is_private);
 grant select (room_id, title, video_url, host_name, state, created_at, updated_at, is_private, control_mode)
   on public.rooms to anon, authenticated;
+grant select (room_id, client_id, display_name, role, user_key, created_at, updated_at)
+  on public.room_members to anon, authenticated;
+
+create or replace function public.wt_set_presence_user_key()
+returns trigger
+language plpgsql security definer
+set search_path = public, pg_temp
+as $$
+begin
+  new.user_key := case when auth.uid() is null then null
+    else md5(new.room_id || ':' || auth.uid()::text) end;
+  return new;
+end;
+$$;
+revoke all on function public.wt_set_presence_user_key() from public;
+drop trigger if exists wt_presence_user_key on public.presence;
+create trigger wt_presence_user_key
+  before insert or update on public.presence
+  for each row execute function public.wt_set_presence_user_key();
+drop policy if exists presence_read_write on public.presence;
+create policy presence_read_write on public.presence
+  for all to anon, authenticated using (true)
+  with check (user_key is not distinct from case when auth.uid() is null then null
+    else md5(room_id || ':' || auth.uid()::text) end);
 
 -- التوافق مع إنشاء الغرف القديم، مع حفظ هوية الحساب الموثّقة عند توفرها.
 create or replace function public.wt_create_room(
@@ -135,7 +156,7 @@ as $$
   select public.wt_get_owned_room(p_room_id, p_owner_token);
 $$;
 
--- المنشئ وحده يغيّر الاسم والرابط وإعدادات الخصوصية والتحكم.
+-- المنشئ وحده يغيّر الاسم والرابط والخصوصية؛ التحكم بالمشاهدة ثابت لكل المشاركين المنضمّين.
 create or replace function public.wt_update_room(
   p_room_id text,
   p_owner_token text,
@@ -186,7 +207,7 @@ begin
           creator_id = coalesce(creator_id, auth.uid()),
           video_url = nullif(v_video, ''),
           is_private = coalesce(p_is_private, is_private),
-          control_mode = coalesce(p_control_mode, control_mode),
+          control_mode = 'everyone',
           state = coalesce(state, '{}'::jsonb) || jsonb_build_object(
             'url', nullif(v_video, ''), 'playing', false, 'pos', 0, 't', floor(extract(epoch from v_now) * 1000)::bigint, 'rev', v_rev
           ),
@@ -197,7 +218,7 @@ begin
       set title = coalesce(p_title, title),
           creator_id = coalesce(creator_id, auth.uid()),
           is_private = coalesce(p_is_private, is_private),
-          control_mode = coalesce(p_control_mode, control_mode),
+          control_mode = 'everyone',
           updated_at = v_now
       where room_id = p_room_id;
   end if;
@@ -205,8 +226,96 @@ begin
 end;
 $$;
 
--- التحكم بالجميع يوسّع التحكم في المشاهدة للمشاركين المنضمّين فقط؛
--- مفاتيح العضوية ما زالت مطلوبة، وتظل إدارة الأدوار بيد المنشئ.
+-- يسجّل هوية حساب مستعارة داخل الغرفة، مع إبقاء client_id ومفتاح العضوية لكل اتصال.
+create or replace function public.wt_join_room(
+  p_room_id text,
+  p_client_id text,
+  p_member_token text,
+  p_display_name text
+) returns jsonb
+language plpgsql security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_room public.rooms%rowtype;
+  v_owner_token text;
+  v_member_token text;
+  v_role text := 'viewer';
+  v_now_ms bigint;
+begin
+  if p_room_id is null or p_client_id is null or length(p_client_id) > 128
+     or p_member_token is null or length(p_member_token) < 48 or length(p_member_token) > 256 then
+    raise exception 'بيانات العضو غير صالحة' using errcode = '22023';
+  end if;
+  select * into v_room from public.rooms where room_id = p_room_id;
+  if not found then
+    return jsonb_build_object('found', false, 'role', 'viewer', 'members', '[]'::jsonb, 'serverTime',
+      floor(extract(epoch from clock_timestamp()) * 1000)::bigint);
+  end if;
+
+  select owner_token into v_owner_token from wt_private.room_secrets where room_id = p_room_id;
+  if v_owner_token = p_member_token then
+    v_role := 'owner';
+  else
+    select member_token into v_member_token from wt_private.member_secrets
+      where room_id = p_room_id and client_id = p_client_id;
+    if found then
+      if v_member_token <> p_member_token then
+        raise exception 'رمز العضو غير صالح' using errcode = '42501';
+      end if;
+      select role into v_role from public.room_members
+        where room_id = p_room_id and client_id = p_client_id;
+    else
+      select role into v_role from public.room_members
+        where room_id = p_room_id and client_id = p_client_id;
+      if found and v_role in ('owner', 'organizer') then
+        raise exception 'رمز العضو غير صالح' using errcode = '42501';
+      end if;
+      v_role := 'viewer';
+    end if;
+  end if;
+
+  insert into public.room_members(room_id, client_id, display_name, role, user_key)
+  values (p_room_id, p_client_id, left(coalesce(nullif(p_display_name, ''), 'زائر'), 30), v_role,
+    case when auth.uid() is null then null else md5(p_room_id || ':' || auth.uid()::text) end)
+  on conflict (room_id, client_id) do update
+    set display_name = excluded.display_name,
+        updated_at = clock_timestamp(),
+        role = excluded.role,
+        user_key = excluded.user_key;
+
+  if v_role <> 'owner' then
+    insert into wt_private.member_secrets(room_id, client_id, member_token)
+    values (p_room_id, p_client_id, p_member_token)
+    on conflict (room_id, client_id) do nothing;
+    -- لا نسمح بتبديل سرّ عضو مسجّل لمجرد معرفة client_id.
+    select m.role into v_role
+      from public.room_members m
+      join wt_private.member_secrets s using (room_id, client_id)
+      where m.room_id = p_room_id and m.client_id = p_client_id and s.member_token = p_member_token;
+    if not found then v_role := 'viewer'; end if;
+  else
+    -- لا تدع سرّ عضو قديم على client_id نفسه يرث دور المنشئ.
+    delete from wt_private.member_secrets where room_id = p_room_id and client_id = p_client_id;
+    update public.room_members set role = 'owner', updated_at = clock_timestamp()
+      where room_id = p_room_id and client_id = p_client_id;
+  end if;
+
+  v_now_ms := floor(extract(epoch from clock_timestamp()) * 1000)::bigint;
+  return jsonb_build_object(
+    'found', true,
+    'role', coalesce(v_role, 'viewer'),
+    'serverTime', v_now_ms,
+    'members', coalesce((
+      select jsonb_agg(jsonb_build_object('client_id', client_id, 'display_name', display_name, 'role', role, 'user_key', user_key)
+                       order by updated_at asc)
+      from public.room_members where room_id = p_room_id
+    ), '[]'::jsonb)
+  );
+end;
+$$;
+
+-- كل عضو نجح في الانضمام بمفتاحه يستطيع التحكم في المشاهدة.
 create or replace function public.wt_apply_room_state(
   p_room_id text,
   p_client_id text,
@@ -243,9 +352,8 @@ begin
       join wt_private.member_secrets s using (room_id, client_id)
       where m.room_id = p_room_id and m.client_id = p_client_id and s.member_token = p_member_token;
   end if;
-  if coalesce(v_role, 'viewer') not in ('owner', 'organizer')
-     and not (v_room.control_mode = 'everyone' and v_role = 'viewer') then
-    raise exception 'لا تملك صلاحية التحكم في هذه الغرفة' using errcode = '42501';
+  if v_role is null then
+    raise exception 'انضم إلى الغرفة أولاً للتحكم بالمشاهدة' using errcode = '42501';
   end if;
 
   v_rev := coalesce(nullif(v_room.state->>'rev', '')::bigint, 0) + 1;

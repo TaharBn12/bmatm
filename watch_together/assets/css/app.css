@@ -2555,8 +2555,7 @@ body.chat-focus .room-main > #chat {
 
 /* الرأس وحقل الإضافة والرسائل: محدودة الومركززة، والمشغّل وحده كامل العرض */
 .room-body .room-main > .room-bar,
-.room-body .room-main > .change-bar,
-.room-body .room-main > #chat {
+.room-body .room-main > .change-bar {
   width: min(1060px, calc(100% - 2 * var(--gutter)));
   margin-inline: auto;
 }
@@ -2604,4 +2603,184 @@ body.chat-focus .room-main > #chat {
 
 @media (prefers-reduced-motion: reduce) {
   .upnext { animation: none; }
+}
+
+/* =========================================================
+   دردشة عائمة قابلة للتحريك — منفصلة عن تخطيط المشغّل
+   ========================================================= */
+.room-body #chatWidget {
+  position: fixed;
+  z-index: 88;
+  right: 18px;
+  bottom: calc(18px + env(safe-area-inset-bottom, 0px));
+  width: 64px;
+  height: 64px;
+  pointer-events: none;
+  touch-action: none;
+}
+.room-body #chatWidget.is-dragging { cursor: grabbing; }
+.room-body #chatFab {
+  position: relative;
+  z-index: 2;
+  display: grid !important;
+  place-items: center;
+  width: 64px;
+  height: 64px;
+  padding: 0;
+  border: 1px solid rgba(255,255,255,.25);
+  border-radius: 50%;
+  background: linear-gradient(145deg, #e4c78f, #bc8953);
+  color: #17120a;
+  box-shadow: 0 12px 34px rgba(0,0,0,.42), 0 4px 18px rgba(197,165,114,.3);
+  cursor: grab;
+  pointer-events: auto;
+  touch-action: none;
+  user-select: none;
+  transition: transform .18s ease, box-shadow .18s ease, filter .18s ease;
+}
+.room-body #chatFab:hover { transform: translateY(-2px); filter: brightness(1.06); }
+.room-body #chatFab:active { cursor: grabbing; transform: scale(.97); }
+.room-body #chatFab:focus-visible { outline: 3px solid #fff; outline-offset: 4px; }
+.room-body #chatWidget.is-dragging #chatFab { cursor: grabbing; transition: none; }
+.room-body #chatFab .ic { display: inline-flex; }
+.room-body .chat-fab__count {
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  inset-inline-end: auto;
+  min-width: 23px;
+  height: 23px;
+  padding: 0 6px;
+  display: grid;
+  place-items: center;
+  border: 2px solid #10151d;
+  border-radius: 999px;
+  background: #d95f67;
+  color: #fff;
+  font: 800 10px/1 var(--font);
+  box-shadow: 0 3px 10px rgba(0,0,0,.3);
+}
+.room-body .chat-fab__count[hidden] { display: none !important; }
+.room-body #chatFab[aria-expanded="true"] { box-shadow: 0 0 0 4px rgba(197,165,114,.2), 0 12px 34px rgba(0,0,0,.4); }
+
+.room-body #chat {
+  position: fixed;
+  z-index: 1;
+  pointer-events: auto;
+  display: flex;
+  flex-direction: column;
+  width: min(400px, calc(100vw - 24px));
+  height: min(620px, 72dvh, calc(100dvh - 24px));
+  min-height: 0;
+  max-width: none;
+  max-height: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid rgba(212,187,145,.24);
+  border-radius: 20px;
+  background: #131923;
+  box-shadow: 0 24px 70px rgba(0,0,0,.62), 0 0 0 1px rgba(255,255,255,.035);
+  overflow: hidden;
+}
+.room-body #chat[hidden] { display: none !important; }
+.room-body #chatWidget.is-fullscreen #chat { position: fixed; pointer-events: auto; }
+.room-body #chat .chat__head {
+  flex: 0 0 auto;
+  min-height: 58px;
+  gap: 8px;
+  padding: 9px 11px;
+  background: linear-gradient(135deg, rgba(197,165,114,.15), rgba(21,27,37,.98) 58%);
+  border-bottom: 1px solid rgba(255,255,255,.08);
+}
+.room-body #chat .chat__title { gap: 7px; font-size: 14px; white-space: nowrap; }
+.room-body #chat .chat__title .ic { color: var(--brand-2); }
+.room-body #chat .chat__head .badge { flex: none; font-size: 10px; }
+.room-body #chat .chat__head .btn { flex: none; width: 34px; height: 34px; min-height: 34px; }
+.room-body #chat .chat__close { margin-inline-start: 2px; }
+.room-body #chat .chat__body {
+  flex: 1 1 0%;
+  min-width: 0;
+  min-height: 0;
+  height: auto;
+  padding: 13px 12px;
+  gap: 8px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scroll-behavior: smooth;
+  background: radial-gradient(ellipse at 100% 0, rgba(197,165,114,.055), transparent 55%);
+}
+.room-body #chat .chat__body > .msg { flex-shrink: 0; max-width: 100%; }
+.room-body #chat .chat__foot {
+  flex: 0 0 auto;
+  padding: 9px 10px calc(9px + env(safe-area-inset-bottom, 0px));
+  background: #151b25;
+  border-top: 1px solid rgba(255,255,255,.08);
+}
+.room-body #chat .typing { margin-top: 5px; }
+.room-body #chat .chat__input { min-height: 40px; max-height: 96px; }
+.room-body #chat .chat__send { width: 42px; height: 42px; border-radius: 13px; }
+.room-body #chat .chat__send svg { width: 19px; height: 19px; }
+.room-body #chat .chat__body::-webkit-scrollbar { width: 7px; }
+.room-body #chat .chat__body::-webkit-scrollbar-thumb { background: rgba(197,165,114,.35); border-radius: 99px; }
+.room-body #chat .chat__body::-webkit-scrollbar-track { background: transparent; }
+
+/* في ملء الشاشة، تصبح الفقاعة واللوحة ضمن شجرة #stage كي لا يحجبهما المتصفح. */
+.room-body #stage:fullscreen,
+.room-body #stage.is-app-fullscreen {
+  width: 100vw;
+  height: 100vh;
+  height: 100dvh;
+  max-width: none;
+  max-height: none;
+  min-height: 0;
+  padding: 0;
+  background: #000;
+  display: flex;
+  flex-direction: column;
+}
+.room-body #stage.is-app-fullscreen {
+  position: fixed;
+  inset: 0;
+  z-index: 150;
+}
+.room-body #stage:fullscreen .player,
+.room-body #stage.is-app-fullscreen .player {
+  flex: 1 1 0%;
+  min-width: 0;
+  min-height: 0;
+  width: 100%;
+  height: auto;
+  max-width: none;
+  max-height: none;
+  aspect-ratio: auto;
+}
+.room-body #stage:fullscreen .ctrlbar,
+.room-body #stage.is-app-fullscreen .ctrlbar { flex: 0 0 auto; width: 100%; }
+.room-body #stage:fullscreen > #chatWidget,
+.room-body #stage.is-app-fullscreen > #chatWidget {
+  position: absolute;
+  z-index: 30;
+  right: 18px;
+  bottom: calc(64px + env(safe-area-inset-bottom, 0px));
+}
+body.app-fullscreen-active { overflow: hidden; }
+
+@media (max-width: 480px) {
+  .room-body #chatWidget { right: 12px; bottom: calc(12px + env(safe-area-inset-bottom, 0px)); }
+  .room-body #chatFab { width: 58px; height: 58px; }
+  .room-body #chat .chat__head { min-height: 54px; padding: 8px; gap: 6px; }
+  .room-body #chat .chat__title { font-size: 13px; }
+  .room-body #chat .chat__head .btn { width: 32px; height: 32px; min-height: 32px; }
+  .room-body #chat .chat__body { padding: 10px 9px; }
+  .room-body #chat .chat__foot { padding-inline: 8px; }
+  .room-body #stage:fullscreen > #chatWidget,
+  .room-body #stage.is-app-fullscreen > #chatWidget { right: 12px; }
+}
+@media (pointer: coarse) {
+  .room-body #chat .chat__input { min-height: 44px; font-size: 16px; }
+  .room-body #chat .chat__send { width: 44px; height: 44px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .room-body #chatFab { transition: none; }
 }

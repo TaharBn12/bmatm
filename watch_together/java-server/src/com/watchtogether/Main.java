@@ -36,6 +36,7 @@ import java.util.concurrent.TimeUnit;
  *     PORT=8080        رقم المنفذ
  *     HOST=0.0.0.0     عنوان الاستماع (0.0.0.0 = كل الواجهات، مطلوب للمعاينة الحية)
  *     ROOT=/path       مجلد الملفات الثابتة
+ *     WT_SUPABASE_URL و WT_SUPABASE_ANON_KEY  للتحقق من هوية حسابات Supabase عند توحيد الحضور
  */
 public final class Main {
 

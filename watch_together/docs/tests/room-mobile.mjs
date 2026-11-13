@@ -78,6 +78,8 @@ const roomTree = parseTree(roomHtml);
 const drawerEl = findById(roomTree, 'roomDrawer');
 const scrimEl = findById(roomTree, 'drawerScrim');
 const chatEl = findById(roomTree, 'chat');
+const chatWidgetEl = findById(roomTree, 'chatWidget');
+const chatFabEl = findById(roomTree, 'chatFab');
 const stageEl = findById(roomTree, 'stage');
 const membersEl = findById(roomTree, 'membersPanel');
 
@@ -86,26 +88,25 @@ t('شريط التعتيم (scrim) موجود في الصفحة', !!scrimEl);
 t('محتوى الغرفة (#room) هو الأب المباشر للدراور', !!drawerEl && !!drawerEl.parent && drawerEl.parent.id === 'room');
 t('الدراور خارج تدفّق المحتوى (ليس داخل #roomMain)',
   !!drawerEl && !insideOf(drawerEl, 'roomMain'));
-t('الرسائل (#chat) داخل #roomMain', !!chatEl && insideOf(chatEl, 'roomMain'));
-/* الشجرة الحقيقية: هل الرسائل هي العنصر التالي للمشغّل مباشرة في #roomMain؟ */
+t('لوحة المحادثة (#chat) داخل فقاعة الدردشة في #roomMain', !!chatEl && !!chatWidgetEl && insideOf(chatEl, 'chatWidget') && insideOf(chatEl, 'roomMain'));
+t('فقاعة الدردشة دائرية ومهيأة للتحريك', !!chatFabEl && chatFabEl.classes.includes('chat-fab') &&
+  (chatFabEl.attrs['aria-keyshortcuts'] || '').includes('Alt+Arrow'));
+/* لوحة الرسائل عائمة: عنصرها لا يضيف ارتفاعاً إلى تخطيط المشغّل. */
 const roomMainEl = findById(roomTree, 'roomMain');
 const siblings = roomMainEl.children.filter(c => c.id || c.classes.length);
 const posOf = (idOrClass) => siblings.findIndex(c => c.id === idOrClass || c.classes.includes(idOrClass));
 {
   const mediaIdx = siblings.findIndex(c => c.classes.includes('media-shell'));
-  const chatIdx = siblings.findIndex(c => c.classes.includes('chat'));
+  const widgetIdx = siblings.findIndex(c => c.id === 'chatWidget');
   const barIdx = siblings.findIndex(c => c.classes.includes('room-bar'));
   const changeIdx = siblings.findIndex(c => c.classes.includes('change-bar'));
   const names = siblings.map(c => c.id || c.classes.join('.'));
-  /* الأشرطة المعروفة فوق المشغّل: رأس الغرفة ونموذج تغيير الرابط فقط.
-     كان هنا شريط ثالث (feature-bar «ميزات السهرة») وأُزيل مع وحدة الميزات كلها.
-     القائمة صريحة بدل رقم ثابت: أي قسم غريب جديد يسقط في الاختبار فوراً. */
   const KNOWN_BARS = ['room-bar', 'change-bar'];
-  t('الرسائل هي العنصر التالي للمشغّل مباشرة داخل #roomMain',
-    mediaIdx >= 0 && chatIdx === mediaIdx + 1,
+  t('فقاعة الدردشة العائمة تلي المشغّل مباشرة دون أن تدخل اللوحة في تدفّق الصفحة',
+    mediaIdx >= 0 && widgetIdx === mediaIdx + 1,
     siblings.map(c => (c.tag + (c.id ? '#' + c.id : '.' + c.classes.join('.')))).join(' → '));
-  t('لا يوجد أي عنصر آخر بين المشغّل والرسائل',
-    chatIdx === mediaIdx + 1 &&
+  t('لا توجد بطاقات إضافية بين المشغّل وعنصر الدردشة العائم',
+    widgetIdx === mediaIdx + 1 &&
     siblings.slice(0, mediaIdx).every(c => KNOWN_BARS.some(k => c.classes.includes(k))) &&
     siblings.length === mediaIdx + 2, names.join(','));
   t('رأس الغرفة (الاسم · الأدوات · القائمة) قبل المشغّل',
@@ -309,19 +310,21 @@ function evalLength(expr, ctx) {
   const calc = s.match(/^calc\((.*)\)$/i);
   if (calc) {
     let inner = calc[1]
+      .replace(/env\([^)]*\)/gi, '0px')
       .replace(/([\d.]+)vw/gi, (_, n) => String(parseFloat(n) * ctx.width / 100))
+      .replace(/([\d.]+)dvh/gi, (_, n) => String(parseFloat(n) * ctx.height / 100))
       .replace(/([\d.]+)vh/gi, (_, n) => String(parseFloat(n) * ctx.height / 100))
       .replace(/([\d.]+)%/g, (_, n) => String(parseFloat(n) * ctx.width / 100))
       .replace(/([\d.]+)px/gi, '$1');
     if (!/^[-+*/().\d\s]+$/.test(inner)) return null;
     try { return Function('"use strict";return (' + inner + ')')(); } catch (e) { return null; }
   }
-  const single = s.match(/^([\d.]+)(px|vw|vh|%)$/i);
+  const single = s.match(/^([\d.]+)(px|vw|dvh|vh|%)$/i);
   if (single) {
     const n = parseFloat(single[1]), u = single[2].toLowerCase();
     if (u === 'px') return n;
     if (u === 'vw') return n * ctx.width / 100;
-    if (u === 'vh') return n * ctx.height / 100;
+    if (u === 'vh' || u === 'dvh') return n * ctx.height / 100;
     if (u === '%') return n * ctx.width / 100;
   }
   return null;
@@ -451,6 +454,7 @@ for (const v of VIEWPORTS) {
   const tapChecks = [
     ['زر التشغيل المركزي', 'centerPlayBtn', ['width', 'height'], 44],
     ['زر ملء الشاشة', 'videoFullscreenBtn', ['width', 'height'], 44],
+    ['فقاعة الدردشة الدائرية', 'chatFab', ['width', 'height'], 44],
     ['زر الإرسال في الدردشة', 'chatSend', ['width', 'height'], 44],
     ['زر فتح القائمة', 'drawerOpenBtn', ['min-height', 'height'], 44],
     ['خانة الكتابة', 'chatInput', ['min-height', 'height'], 44],
@@ -485,49 +489,39 @@ for (const v of VIEWPORTS) {
   for (const view of [VIEWPORTS[0], VIEWPORTS[1], VIEWPORTS[4]]) {
     const c = ctxOf(view);
     const stageW = val(stageEl, 'width', c);
-    t(`[${view.name}] بطاقة المشغّل محدودة بـ min() لا بعرض ثابت`, /^min\(/.test(stageW), stageW);
-    t(`[${view.name}] بطاقة المشغّل لا تتجاوز 100%`, /100%/.test(stageW), stageW);
+    t(`[${view.name}] المشغّل يستخدم العرض الكامل المتجاوب للغرفة`, stageW === '100%' || /^min\(/.test(stageW), stageW);
+    t(`[${view.name}] بطاقة المشغّل لا تتجاوز عرض الحاوية`, /100%/.test(stageW) || /^min\(/.test(stageW), stageW);
   }
   const chatBodyEl = byIdProbe('chatBody');
-  const chatFlex = val(chatEl, 'flex', ctx);
-  t('بطاقة الرسائل مرنة وتملأ المساحة المتبقية داخل الغرفة',
-    chatFlex === '1 1 0%' && val(chatEl, 'height', ctx) === 'auto' && val(chatEl, 'min-height', ctx) === '0',
-    `${chatFlex} / ${val(chatEl, 'height', ctx)} / ${val(chatEl, 'min-height', ctx)}`);
+  const widgetPosition = val(chatWidgetEl, 'position', ctx);
+  t('فقاعة الدردشة مثبتة فوق المشغّل ولا تحجز مكاناً في تخطيط الغرفة',
+    widgetPosition === 'fixed' && val(chatEl, 'position', ctx) === 'fixed', `${widgetPosition} / ${val(chatEl, 'position', ctx)}`);
+  const panelWidth = val(chatEl, 'width', ctx), panelHeight = val(chatEl, 'height', ctx);
+  t('لوحة Messenger محدودة بعرض الشاشة وارتفاع النافذة',
+    /400px/.test(panelWidth) && /100vw/.test(panelWidth) && /72dvh/.test(panelHeight) && /100dvh/.test(panelHeight),
+    `${panelWidth} / ${panelHeight}`);
+  t('لوحة Messenger مخفية افتراضياً وتظهر بالطلب فقط', 'hidden' in (chatEl.attrs || {}));
   const bodyFlex = val(chatBodyEl, 'flex', ctx);
-  t('قائمة الرسائل تتمدد داخل البطاقة بدلاً من فرض ارتفاع ثابت',
-    bodyFlex === '1 1 0%' && val(chatBodyEl, 'height', ctx) === 'auto' && val(chatBodyEl, 'min-height', ctx) === '0',
-    `${bodyFlex} / ${val(chatBodyEl, 'height', ctx)} / ${val(chatBodyEl, 'min-height', ctx)}`);
+  t('قائمة الرسائل تتمدد داخل لوحة Messenger وتبقى قابلة للتمرير',
+    bodyFlex === '1 1 0%' && val(chatBodyEl, 'height', ctx) === 'auto' && val(chatBodyEl, 'min-height', ctx) === '0' &&
+    val(chatBodyEl, 'overflow-y', ctx) === 'auto',
+    `${bodyFlex} / ${val(chatBodyEl, 'height', ctx)} / ${val(chatBodyEl, 'overflow-y', ctx)}`);
   const messageRow = { tag: 'div', id: '', classes: ['msg'], attrs: {}, children: [], parent: chatBodyEl };
-  t('صفوف الرسائل لا تنكمش داخل مساحة التمرير',
-    val(messageRow, 'flex-shrink', ctx) === '0' && evalLength(val(messageRow, 'min-height', ctx), ctx) === 34,
-    `${val(messageRow, 'flex-shrink', ctx)} / ${val(messageRow, 'min-height', ctx)}`);
-  t('الرسائل القديمة والطويلة تبقى قابلة للتمرير داخل نافذة المحادثة',
-    val(chatBodyEl, 'overflow-y', ctx) === 'auto', val(chatBodyEl, 'overflow-y', ctx));
+  t('صفوف الرسائل لا تنكمش داخل مساحة التمرير', val(messageRow, 'flex-shrink', ctx) === '0', val(messageRow, 'flex-shrink', ctx));
+  t('لوحة الدردشة نفسها لا تزيد ارتفاع الصفحة', val(chatEl, 'position', ctx) === 'fixed');
+  t('زر الدردشة الدائري يراعي منطقة الأمان السفلية', /safe-area-inset-bottom/.test(val(chatWidgetEl, 'bottom', ctx)), val(chatWidgetEl, 'bottom', ctx));
 
-  /* القرب الفعلي: المسافة بين المشغّل والرسائل على الهاتف */
-  for (const dev of [{ n: 'هاتف صغير', w: 360, h: 640 }, { n: 'هاتف مقلوب', w: 844, h: 390 }]) {
-    const c = ctxOf({ width: dev.w, height: dev.h, pointer: 'coarse' });
-    const gap = evalLength(val(roomMainEl, 'gap', c), c);
-    t(`[${dev.n}] المسافة بين بطاقة المشغّل والرسائل ≤ 10px`, gap !== null && gap <= 10, String(gap));
-  }
-  t('رسائل الصفحة تسبق كل شيء آخر: لا بطاقة بين الفيديو والمحادثة',
-    val({ tag: 'section', id: 'chat', classes: ['chat', 'glass'], attrs: {}, children: [], parent: roomMainEl }, 'margin-top', ctxOf(VIEWPORTS[1])) === '0');
-
-  /* ميزانية الارتفاع: هل يبقى للرسائل مكان معقول في شاشة هاتف حقيقية؟
-     (أرقام معلنة في CSS: شريط الغرفة + أزرار الأدوات + الفيديو 16:9 + شريط التحكم + حشوة) */
-  const ctrlBarH = 42;          /* شريط التقدم 26px + حشوة 16px */
-  const mainPad = 28;           /* 10px أعلى + 18px أسفل */
-  console.log('\n  📱 ميزانية ارتفاع الغرفة على الهاتف (كم يبقى للرسائل فعلياً):');
+  /* قياس نافذة Messenger العائمة على الشاشات الصغيرة. */
+  console.log('\n  💬 قياس نافذة الدردشة العائمة على مقاسات الهاتف:');
   for (const dev of [{ n: 'iPhone SE', w: 320, h: 568 }, { n: 'هاتف صغير', w: 360, h: 640 }, { n: 'iPhone 390', w: 390, h: 844 }]) {
     const c = ctxOf({ width: dev.w, height: dev.h, pointer: 'coarse' });
-    const barH = evalLength(val(byIdProbe('drawerOpenBtn').parent.parent, 'min-height', c), c) || 52;
-    const actH = evalLength(val(byIdProbe('addVideoBtn'), 'min-height', c), c) || 46;
-    const stageW = evalLength(val(stageEl, 'width', c), c) || dev.w;
-    const videoH = Math.round(stageW * 9 / 16);
-    const chatSpace = Math.round(dev.h - (barH + actH + videoH + ctrlBarH + mainPad));
-    console.log(`  • ${dev.n} (${dev.w}×${dev.h}) — شريط ${barH} + أزرار ${actH} + فيديو ${videoH} + تحكم ${ctrlBarH} ⇒ الرسائل ≈ ${chatSpace}px`);
-    t(`[${dev.n}] تبقى مساحة معقولة للرسائل (≥ 180px)`, chatSpace >= 180, `${chatSpace}px`);
-    t(`[${dev.n}] الفيديو لا يأكل أكثر من 45% من ارتفاع الشاشة`, videoH <= dev.h * 0.45, `${videoH} من ${dev.h}`);
+    const panelW = evalLength(val(chatEl, 'width', c), c);
+    const panelH = evalLength(val(chatEl, 'height', c), c);
+    const fabW = evalLength(val(chatFabEl, 'width', c), c);
+    console.log(`  • ${dev.n} (${dev.w}×${dev.h}) — لوحة ${Math.round(panelW)}×${Math.round(panelH)}px، فقاعة ${fabW}px`);
+    t(`[${dev.n}] لوحة المحادثة تدخل عرض الشاشة بهامش 24px`, panelW !== null && panelW <= dev.w - 24, String(panelW));
+    t(`[${dev.n}] ارتفاع المحادثة لا يتجاوز 72% من الشاشة`, panelH !== null && panelH <= dev.h * .72 + 1, String(panelH));
+    t(`[${dev.n}] فقاعة الدردشة تبقى هدف لمس كبيراً`, fabW !== null && fabW >= 54, String(fabW));
   }
   t('شريط الغرفة لا يلتفّ إلى سطرين على الهاتف', val(byIdProbe('drawerOpenBtn').parent, 'flex-wrap', ctx) !== 'wrap',
     val(byIdProbe('drawerOpenBtn').parent, 'flex-wrap', ctx));
@@ -554,7 +548,8 @@ for (const v of VIEWPORTS) {
       `flex=${val(rtopbarEl, 'flex', barCtx)}, min-width=${val(rtopbarEl, 'min-width', barCtx)}`);
     t('العنوان وأدوات الطيّ المحذوفة لا تزاحم أزرار الغرفة',
       !findById(roomTree, 'roomTitle') && !findById(roomTree, 'collapseBtn'));
-    t('عرض الشريط نفسه لا يزيح المحتوى: العنوان والأيقونات كلها داخل room-bar',
+    t('عرض الشريط متجاوب ومقيد بهوامش الغرفة',
+      /min\(1060px, calc\(100% - 2 \* var\(--gutter\)\)\)/.test(val(barEl, 'width', barCtx)) ||
       /auto/.test(val(barEl, 'width', barCtx)) || val(barEl, 'width', barCtx) === '', val(barEl, 'width', barCtx));
 
     /* ميزانية العرض على أصغر هاتف (320px): الأجزاء الثابتة يجب أن تترك للعنوان مساحة */
@@ -582,7 +577,7 @@ for (const v of VIEWPORTS) {
   const lctx = ctxOf(VIEWPORTS[4]);
   const lw = evalLength(val(stageEl, 'width', lctx), lctx);
   t('في الوضع الأفقي لا يأكل الفيديو الشاشة كلها', lw !== null && lw <= 480, String(lw));
-  t('في الوضع الأفقي تبقى الرسائل ظاهرة', evalLength(val(chatEl, 'min-height', lctx), lctx) <= 240, val(chatEl, 'min-height', lctx));
+  t('في الوضع الأفقي لا تفرض لوحة الدردشة ارتفاعاً يمنع الفيديو', val(chatEl, 'min-height', lctx) === '0', val(chatEl, 'min-height', lctx));
 
   /* كل ارتفاع 100vh له بديل dvh */
   /* ارتفاع الشاشة الكامل: لكل مُحدِّد يصرّح 100vh يجب أن ينتهي الأمر بـ 100dvh */

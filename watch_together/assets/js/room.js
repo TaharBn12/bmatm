@@ -3,8 +3,8 @@
    ---------------------------------------------------------
    الترتيب: مشغّل ← أدوات تحكم ← المنضمون ← الرسائل
    المزامنة:
-     • التحكم لمنشئ الغرفة والمنظّمين الذين يعيّنهم
-     • الخادم يتحقق من الدور ويرقّم كل تغيير؛ الحالة المحلية ليست مرجعاً
+     • كل مشارك منضمّ ومتحقق منه يستطيع التحكم بالمشاهدة
+     • الخادم يتحقق من العضوية ويرقّم كل تغيير؛ الحالة المحلية ليست مرجعاً
      • الحالة تُرفع إلى قاعدة بيانات الغرفة دورياً، مع إعادة اتصال واستطلاع احتياطي
      • من ينضم لاحقاً يأخذ الوقت المحسوب من آخر حالة (يلحق بالجميع)
      • عند خروج آخر مستخدم تُرفع الحالة فوراً (Java: خادم / Supabase: beacon)
@@ -73,7 +73,7 @@
     name: '',
     userId: null,
     isGuest: false,
-    controlMode: 'owner',
+    controlMode: 'everyone',
     ready: false,
     transport: null,
     mode: '—',
@@ -95,7 +95,8 @@
     lastTypingSent: 0,
     typingNames: {},
     unread: 0,
-    focusMode: false,
+    chatOpen: false,
+    leaving: false,
     replyTo: null,        /* الرسالة المُختارة للرد عليها {cid, name, text, row} */
     editing: null,        /* الرسالة قيد التعديل {cid, orig, row} */
     msgMenu: null,        /* قائمة خيارات الرسالة (تُنشأ عند أول استعمال) */
@@ -127,7 +128,7 @@
     copyLinkBtn: $('copyLinkBtn'), shareBtn: $('shareBtn'), qrBtn: $('qrBtn'), leaveBtn: $('leaveBtn'),
     drawer: $('roomDrawer'), drawerScrim: $('drawerScrim'), drawerOpenBtn: $('drawerOpenBtn'), drawerCloseBtn: $('drawerCloseBtn'),
     membersCount: $('membersCount'), organizerList: $('organizerList'), organizerCount: $('organizerCount'), organizerEmpty: $('organizerEmpty'),
-    mediaShell: $('mediaShell'),
+    roomMain: $('roomMain'), mediaShell: $('mediaShell'),
     stage: $('stage'), player: $('player'), placeholder: $('playerPlaceholder'), ctrlbar: $('ctrlbar'),
     videoFullscreen: $('videoFullscreenBtn'),
     centerPlay: $('centerPlayBtn'),
@@ -137,6 +138,7 @@
     playlistBtn: $('playlistBtn'), playlistCount: $('playlistCount'),
     changeBar: $('changeBar'), newUrl: $('newUrl'), newTitle: $('newTitle'), applyUrlBtn: $('applyUrlBtn'), cancelUrlBtn: $('cancelUrlBtn'),
     membersPanel: $('membersPanel'), membersList: $('membersList'), sideMembersCount: $('sideMembersCount'),
+    chatWidget: $('chatWidget'), chatFab: $('chatFab'), chatFabCount: $('chatFabCount'), chatCloseBtn: $('chatCloseBtn'),
     chat: $('chat'), chatBody: $('chatBody'), chatEmpty: $('chatEmpty'), chatCount: $('chatCount'),
     clearChatBtn: $('clearChatBtn'), refreshChatBtn: $('refreshChatBtn'), chatForm: $('chatForm'),
     chatInput: $('chatInput'), chatSend: $('chatSend'), typing: $('typing'),
@@ -165,8 +167,8 @@
       updatePlayIcon();
     },
     onStateChange: (d) => {
-      /* انتهاء الفيديو → قائمة الانتظار أولاً، ثم طبقة «التالي»
-         (تظهر للجميع، والتنفيذ للمتحكم فقط) */
+      /* انتهاء الفيديو → قائمة الانتظار أولاً، ثم طبقة «التالي»؛
+         التنفيذ التلقائي لجهاز واحد، والاختيار اليدوي متاح لكل من انضم. */
       if (d.ended) {
         if (!advanceQueue()) {
           if (window.WTUpNext && window.WTUpNext.onEnded) {
@@ -448,11 +450,19 @@
   async function connect() {
     setStatus('connecting', 'جارٍ الاتصال…');
     try {
+      let accessToken = roomAccessToken;
+      if (Auth && typeof Auth.validSession === 'function') {
+        const current = await Auth.validSession().catch(() => null);
+        if (current && current.access_token && current.user && !current.user.guest
+            && current.user.id === session.userId) {
+          accessToken = roomAccessToken = current.access_token;
+        }
+      }
       const { transport, result } = await window.WTTransport.connectRoom(roomId, {
         clientId: session.clientId,
         name: session.name,
         userId: session.userId,
-        accessToken: roomAccessToken,
+        accessToken,
         videoUrl: st.url || null,
         title: (createInfo && createInfo.title) || session.roomTitle || 'غرفة مشاهدة',
         /* من أنشأ الغرفة هو من يملك الحق في إنشاء صفّها في قاعدة البيانات؛
@@ -475,7 +485,7 @@
       /* وضع العرض (?local=1&demo=1) تجربة وحيدة المتصفح: صاحبها هو المتحكم */
       if (demoMode) session.role = 'owner';
       session.isOwner = session.role === 'owner';
-      session.controlMode = (result && (result.controlMode || (result.room && result.room.controlMode))) === 'everyone' ? 'everyone' : 'owner';
+      session.controlMode = 'everyone';
       session.queue = Array.isArray(result && result.queue) ? result.queue : [];
       if (Array.isArray(result && result.roles)) updateRoles(result.roles);
       if (Array.isArray(result && result.members)) mergeMembers(result.members);
@@ -505,6 +515,7 @@
 
       bindTransport(transport);
       session.ready = true;
+      updateControlAccess();
 
       /* تطبيق عناصر قائمة التشغيل المؤجلة من استيراد قائمة تشغيل يوتيوب (الصفحة الرئيسية) */
       try {
@@ -604,9 +615,9 @@
     t.on('serverTime', (time) => { if (typeof time === 'number') session.clockOffset = time - Date.now(); });
     t.on('members', (list) => { if (Array.isArray(list)) mergeMembers(list); });
     t.on('roles', updateRoles);
-    t.on('settings', (settings) => {
-      const mode = settings && settings.controlMode === 'everyone' ? 'everyone' : 'owner';
-      if (session.controlMode !== mode) { session.controlMode = mode; updateControlAccess(); }
+    t.on('settings', () => {
+      /* Legacy servers may still publish owner-only metadata; the room policy is now global. */
+      if (session.controlMode !== 'everyone') { session.controlMode = 'everyone'; updateControlAccess(); }
     });
     t.on('queue', setQueue);
     t.on('presence', handlePresence);
@@ -651,8 +662,26 @@
 
   /* ============================== صلاحيات التحكم ============================== */
   function canControl() {
-    return session.role === 'owner' || session.role === 'organizer' || (session.controlMode === 'everyone' && !!session.userId);
+    return !!(session.ready && session.transport && !session.leaving);
   }
+
+  /* Coordinate automatic queue/Up Next playback through one live tab; manual control stays shared. */
+  function canAutoAdvance() {
+    if (!canControl()) return false;
+    const now = Date.now();
+    const timeout = (CFG.room && CFG.room.presenceTimeoutMs) || 12000;
+    const activeIds = new Set();
+    Object.values(session.members || {}).forEach(member => {
+      if (!member || !member.id) return;
+      if (member.me || now - (Number(member.lastSeen) || 0) <= timeout) activeIds.add(String(member.id));
+    });
+    const selfId = String(session.clientId || '');
+    if (selfId) activeIds.add(selfId);
+    const writerId = String(st.updatedBy || '');
+    if (writerId && activeIds.has(writerId)) return writerId === selfId;
+    return Array.from(activeIds).sort()[0] === selfId;
+  }
+
   function canManageRoles() { return session.role === 'owner'; }
 
   function updateControlAccess() {
@@ -661,7 +690,7 @@
     if (el.progressBar) {
       el.progressBar.setAttribute('aria-disabled', locked ? 'true' : 'false');
       el.progressBar.classList.toggle('is-locked', locked);
-      el.progressBar.title = locked ? 'التحكم متاح للمنشئ والمنظّمين فقط' : 'اسحب للتقديم أو الترجيع';
+      el.progressBar.title = locked ? 'انضم إلى الغرفة للتحكم بالمشاهدة' : 'اسحب للتقديم أو الترجيع';
     }
     if (el.player) el.player.classList.toggle('player--view-only', locked);
     if (player && player._video) player._video.controls = false;
@@ -671,12 +700,12 @@
 
   function requireControl() {
     if (canControl()) return true;
-    U.toast(session.controlMode === 'everyone' ? 'يجب الانضمام إلى الغرفة للتحكم' : 'التحكم متاح لمنشئ الغرفة والمنظّمين فقط', 'warn', 2600);
+    U.toast('انضم إلى الغرفة للتحكم بالمشاهدة', 'warn', 2600);
     return false;
   }
 
   function roleName(role) {
-    return role === 'owner' ? 'منشئ الغرفة' : role === 'organizer' ? 'منظّم' : 'مشاهد';
+    return role === 'owner' ? 'منشئ الغرفة' : role === 'organizer' ? 'منظّم' : 'مشارك';
   }
 
   /* ============================== النشر (المعتمد عبر السيرفر) ============================== */
@@ -942,8 +971,8 @@
   /* ============================== الحلقات الدورية ============================== */
   function startLoops() {
     /* 1) رفع الحالة إلى قاعدة بيانات الغرفة كل 5 ثوانٍ
-          — الذي يتحكّم الآن هو من يرفعها (لا الكل، وإلا تخاصمت الحالات)
-          وإن صمت/خرج تولاها آخر بعد مهلة */
+          — يستطيع كل مشارك التحكم، لكن كاتب الحالة الأخير يحفظها دورياً
+          لتفادي تصادم الكتابات؛ وإن صمت/خرج يتولاها مشارك آخر بعد مهلة */
     clearInterval(session._persistTimer);
     const persistMs = (CFG.sync && CFG.sync.persistMs) || 5000;
     session._persistTimer = setInterval(() => {
@@ -987,10 +1016,11 @@
   function addMember(id, name, extra) {
     if (!id) return;
     const prev = session.members[id];
+    const now = Date.now();
     session.members[id] = Object.assign({
       id, name: name || 'زائر', host: false, me: false, role: session.roles[id] || 'viewer',
-      lastSeen: Date.now(), joined: prev ? prev.joined : Date.now(), typing: false
-    }, prev || {}, extra || {});
+      lastSeen: now, joined: prev ? prev.joined : now, typing: false
+    }, prev || {}, extra || {}, { lastSeen: now });
     if (session.roles[id]) session.members[id].role = session.roles[id];
     renderMembers();
   }
@@ -1006,7 +1036,10 @@
   function handlePresence(p) {
     if (!p) return;
     if (p.left || p.type === 'leave') return removeMember(p.clientId);
-    addMember(p.clientId, p.name, { host: !!p.host, role: p.role || session.roles[p.clientId] || 'viewer', typing: !!p.typing });
+    const extra = { host: !!p.host, role: p.role || session.roles[p.clientId] || 'viewer', typing: !!p.typing };
+    const userKey = p.userKey || p.user_key;
+    if (userKey) extra.userKey = userKey;
+    addMember(p.clientId, p.name, extra);
   }
 
   function mergeMembers(list) {
@@ -1015,10 +1048,10 @@
       if (!m || !(m.id || m.client_id)) return;
       const id = m.id || m.client_id;
       seen[id] = 1;
-      addMember(id, m.name || m.display_name, {
-        host: !!m.host,
-        role: m.role || session.roles[id] || 'viewer'
-      });
+      const extra = { host: !!m.host, role: m.role || session.roles[id] || 'viewer' };
+      const userKey = m.userKey || m.user_key;
+      if (userKey) extra.userKey = userKey;
+      addMember(id, m.name || m.display_name, extra);
     });
     Object.keys(session.members).forEach(id => {
       if (!seen[id] && !session.members[id].me) delete session.members[id];
@@ -1035,7 +1068,11 @@
       if (id) roles[id] = row.role || 'viewer';
     });
     session.roles = roles;
-    Object.values(session.members).forEach(m => { m.role = roles[m.id] || 'viewer'; });
+    Object.values(session.members).forEach(m => {
+      m.role = roles[m.id] || 'viewer';
+      const row = rows.find(item => item && (item.client_id || item.clientId || item.id) === m.id);
+      if (row) m.userKey = row.userKey || row.user_key || m.userKey || null;
+    });
     /* في وضع العرض نثبّت دور المنشئ: لا أحد آخر في الغرفة ليقود المشاهدة */
     const role = demoMode ? 'owner' : roles[session.clientId];
     if (role) {
@@ -1046,29 +1083,37 @@
     renderMembers();
   }
 
-  async function changeMemberRole(clientId, role) {
+  async function changeMemberRole(clientIds, role) {
     if (!canManageRoles() || !session.transport || typeof session.transport.setMemberRole !== 'function') {
       U.toast('إدارة المنظّمين متاحة لمنشئ الغرفة فقط', 'warn');
       return;
     }
+    const targets = Array.from(new Set((Array.isArray(clientIds) ? clientIds : [clientIds]).filter(Boolean)));
     try {
-      const result = await session.transport.setMemberRole(clientId, role);
-      if (Array.isArray(result)) updateRoles(result);
-      else if (result && Array.isArray(result.members)) updateRoles(result.members);
+      const results = await Promise.all(targets.map(id => session.transport.setMemberRole(id, role)));
+      results.forEach(result => {
+        if (Array.isArray(result)) updateRoles(result);
+        else if (result && Array.isArray(result.members)) updateRoles(result.members);
+      });
       U.toast(role === 'organizer' ? 'تمت إضافة المنظّم' : 'تمت إزالة صلاحية المنظّم', 'success', 2200);
     } catch (err) {
       U.toast('تعذّر تحديث الصلاحية — تحقق من الاتصال ثم أعد المحاولة', 'error', 3500);
     }
   }
 
+  function memberIdentity(m) {
+    return String((m && (m.userKey || m.user_key)) || (m && m.id) || '');
+  }
+
   function renderMemberCard(m, allowActions) {
-    const role = session.roles[m.id] || m.role || 'viewer';
+    const role = m.role || session.roles[m.id] || 'viewer';
+    const targets = Array.isArray(m.clientIds) && m.clientIds.length ? m.clientIds : [m.id];
     const cls = ['member-card'];
     if (m.me) cls.push('is-me');
     if (role === 'owner') cls.push('is-owner');
     else if (role === 'organizer') cls.push('is-organizer');
     const action = allowActions && canManageRoles() && !m.me && role !== 'owner'
-      ? '<button class="member-role-btn" type="button" data-client-id="' + U.esc(m.id) + '" data-set-role="' + (role === 'organizer' ? 'viewer' : 'organizer') + '" aria-label="' + (role === 'organizer' ? 'إزالة المنظّم' : 'تعيين منظّم') + '">' +
+      ? '<button class="member-role-btn" type="button" data-client-id="' + U.esc(m.id) + '" data-client-ids="' + U.esc(JSON.stringify(targets)) + '" data-set-role="' + (role === 'organizer' ? 'viewer' : 'organizer') + '" aria-label="' + (role === 'organizer' ? 'إزالة المنظّم' : 'تعيين منظّم') + '">' +
         IC.html(role === 'organizer' ? 'user' : 'userPlus', 15) + '<span>' + (role === 'organizer' ? 'إزالة' : 'منظّم') + '</span></button>'
       : '';
     return '<div class="' + cls.join(' ') + '" title="' + U.esc(m.name) + '">' +
@@ -1081,12 +1126,31 @@
   }
 
   function renderMembers() {
-    const list = Object.values(session.members).map(m => {
+    const people = new Map();
+    Object.values(session.members).forEach(m => {
       m.role = session.roles[m.id] || m.role || 'viewer';
-      return m;
-    }).sort((a, b) => {
+      const key = memberIdentity(m);
+      let person = people.get(key);
+      if (!person) {
+        people.set(key, Object.assign({}, m, { clientIds: [m.id] }));
+        return;
+      }
+      if (!person.clientIds.includes(m.id)) person.clientIds.push(m.id);
+      const wasMe = person.me, wasHost = person.host, wasTyping = person.typing;
+      const rank = role => role === 'owner' ? 0 : role === 'organizer' ? 1 : 2;
+      if (rank(m.role) < rank(person.role) || (m.role === person.role && (m.lastSeen || 0) > (person.lastSeen || 0))) {
+        const ids = person.clientIds;
+        person = Object.assign(person, m, { clientIds: ids });
+        people.set(key, person);
+      }
+      person.me = wasMe || m.me;
+      person.host = wasHost || m.host;
+      person.typing = wasTyping || m.typing;
+      person.lastSeen = Math.max(person.lastSeen || 0, m.lastSeen || 0);
+    });
+    const list = Array.from(people.values()).sort((a, b) => {
       const rank = x => x.role === 'owner' ? 0 : x.role === 'organizer' ? 1 : 2;
-      return rank(a) - rank(b) || (b.me - a.me) || (b.host - a.host) || (a.joined - b.joined);
+      return rank(a) - rank(b) || (Number(b.me) - Number(a.me)) || (Number(b.host) - Number(a.host)) || (a.joined - b.joined);
     });
     const organizers = list.filter(m => m.role === 'owner' || m.role === 'organizer');
 
@@ -1105,20 +1169,28 @@
       btn.addEventListener('click', (event) => {
         event.preventDefault();
         event.stopPropagation();
-        changeMemberRole(btn.getAttribute('data-client-id') || (btn.dataset && (btn.dataset.clientId || btn.dataset['client-id'])),
+        let clientIds = [];
+        try { clientIds = JSON.parse(btn.getAttribute('data-client-ids') || '[]'); } catch (_) { clientIds = []; }
+        if (!clientIds.length) clientIds = [btn.getAttribute('data-client-id') || (btn.dataset && (btn.dataset.clientId || btn.dataset['client-id']))];
+        changeMemberRole(clientIds,
           btn.getAttribute('data-set-role') || (btn.dataset && (btn.dataset.setRole || btn.dataset['set-role'])));
       });
     });
   }
 
   function pingPresence(first) {
-    addMember(session.clientId, session.name, { me: true, host: st.updatedBy === session.clientId });
+    if (session.leaving) return;
     const t = session.transport;
+    const localUserKey = t && t.kind === 'local' && session.userId ? 'local:' + session.userId : '';
+    const selfPresence = { me: true, host: st.updatedBy === session.clientId };
+    if (localUserKey) selfPresence.userKey = localUserKey;
+    addMember(session.clientId, session.name, selfPresence);
     if (!t || !session.ready) return;
     const payload = {
       type: 'presence', clientId: session.clientId, name: session.name,
       host: st.updatedBy === session.clientId, ts: Date.now()
     };
+    if (localUserKey) payload.userKey = localUserKey;
     if (t.kind === 'ws' && t._send) t._send(payload);
     else if (t.kind === 'supabase') supabasePing(t);
     else if (t.kind === 'local' && t._bc) t._bc(payload);
@@ -1147,7 +1219,10 @@
         const now = Date.now();
         rows.forEach(r => {
           if (now - (Date.parse(r.last_seen) || 0) > 15000) return;
-          addMember(r.client_id, r.name, { host: !!r.is_host });
+          const extra = { host: !!r.is_host };
+          const userKey = r.user_key || r.userKey;
+          if (userKey) extra.userKey = userKey;
+          addMember(r.client_id, r.name, extra);
         });
       }).catch(() => { });
   }
@@ -1554,13 +1629,16 @@
     }
   }
 
-  /* الدردشة ظاهرة دائماً في الغرفة (تأخذ المساحة الكبيرة) → لا عدّاد «غير مقروء» */
-  function isChatVisible() { return true; }
+  /* لا تُعدّ الرسائل مقروءة إلا عندما تكون لوحة المحادثة مفتوحة والنافذة مرئية. */
+  function isChatVisible() { return !!(session.chatOpen && !document.hidden); }
 
   function updateMessagesBadge() {
-    if (!el.messagesCount) return;
-    el.messagesCount.hidden = session.unread === 0;
-    el.messagesCount.textContent = session.unread > 99 ? '99+' : String(session.unread);
+    const count = session.unread > 99 ? '99+' : String(session.unread);
+    [el.messagesCount, el.chatFabCount].forEach((badge) => {
+      if (!badge) return;
+      badge.hidden = session.unread === 0;
+      badge.textContent = count;
+    });
   }
 
   function rememberChatSend(wire, kind, now) {
@@ -2246,7 +2324,10 @@
   function bindMobileViewport() {
     const vv = window.visualViewport;
     if (vv) {
-      const onVp = () => { if (document.activeElement === el.chatInput) requestAnimationFrame(() => scrollChat(true)); };
+      const onVp = () => {
+        if (session.chatOpen) requestAnimationFrame(positionChatPanel);
+        if (document.activeElement === el.chatInput) requestAnimationFrame(() => scrollChat(true));
+      };
       vv.addEventListener('resize', onVp);
       vv.addEventListener('scroll', onVp);
     }
@@ -2255,7 +2336,7 @@
         setTimeout(() => {
           scrollChat(true);
           el.chatBody.scrollTop = el.chatBody.scrollHeight;
-          if (window.innerWidth <= 640) el.chat.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+          if (window.innerWidth <= 640) positionChatPanel();
         }, 260);
       });
     }
@@ -2263,28 +2344,172 @@
     window.addEventListener('resize', () => { if (window.innerWidth > 640) return; requestAnimationFrame(() => scrollChat(false)); });
   }
 
-  /* ============================== وضع الرسائل ============================== */
-  function setFocusMode(on) {
-    session.focusMode = !!on;
-    document.body.classList.toggle('chat-focus', session.focusMode);
+  /* ============================== فقاعة المحادثة العائمة ============================== */
+  function setChatOpen(on) {
+    session.chatOpen = !!on;
+    const open = session.chatOpen;
+    if (el.chat) {
+      el.chat.hidden = !open;
+      el.chat.setAttribute('aria-hidden', String(!open));
+    }
+    if (el.chatWidget) el.chatWidget.classList.toggle('is-open', open);
+    if (el.chatFab) {
+      el.chatFab.setAttribute('aria-expanded', String(open));
+      el.chatFab.setAttribute('aria-label', open ? 'تصغير المحادثة' : 'فتح المحادثة');
+      el.chatFab.title = (open ? 'تصغير المحادثة' : 'فتح المحادثة') + ' أو اسحب الفقاعة لتحريكها';
+    }
     if (el.messagesBtn) {
-      el.messagesBtn.classList.toggle('is-on', session.focusMode);
-      el.messagesBtn.setAttribute('aria-expanded', String(session.focusMode));
-      const label = session.focusMode ? 'تصغير الرسائل' : 'تكبير الرسائل';
+      el.messagesBtn.classList.toggle('is-on', open);
+      el.messagesBtn.setAttribute('aria-expanded', String(open));
+      const label = open ? 'إغلاق المحادثة' : 'فتح المحادثة';
       el.messagesBtn.setAttribute('aria-label', label);
       el.messagesBtn.setAttribute('title', label + ' (D)');
-      el.messagesIcon.innerHTML = IC.html(session.focusMode ? 'chatUp' : 'chatDown', 19);
     }
-    /* Keep the latest message in view when switching between video and chat focus. */
-    scrollChat(true);
-    if (session.focusMode) {
+    if (el.messagesIcon) el.messagesIcon.innerHTML = IC.html(open ? 'chatUp' : 'chatDown', 19);
+
+    if (open) {
       session.unread = 0;
       updateMessagesBadge();
-      setTimeout(() => {
-        if (!session.focusMode) return;
-        el.chatInput.focus({ preventScroll: true });
-      }, 90);
+      positionChatPanel();
+      scrollChat(true);
+    } else {
+      if (session.msgMenu && !session.msgMenu.hidden) hideMsgMenu(false);
+      if (el.chat && typeof el.chat.contains === 'function' && el.chat.contains(document.activeElement) && el.chatFab) {
+        el.chatFab.focus({ preventScroll: true });
+      }
     }
+  }
+
+  function positionChatPanel() {
+    if (!el.chat || el.chat.hidden || !el.chatFab) return;
+    const visualViewport = window.visualViewport;
+    const viewportWidth = (visualViewport && visualViewport.width) || window.innerWidth || document.documentElement.clientWidth;
+    const viewportHeight = (visualViewport && visualViewport.height) || window.innerHeight || document.documentElement.clientHeight;
+    const width = Math.max(0, Math.min(400, viewportWidth - 24));
+    const height = Math.max(0, Math.min(620, viewportHeight * .72, viewportHeight - 24));
+    el.chat.style.width = width + 'px';
+    el.chat.style.height = height + 'px';
+
+    const anchor = el.chatFab.getBoundingClientRect();
+    const maxLeft = Math.max(12, viewportWidth - width - 12);
+    const proposedLeft = anchor.left + anchor.width / 2 > viewportWidth / 2
+      ? anchor.right - width : anchor.left;
+    const left = U.clamp(proposedLeft, 12, maxLeft);
+    const above = anchor.top - height - 12;
+    const below = anchor.bottom + 12;
+    const maxTop = Math.max(12, viewportHeight - height - 12);
+    const top = U.clamp(above >= 12 ? above : below, 12, maxTop);
+    el.chat.style.left = left + 'px';
+    el.chat.style.top = top + 'px';
+    el.chat.style.right = 'auto';
+    el.chat.style.bottom = 'auto';
+  }
+
+  function placeChatWidget(left, top) {
+    if (!el.chatWidget) return;
+    const bounds = el.chatWidget.getBoundingClientRect();
+    const width = bounds.width || 64;
+    const height = bounds.height || 64;
+    const maxLeft = Math.max(8, window.innerWidth - width - 8);
+    const maxTop = Math.max(8, window.innerHeight - height - 8);
+    el.chatWidget.style.left = U.clamp(left, 8, maxLeft) + 'px';
+    el.chatWidget.style.top = U.clamp(top, 8, maxTop) + 'px';
+    el.chatWidget.style.right = 'auto';
+    el.chatWidget.style.bottom = 'auto';
+    if (session.chatOpen) positionChatPanel();
+  }
+
+  function isStageFullscreen() {
+    return !!(el.stage && (document.fullscreenElement === el.stage ||
+      el.stage.classList.contains('is-app-fullscreen')));
+  }
+
+  function updateFullscreenButton() {
+    if (!el.videoFullscreen) return;
+    const active = isStageFullscreen();
+    const label = active ? 'إنهاء تكبير الفيديو' : 'تكبير الفيديو';
+    el.videoFullscreen.setAttribute('aria-label', label);
+    el.videoFullscreen.setAttribute('title', label);
+    el.videoFullscreen.classList.toggle('is-on', active);
+    const icon = el.videoFullscreen.querySelector('.ic');
+    if (icon) icon.innerHTML = IC.html(active ? 'collapse' : 'expand', 22);
+  }
+
+  function syncChatWidgetFullscreen() {
+    if (!el.chatWidget || !el.stage || !el.roomMain) return;
+    const fullscreen = isStageFullscreen();
+    if (fullscreen && el.chatWidget.parentNode !== el.stage) el.stage.appendChild(el.chatWidget);
+    else if (!fullscreen && el.chatWidget.parentNode !== el.roomMain) el.roomMain.appendChild(el.chatWidget);
+    el.chatWidget.classList.toggle('is-fullscreen', fullscreen);
+    updateFullscreenButton();
+    if (session.chatOpen) requestAnimationFrame(positionChatPanel);
+  }
+
+  function setAppFullscreen(on) {
+    const active = !!on;
+    if (el.stage) el.stage.classList.toggle('is-app-fullscreen', active);
+    document.body.classList.toggle('app-fullscreen-active', active);
+    syncChatWidgetFullscreen();
+  }
+
+  function bindChatWidget() {
+    if (!el.chatFab || !el.chatWidget) return;
+    let drag = null;
+    let suppressClickUntil = 0;
+
+    el.chatFab.addEventListener('click', (event) => {
+      if (Date.now() < suppressClickUntil) {
+        event.preventDefault();
+        event.stopPropagation();
+        return;
+      }
+      setChatOpen(!session.chatOpen);
+    });
+    if (el.chatCloseBtn) el.chatCloseBtn.addEventListener('click', () => setChatOpen(false));
+
+    el.chatFab.addEventListener('pointerdown', (event) => {
+      if (event.isPrimary === false || (event.button !== undefined && event.button !== 0)) return;
+      const bounds = el.chatWidget.getBoundingClientRect();
+      drag = { id: event.pointerId, x: event.clientX, y: event.clientY, left: bounds.left, top: bounds.top, moved: false };
+      try { el.chatFab.setPointerCapture(event.pointerId); } catch (_) { }
+    });
+    el.chatFab.addEventListener('pointermove', (event) => {
+      if (!drag || event.pointerId !== drag.id) return;
+      const dx = event.clientX - drag.x, dy = event.clientY - drag.y;
+      if (!drag.moved && Math.hypot(dx, dy) < 6) return;
+      drag.moved = true;
+      event.preventDefault();
+      el.chatWidget.classList.add('is-dragging');
+      placeChatWidget(drag.left + dx, drag.top + dy);
+    });
+    const finishDrag = (event) => {
+      if (!drag || event.pointerId !== drag.id) return;
+      if (drag.moved) suppressClickUntil = Date.now() + 350;
+      drag = null;
+      el.chatWidget.classList.remove('is-dragging');
+    };
+    el.chatFab.addEventListener('pointerup', finishDrag);
+    el.chatFab.addEventListener('pointercancel', finishDrag);
+    el.chatFab.addEventListener('lostpointercapture', finishDrag);
+    el.chatFab.addEventListener('keydown', (event) => {
+      if (!event.altKey) return;
+      const delta = 18;
+      const offsets = { ArrowUp: [0, -delta], ArrowDown: [0, delta], ArrowLeft: [-delta, 0], ArrowRight: [delta, 0] };
+      const offset = offsets[event.key];
+      if (!offset) return;
+      event.preventDefault();
+      const bounds = el.chatWidget.getBoundingClientRect();
+      placeChatWidget(bounds.left + offset[0], bounds.top + offset[1]);
+    });
+    window.addEventListener('resize', () => {
+      if (el.chatWidget.style.left && el.chatWidget.style.top) {
+        const bounds = el.chatWidget.getBoundingClientRect();
+        placeChatWidget(bounds.left, bounds.top);
+      }
+      if (session.chatOpen) positionChatPanel();
+    });
+    document.addEventListener('fullscreenchange', syncChatWidgetFullscreen);
+    document.addEventListener('webkitfullscreenchange', syncChatWidgetFullscreen);
   }
 
   /* ============================== قائمة التشغيل المشتركة ============================== */
@@ -2300,7 +2525,7 @@
     if (!queue.length) { el.queueList.innerHTML = ''; return; }
     el.queueList.innerHTML = queue.map((item, index) => {
       const title = item.title || item.url || 'فيديو';
-      const canRemove = canControl() || item.addedByClient === session.clientId || item.added_by_client === session.clientId;
+      const canRemove = session.role === 'owner' || session.role === 'organizer' || item.addedByClient === session.clientId || item.added_by_client === session.clientId;
       return '<article class="queue-item" data-queue-id="' + U.esc(item.id) + '">' +
         '<span class="queue-item__index">' + String(index + 1).padStart(2, '0') + '</span>' +
         '<span class="queue-item__body"><strong>' + U.esc(title) + '</strong><small dir="ltr">' + U.esc(item.url || '') + '</small>' +
@@ -2389,13 +2614,15 @@
 
   /**
    * تشغيل التالي من قائمة الانتظار وإزالته منها — يُستدعى عند انتهاء الفيديو.
-   * لا ينفّذه إلا المتحكم، حتى تبقى الغرفة كلها متزامنة.
+   * ينفّذه كاتب الحالة الحالي فقط، لتجنب تشغيل العنصر نفسه من عدة مشاركين بالتزامن.
    * @returns {boolean} true إن كان هناك تالٍ وتم تشغيله
    */
   function advanceQueue() {
     if (!canControl()) return false;
     const queue = session.queue || [];
     if (!queue.length) return false;
+    /* One live tab consumes the shared queue; otherwise every player ending together duplicates it. */
+    if (!canAutoAdvance()) return true;
     const next = queue[0];
     playQueueItem(next);
     if (session.transport && typeof session.transport.removeQueueItem === 'function') {
@@ -2496,13 +2723,27 @@
     };
 
     if (el.videoFullscreen) el.videoFullscreen.addEventListener('click', async () => {
-      const target = document.getElementById('stage');
       try {
-        if (document.fullscreenElement) await document.exitFullscreen();
-        else if (target.requestFullscreen) await target.requestFullscreen();
-        else if (player._video && player._video.webkitEnterFullscreen) player._video.webkitEnterFullscreen();
-        else U.toast('التكبير غير مدعوم في هذا المتصفح', 'warn');
-      } catch (e) { U.toast('تعذر تكبير الفيديو', 'warn'); }
+        if (document.fullscreenElement === el.stage) {
+          await document.exitFullscreen();
+          return;
+        }
+        if (el.stage.classList.contains('is-app-fullscreen')) {
+          setAppFullscreen(false);
+          return;
+        }
+        if (document.fullscreenElement && document.exitFullscreen) await document.exitFullscreen();
+        if (el.stage.requestFullscreen) {
+          await el.stage.requestFullscreen();
+          syncChatWidgetFullscreen();
+        } else {
+          /* CSS full-screen keeps the page controls and chat available on iOS/Safari too. */
+          setAppFullscreen(true);
+        }
+      } catch (e) {
+        /* A rejected Fullscreen API request still degrades to the in-page fullscreen view. */
+        setAppFullscreen(true);
+      }
     });
 
     /* ---- شريط التقدم داخل الفيديو (سحب باللمس والفأرة + معاينة الوقت) ---- */
@@ -2559,7 +2800,8 @@
 
     /* ---- أدوات المشاهدة ---- */
     el.addVideoBtn.addEventListener('click', openChangeBar);
-    el.messagesBtn.addEventListener('click', () => setFocusMode(!session.focusMode));
+    el.messagesBtn.addEventListener('click', () => setChatOpen(!session.chatOpen));
+    bindChatWidget();
     el.playlistBtn.addEventListener('click', () => { renderQueue(); el.playlistModal.hidden = false; });
     el.playlistCloseBtn.addEventListener('click', () => { el.playlistModal.hidden = true; });
     el.playlistModal.addEventListener('click', (e) => { if (e.target === el.playlistModal) el.playlistModal.hidden = true; });
@@ -2689,8 +2931,14 @@
     /* ---- مغادرة ---- */
     el.leaveBtn.addEventListener('click', async () => {
       if (!confirm('مغادرة الغرفة؟')) return;
-      goodbye(false);
-      setTimeout(() => { location.href = 'index.html'; }, 120);
+      el.leaveBtn.disabled = true;
+      const label = el.leaveBtn.querySelector('span:last-child');
+      if (label) label.textContent = 'جارٍ إنهاء الاتصال…';
+      try {
+        await goodbye(false);
+      } finally {
+        location.href = 'index.html';
+      }
     });
 
     /* ---- الرسائل ---- */
@@ -2863,7 +3111,7 @@
       else if (e.key === 'ArrowLeft') { e.preventDefault(); skip(+10); }
       else if (e.key === 'ArrowRight') { e.preventDefault(); skip(-10); }
       else if (e.key.toLowerCase() === 'c') copy(roomUrl(), 'تم نسخ رابط الغرفة');
-      else if (e.key.toLowerCase() === 'd') setFocusMode(!session.focusMode);
+      else if (e.key.toLowerCase() === 'd') setChatOpen(!session.chatOpen);
       else if (e.key === 'Escape') {
         if (Media && typeof Media.closeViewer === 'function') {
           const box = document.getElementById('mediaLightbox');
@@ -2874,7 +3122,8 @@
         else if (!el.qrModal.hidden) el.qrModal.hidden = true;
         else if (!el.meModal.hidden) el.meModal.hidden = true;
         else if (el.drawer.classList.contains('is-open')) setDrawerOpen(false);
-        else if (session.focusMode) setFocusMode(false);
+        else if (session.chatOpen) setChatOpen(false);
+        else if (el.stage.classList.contains('is-app-fullscreen')) setAppFullscreen(false);
       }
     });
 
@@ -2883,9 +3132,12 @@
     window.addEventListener('beforeunload', () => goodbye(true));
     document.addEventListener('visibilitychange', () => {
       if (document.hidden) goodbye(true, true); // Saving on tab switch is not leaving the room.
-      else if (session.ready) pingPresence(false);
+      else if (session.ready) {
+        if (!session.leaving) goodbyeTask = null; // A page restored from BFCache must start a fresh leave attempt.
+        pingPresence(false);
+      }
     });
-    window.addEventListener('focus', () => { if (session.focusMode) { session.unread = 0; updateMessagesBadge(); } });
+    window.addEventListener('focus', () => { if (session.chatOpen) { session.unread = 0; updateMessagesBadge(); } });
   }
 
   function openChangeBar() {
@@ -2912,13 +3164,31 @@
   }
 
   /* ============================== الوداع وحفظ آخر حالة ============================== */
-  let goodbyeDone = false;
+  let goodbyeTask = null;
+  let transportClosed = false;
   function goodbye(keepAlive, saveOnly) {
     const t = session.transport;
     if (global.WTServer) global.WTServer.keepAlive(false);
-    if (!t) return;
+    if (!t) return Promise.resolve(false);
+    if (!keepAlive && !saveOnly && !session.leaving) {
+      session.leaving = true;
+      clearInterval(session._pingTimer);
+      clearInterval(session._persistTimer);
+      clearInterval(session._driftTimer);
+      clearTimeout(publishTimer);
+    }
+    if (goodbyeTask) {
+      return goodbyeTask.then(() => {
+        if (!keepAlive && !transportClosed) {
+          transportClosed = true;
+          try { t.close(); } catch (e) { }
+        }
+        return true;
+      });
+    }
 
-    /* 1) ارفع الحالة الحالية فوراً (خصوصاً إن كنت آخر من سيخرج) */
+    const requests = [];
+    /* ارفع الحالة الأخيرة بالتوازي مع حذف الحضور، لكن انتظر الطلبين قبل الإغلاق. */
     try {
       if (session.ready && player.isReady()) {
         const snapshot = Object.assign({}, st, {
@@ -2928,36 +3198,44 @@
           rev: (st.rev || 0) + 1,
           updatedBy: session.clientId,
           updatedByName: session.name,
-          final: true                     /* علامة «آخر حفظ» */
+          final: true
         });
         st = snapshot;
-        /* Supabase لا يقبل الكتابة المباشرة إلى rooms؛ ارفع الحالة عبر RPC
-           الموثّق مع keepalive حتى يحافظ الخادم على الدور والترقيم المركزي. */
         const saved = t.publishState(snapshot, { keepalive: t.kind === 'supabase' || !!keepAlive });
-        if (saved && typeof saved.catch === 'function') saved.catch(() => { });
+        if (saved && typeof saved.then === 'function') requests.push(Promise.resolve(saved));
         session.lastPersistAt = Date.now();
       }
-    } catch (e) { }
+    } catch (_) { }
 
-    if (saveOnly) return;
+    if (saveOnly) return Promise.allSettled(requests).then(() => true);
 
-    /* 2) أشعر الآخرين بالمغادرة واحذف صف الحضور */
-    if (!goodbyeDone) {
-      goodbyeDone = true;
-      try {
-        if (t.kind === 'supabase' && t._fetch) {
-          t._fetch('/rest/v1/presence?room_id=eq.' + encodeURIComponent(roomId) +
-            '&client_id=eq.' + encodeURIComponent(session.clientId), { method: 'DELETE' }).catch(() => { });
-        } else if (t.kind === 'ws' && t._send) {
-          t._send({ type: 'leave', clientId: session.clientId, room: roomId });
-        } else if (t.kind === 'local' && t._bc) {
-          t._bc({ type: 'leave', clientId: session.clientId });
-        }
-      } catch (e) { }
-      setTimeout(() => { goodbyeDone = false; }, 5000);
-    }
+    /* احذف/أعلن الحضور أولاً؛ إغلاق النقل لا يحدث حتى تنتهي محاولة التنظيف. */
+    try {
+      if (t.kind === 'supabase' && t._fetch) {
+        requests.push(t._fetch('/rest/v1/presence?room_id=eq.' + encodeURIComponent(roomId) +
+          '&client_id=eq.' + encodeURIComponent(session.clientId), { method: 'DELETE', keepalive: true }));
+      } else if (t.kind === 'ws' && t._send) {
+        const sent = t._send({ type: 'leave', clientId: session.clientId, room: roomId });
+        if (sent && typeof sent.then === 'function') requests.push(Promise.resolve(sent));
+      } else if (t.kind === 'local' && t._bc) {
+        const sent = t._bc({ type: 'leave', clientId: session.clientId });
+        if (sent && typeof sent.then === 'function') requests.push(Promise.resolve(sent));
+      }
+    } catch (_) { }
 
-    if (!keepAlive) { try { t.close(); } catch (e) { } }
+    const task = Promise.allSettled(requests).then(() => true);
+    goodbyeTask = task;
+    return task.then(() => {
+      if (!keepAlive && !transportClosed) {
+        transportClosed = true;
+        try { t.close(); } catch (e) { }
+      } else if (keepAlive && session.ready && !session.leaving && !document.hidden) {
+        /* BFCache can restore a tab after its pagehide cleanup request started. */
+        pingPresence(false);
+      }
+      setTimeout(() => { if (goodbyeTask === task) goodbyeTask = null; }, 5000);
+      return true;
+    });
   }
 
   /* ============================== واجهة صغيرة ============================== */
@@ -3018,6 +3296,7 @@
     publish,
     onRemoteState,
     canControl,
+    canAutoAdvance,
     sysMessage,
     /** الانتقال الزمني الآمن — ينشر الحالة إن كان لدى المستخدم صلاحية التحكم */
     seekTo(sec) {
