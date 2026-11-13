@@ -1645,7 +1645,7 @@ body.drawer-open { overflow: hidden; }
 .modal__card--playlist .queue-list { min-height: 0; overflow-y: auto; }
 
 /* الشارات صغيرة وهادئة؛ لا توجد شبكة معلومات أسفل المشاركين. */
-.room .info-grid, .room .info-list, .room .statusbar, .room .chat-fab { display: none !important; }
+.room .info-grid, .room .info-list, .room .statusbar { display: none !important; }
 .room .rtopbar__actions { display: none; }
 
 @media (max-width: 700px) {
@@ -2623,6 +2623,8 @@ body.chat-focus .room-main > #chat {
   position: relative;
   z-index: 2;
   display: grid !important;
+  visibility: visible !important;
+  opacity: 1 !important;
   place-items: center;
   width: 64px;
   height: 64px;
@@ -2697,6 +2699,30 @@ body.chat-focus .room-main > #chat {
 .room-body #chat .chat__head .badge { flex: none; font-size: 10px; }
 .room-body #chat .chat__head .btn { flex: none; width: 34px; height: 34px; min-height: 34px; }
 .room-body #chat .chat__close { margin-inline-start: 2px; }
+.room-body #chatDragHandle { cursor: grab; touch-action: none; user-select: none; }
+.room-body #chat.is-dragging #chatDragHandle { cursor: grabbing; }
+.room-body #chat .chat__view-controls {
+  position: absolute;
+  z-index: 8;
+  inset-inline-start: 8px;
+  top: 62px;
+  width: min(286px, calc(100% - 16px));
+  max-height: calc(100% - 74px);
+  overflow: auto;
+  padding: 12px;
+  border: 1px solid rgba(212,187,145,.3);
+  border-radius: 14px;
+  background: rgba(17,23,33,.98);
+  box-shadow: 0 14px 36px rgba(0,0,0,.48);
+}
+.room-body #chat .chat__view-controls[hidden] { display: none !important; }
+.room-body #chat .chat__view-control { display: grid; gap: 6px; margin: 0 0 11px; color: #e8dcc6; font-size: 11.5px; font-weight: 800; }
+.room-body #chat .chat__view-control > span { display: flex; justify-content: space-between; gap: 8px; }
+.room-body #chat .chat__view-control output { color: #c5a572; direction: ltr; font-variant-numeric: tabular-nums; }
+.room-body #chat .chat__view-control input[type="range"] { width: 100%; margin: 0; accent-color: #c5a572; touch-action: pan-y; }
+.room-body #chat .chat__view-hint { margin: 2px 0 10px; color: #a49e92; font-size: 10.5px; line-height: 1.5; }
+.room-body #chat .chat__layout-reset { width: 100%; min-height: 36px; border: 1px solid rgba(197,165,114,.35); border-radius: 10px; background: rgba(197,165,114,.1); color: #e8dcc6; font-family: inherit; font-size: 11px; font-weight: 700; line-height: 1.4; cursor: pointer; }
+.room-body #chat .chat__layout-reset:hover { background: rgba(197,165,114,.2); }
 .room-body #chat .chat__body {
   flex: 1 1 0%;
   min-width: 0;
@@ -2712,13 +2738,56 @@ body.chat-focus .room-main > #chat {
 }
 .room-body #chat .chat__body > .msg { flex-shrink: 0; max-width: 100%; }
 .room-body #chat .chat__foot {
+  position: relative;
+  z-index: 2;
   flex: 0 0 auto;
+  min-width: 0;
   padding: 9px 10px calc(9px + env(safe-area-inset-bottom, 0px));
   background: #151b25;
   border-top: 1px solid rgba(255,255,255,.08);
 }
 .room-body #chat .typing { margin-top: 5px; }
-.room-body #chat .chat__input { min-height: 40px; max-height: 96px; }
+.room-body #chat .chat__form { min-width: 0; }
+.room-body #chat .chat__input {
+  min-width: 0;
+  min-height: 44px;
+  max-height: 96px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  scroll-margin-block-end: 8px;
+}
+.room-body #chat.is-composing .chat__body { scroll-behavior: auto; }
+.room-body #chat .chat__resize {
+  position: absolute;
+  z-index: 3;
+  inset-inline-start: 2px;
+  bottom: 2px;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: rgba(232,220,198,.65);
+  cursor: nwse-resize;
+  touch-action: none;
+  user-select: none;
+}
+.room-body #chat .chat__resize::after {
+  content: '';
+  position: absolute;
+  inset-inline-start: 7px;
+  bottom: 7px;
+  width: 10px;
+  height: 10px;
+  border-inline-start: 2px solid currentColor;
+  border-block-end: 2px solid currentColor;
+  pointer-events: none;
+}
+.room-body #chat .chat__resize:hover { color: #e4c78f; }
+.room-body #chat .chat__resize:focus-visible { outline: 2px solid #fff; outline-offset: -2px; }
 .room-body #chat .chat__send { width: 42px; height: 42px; border-radius: 13px; }
 .room-body #chat .chat__send svg { width: 19px; height: 19px; }
 .room-body #chat .chat__body::-webkit-scrollbar { width: 7px; }

@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
   <meta name="theme-color" content="#080c14">
 
-  <meta name="description" content="غرفة مشاهدة متزامنة: مشغّل موحّد، دردشة مباشرة، وسائط ومشاركة، وتحكم كامل لمنشئ الغرفة.">
+  <meta name="description" content="غرفة مشاهدة متزامنة: مشغّل موحّد، دردشة مباشرة، وسائط ومشاركة، وتحكم مشترك لجميع المشاركين.">
   <meta name="color-scheme" content="dark">
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="apple-touch-icon" href="assets/icons/apple-touch-icon.png">
@@ -13,11 +13,11 @@
   <meta property="og:site_name" content="WatchTogether">
   <meta property="og:locale" content="ar_DZ">
   <meta property="og:title" content="الغرفة — WatchTogether">
-  <meta property="og:description" content="غرفة مشاهدة متزامنة: مشغّل موحّد، دردشة مباشرة، وسائط ومشاركة، وتحكم كامل لمنشئ الغرفة.">
+  <meta property="og:description" content="غرفة مشاهدة متزامنة: مشغّل موحّد، دردشة مباشرة، وسائط ومشاركة، وتحكم مشترك لجميع المشاركين.">
   <meta property="og:image" content="assets/icons/icon-512.png">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="الغرفة — WatchTogether">
-  <meta name="twitter:description" content="غرفة مشاهدة متزامنة: مشغّل موحّد، دردشة مباشرة، وسائط ومشاركة، وتحكم كامل لمنشئ الغرفة.">
+  <meta name="twitter:description" content="غرفة مشاهدة متزامنة: مشغّل موحّد، دردشة مباشرة، وسائط ومشاركة، وتحكم مشترك لجميع المشاركين.">
   <meta name="twitter:image" content="assets/icons/icon-512.png">
   <script src="assets/js/prefs.js?v=1.0.0"></script>
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
@@ -32,7 +32,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800;900&family=Grand+Hotel&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="assets/css/app.css?v=4.4.1">
+  <link rel="stylesheet" href="assets/css/app.css?v=4.4.2">
   <link rel="stylesheet" href="assets/css/media.css?v=3.2.0">
   <link rel="stylesheet" href="assets/css/suggest.css?v=1.1.0">
   <link rel="stylesheet" href="assets/css/site.css?v=1.0.0">
@@ -151,7 +151,7 @@
             <span class="ic" data-icon="x" data-size="18"></span>
           </button>
         </div>
-        <p class="change-bar__hint"><span class="ic" data-icon="info" data-size="14"></span> سيظهر الفيديو في قائمة تشغيل مشتركة، ويمكن للمنظّمين بدء عرضه للجميع.</p>
+        <p class="change-bar__hint"><span class="ic" data-icon="info" data-size="14"></span> سيظهر الفيديو في قائمة التشغيل المشتركة، ويمكن لأي مشارك منضم بدء عرضه للجميع دون طلب صلاحية.</p>
       </section>
 
 
@@ -203,10 +203,13 @@
           <span class="chat-fab__count" id="chatFabCount" hidden>0</span>
         </button>
         <section class="chat glass" id="chat" aria-label="محادثة الغرفة" aria-hidden="true" hidden>
-          <div class="chat__head">
+          <div class="chat__head" id="chatDragHandle" title="اسحب هذا الرأس لنقل نافذة المحادثة">
             <h2 class="chat__title"><span class="ic" data-icon="chat" data-size="18"></span> الرسائل</h2>
             <span class="badge" id="chatCount">0</span>
             <span class="chat__spacer"></span>
+            <button class="btn btn--sm btn--ghost btn--icon-sm" id="chatViewBtn" type="button" title="تخصيص حجم الدردشة" aria-label="تخصيص حجم الدردشة" aria-controls="chatViewControls" aria-expanded="false">
+              <span class="ic" data-icon="sliders" data-size="16"></span>
+            </button>
             <button class="btn btn--sm btn--ghost btn--icon-sm" id="refreshChatBtn" type="button" title="تحديث الرسائل" aria-label="تحديث الرسائل">
               <span class="ic" data-icon="sync" data-size="16"></span>
             </button>
@@ -216,6 +219,23 @@
             <button class="btn btn--sm btn--ghost btn--icon-sm chat__close" id="chatCloseBtn" type="button" title="تصغير المحادثة" aria-label="تصغير المحادثة">
               <span class="ic" data-icon="x" data-size="17"></span>
             </button>
+          </div>
+
+          <div class="chat__view-controls" id="chatViewControls" role="group" aria-label="تخصيص حجم وموضع الدردشة" hidden>
+            <label class="chat__view-control" for="chatBubbleSize">
+              <span>حجم الفقاعة <output id="chatBubbleSizeValue" for="chatBubbleSize">64 px</output></span>
+              <input id="chatBubbleSize" type="range" min="48" max="96" step="2" value="64">
+            </label>
+            <label class="chat__view-control" for="chatPanelWidth">
+              <span>عرض نافذة الرسائل <output id="chatPanelWidthValue" for="chatPanelWidth">400 px</output></span>
+              <input id="chatPanelWidth" type="range" min="280" max="560" step="20" value="400">
+            </label>
+            <label class="chat__view-control" for="chatPanelHeight">
+              <span>ارتفاع نافذة الرسائل <output id="chatPanelHeightValue" for="chatPanelHeight">620 px</output></span>
+              <input id="chatPanelHeight" type="range" min="240" max="760" step="20" value="620">
+            </label>
+            <p class="chat__view-hint">اسحب الفقاعة أو رأس النافذة لتغيير موضعهما.</p>
+            <button class="chat__layout-reset" id="chatLayoutReset" type="button">إعادة الحجم والموضع</button>
           </div>
 
           <div class="chat__body" id="chatBody" role="log" aria-live="polite" aria-relevant="additions text">
@@ -254,6 +274,7 @@
             </form>
             <div class="typing" id="typing"></div>
           </div>
+          <button class="chat__resize" id="chatResizeHandle" type="button" aria-label="تغيير حجم نافذة الدردشة" title="اسحب لتغيير الحجم"></button>
         </section>
       </div>
     </main>
@@ -312,7 +333,7 @@
         </div>
         <button class="btn btn--ghost btn--icon-sm" id="playlistCloseBtn" type="button" aria-label="إغلاق القائمة"><span class="ic" data-icon="x" data-size="18"></span></button>
       </div>
-      <p class="playlist__hint">يمكن للجميع إضافة فيديو. تشغيل الفيديو للجميع متاح للمنشئ والمنظّمين.</p>
+      <p class="playlist__hint">يمكن لكل مشارك منضم إضافة الفيديو وتشغيله للجميع؛ لا يحتاج التحكم بالمشاهدة إلى موافقة المنظّم.</p>
       <div class="queue-list" id="queueList"></div>
       <div class="queue-empty" id="queueEmpty">
         <span class="ic" data-icon="film" data-size="28"></span>
@@ -386,17 +407,17 @@
   <!-- ===== سكربتات ===== -->
   <script src="assets/vendor/hls.min.js?v=3.0.0"></script>
   <script src="assets/vendor/qrcode.min.js?v=3.0.0"></script>
-  <script src="assets/js/config.js?v=3.8.0"></script>
+  <script src="assets/js/config.js?v=3.8.1"></script>
   <script src="assets/js/util.js?v=3.1.0"></script>
   <script src="assets/js/server-probe.js?v=1.5.0"></script>
   <script src="assets/js/icons.js?v=3.2.0"></script>
   <script src="assets/js/auth.js?v=3.2.0"></script>
-  <script src="assets/js/transport.js?v=3.6.0"></script>
+  <script src="assets/js/transport.js?v=3.6.1"></script>
   <script src="assets/js/player.js?v=3.1.2"></script>
   <script src="assets/js/suggest.js?v=1.1.0"></script>
   <script src="assets/js/upnext.js?v=1.3.0"></script>
   <script src="assets/js/media.js?v=3.1.5"></script>
-  <script src="assets/js/room.js?v=3.7.0"></script>
+  <script src="assets/js/room.js?v=3.7.1"></script>
   <script src="assets/js/site.js?v=1.0.2"></script>
 </body>
 </html>
