@@ -99,13 +99,13 @@
       const url = String(raw || '').trim();
       if (!url) return null;
 
-      /* 1) قائمة تشغيل يوتيوب */
-      const pl = Util.parseYouTubePlaylist(url);
-      if (pl) return { kind: 'youtube-playlist', id: pl, src: url, provider: 'YouTube', label: 'قائمة تشغيل يوتيوب' };
-
-      /* 2) YouTube (فيديو فردي، شورت، بث مباشر) */
+      /* رابط فيديو يتضمن list= يبقى فيديوً واحداً؛ القوائم الصافية تُفحص بعده. */
       const yt = Util.parseYouTube(url);
       if (yt) return { kind: 'youtube', id: yt, src: url, provider: 'YouTube', label: 'يوتيوب' };
+
+      /* قائمة تشغيل يوتيوب من دون فيديو محدد */
+      const pl = Util.parseYouTubePlaylist(url);
+      if (pl) return { kind: 'youtube-playlist', id: pl, src: url, provider: 'YouTube', label: 'قائمة تشغيل يوتيوب' };
 
       /* 3) تيك توك */
       if (/tiktok\.com|vm\.tiktok\.com/i.test(url)) return { kind: 'tiktok', src: url, provider: 'TikTok', label: 'تيك توك' };

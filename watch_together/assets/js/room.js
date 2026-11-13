@@ -18,6 +18,8 @@
   const CFG = window.WT_CONFIG;
   const Auth = window.WTAuth;
   const Media = window.WTMedia;   /* رفع الوسائط وعرضها (قد يكون غائباً في نسخة مخفّفة) */
+  const Favorites = window.WTFavorites;
+  const MediaPreview = window.WTMediaPreview;
   const $ = (id) => document.getElementById(id);
 
   /* ============================== المعرّفات ============================== */
@@ -102,6 +104,7 @@
     editing: null,        /* الرسالة قيد التعديل {cid, orig, row} */
     msgMenu: null,        /* قائمة خيارات الرسالة (تُنشأ عند أول استعمال) */
     videoParsed: null,
+    videoTitle: '',
     pendingDrift: 0,
     lastError: null,       /* آخر خطأ اتصال (مترجم) */
     lastReport: null,      /* آخر تقرير تشخيص */
@@ -109,6 +112,15 @@
     mediaSending: false    /* جارٍ انتظار اكتمال الرفع قبل الإرسال */
   };
 
+  let favoriteVideoVersion = 0;
+  let previewInputVersion = 0;
+  let previewInputTimer = null;
+  let previewInputTouched = false;
+  let previewInputUrl = '';
+  let previewInputMeta = null;
+  const queueMetadata = new Map();
+  const queueMetadataPending = new Set();
+  let queuePreviewObserver = null;
   const chatPreferencesKey = 'room-chat-layout:' + roomId;
   function readChatPreferences() {
     const raw = U.store.get(chatPreferencesKey, {}) || {};
@@ -164,8 +176,9 @@
     progressBar: $('progressBar'), progressFill: $('progressFill'), progressBuffer: $('progressBuffer'),
     progressKnob: $('progressKnob'), progressTip: $('progressTip'),
     addVideoBtn: $('addVideoBtn'), messagesBtn: $('messagesBtn'), messagesIcon: $('messagesIcon'), messagesCount: $('messagesCount'),
-    playlistBtn: $('playlistBtn'), playlistCount: $('playlistCount'),
+    playlistBtn: $('playlistBtn'), playlistCount: $('playlistCount'), favoriteCurrentBtn: $('favoriteCurrentBtn'),
     changeBar: $('changeBar'), newUrl: $('newUrl'), newTitle: $('newTitle'), applyUrlBtn: $('applyUrlBtn'), cancelUrlBtn: $('cancelUrlBtn'),
+    queuePreview: $('queuePreview'), queuePreviewMedia: $('queuePreviewMedia'), queuePreviewTitle: $('queuePreviewTitle'), queuePreviewMeta: $('queuePreviewMeta'),
     membersPanel: $('membersPanel'), membersList: $('membersList'), sideMembersCount: $('sideMembersCount'),
     chatWidget: $('chatWidget'), chatFab: $('chatFab'), chatFabCount: $('chatFabCount'), chatCloseBtn: $('chatCloseBtn'),
     chat: $('chat'), chatViewBtn: $('chatViewBtn'), chatViewControls: $('chatViewControls'),
@@ -913,6 +926,110 @@
     }
   }
 
+  function usefulMediaTitle(raw) {
+    const title = String(raw || '').replace(/\s+/g, ' ').trim().slice(0, 180);
+    if (!title || /^(?:فيديو يوتيوب · [A-Za-z0-9_-]{11}|فيديو|ملف فيديو|يوتيوب|مشغّل مضمَّن|رابط خارجي|بث HLS|تيك توك|تويتش|كيك|رييلز إنستغرام)$/.test(title)) return '';
+    return title;
+  }
+
+  function roomFavoriteItem(parsed, metadata) {
+    if (!parsed || parsed.kind === 'youtube-playlist') return null;
+    const url = String(parsed.src || st.url || '').trim();
+    if (!url) return null;
+    const meta = metadata || {};
+    if (parsed.kind === 'youtube' && /^[A-Za-z0-9_-]{11}$/.test(String(parsed.id || ''))) {
+      return {
+        type: 'video', site: 'youtube', id: parsed.id,
+        url: 'https://www.youtube.com/watch?v=' + parsed.id,
+        title: usefulMediaTitle(meta.title) || usefulMediaTitle(session.videoTitle) || ('فيديو يوتيوب · ' + parsed.id),
+        author: meta.author || '', thumbnail: meta.thumbnail || meta.thumb || (MediaPreview && MediaPreview.thumbnail(url)) || '',
+        duration: Number(meta.duration) || 0, channelId: meta.channelId || '', channelUrl: meta.channelUrl || ''
+      };
+    }
+    let site = 'external', id = '';
+    try {
+      const host = new URL(url).hostname.toLowerCase().replace(/^www\./, '');
+      if (host === 'dailymotion.com' || host.endsWith('.dailymotion.com') || host === 'dai.ly') {
+        site = 'dailymotion';
+        const match = url.match(/(?:dailymotion\.com\/video\/|dai\.ly\/)([A-Za-z0-9]+)/i);
+        id = match ? match[1] : '';
+      }
+    } catch (_) { return null; }
+    return {
+      type: 'video', site, id, url,
+      title: usefulMediaTitle(session.videoTitle) || usefulMediaTitle(meta.title) || parsed.label || 'فيديو',
+      author: meta.author || '', thumbnail: meta.thumbnail || meta.thumb || (MediaPreview && MediaPreview.thumbnail(url)) || '',
+      duration: Number(meta.duration) || 0
+    };
+  }
+
+  function paintRoomFavorite(saved) {
+    const button = el.favoriteCurrentBtn;
+    if (!button) return;
+    const on = !!saved;
+    button.classList.toggle('is-on', on);
+    button.setAttribute('aria-pressed', String(on));
+    const label = on ? 'إزالة الفيديو الحالي من المفضّلة' : 'إضافة الفيديو الحالي إلى المفضّلة';
+    button.setAttribute('aria-label', label);
+    button.setAttribute('title', label);
+  }
+
+  function updateFavoriteCurrentButton(parsed) {
+    const button = el.favoriteCurrentBtn;
+    if (!button) return;
+    const item = roomFavoriteItem(parsed);
+    const version = ++favoriteVideoVersion;
+    button.disabled = !item;
+    paintRoomFavorite(false);
+    if (!item || !Favorites || typeof Favorites.list !== 'function') return;
+    let key = '';
+    try { key = Favorites.identity(item); } catch (_) { key = ''; }
+    Favorites.list().then(items => {
+      if (version !== favoriteVideoVersion || !key) return;
+      paintRoomFavorite(items.some(saved => Favorites.identity(saved) === key));
+    }).catch(() => { /* لا تُعطّل المشاهدة إن تعذّر جلب المفضّلة */ });
+    if (parsed.kind === 'youtube' && MediaPreview && typeof MediaPreview.video === 'function') {
+      MediaPreview.video(parsed.id).then(meta => {
+        if (version !== favoriteVideoVersion || !meta) return;
+        if (meta.title && !usefulMediaTitle(session.videoTitle)) session.videoTitle = meta.title;
+      }).catch(() => { });
+    }
+  }
+
+  async function toggleCurrentFavorite() {
+    const button = el.favoriteCurrentBtn;
+    const parsed = session.videoParsed;
+    if (!button || !parsed || button.disabled) return;
+    if (!Favorites || typeof Favorites.toggle !== 'function') {
+      U.toast('خدمة المفضّلة غير متاحة — تحقق من ترحيل Supabase', 'error', 3000);
+      return;
+    }
+    const version = favoriteVideoVersion;
+    button.disabled = true;
+    try {
+      const url = String(parsed.src || st.url || '');
+      let metadata = queueMetadata.get(url) || null;
+      if (!metadata && MediaPreview) {
+        if (parsed.kind === 'youtube' && typeof MediaPreview.video === 'function')
+          metadata = await MediaPreview.video(parsed.id).catch(() => null);
+        else if (typeof MediaPreview.describe === 'function')
+          metadata = await MediaPreview.describe(url).catch(() => null);
+      }
+      if (version !== favoriteVideoVersion) return;
+      const item = roomFavoriteItem(parsed, metadata);
+      if (!item) return;
+      const result = await Favorites.toggle(item);
+      if (version !== favoriteVideoVersion) return;
+      paintRoomFavorite(result.saved);
+      U.toast(result.saved ? 'حُفظ الفيديو في مفضّلتك الشخصية فقط' : 'أُزيل الفيديو من مفضّلتك', 'success', 2400);
+    } catch (error) {
+      if (version === favoriteVideoVersion)
+        U.toast(error && error.message ? error.message : 'تعذّر حفظ المفضّلة', 'error', 3200);
+    } finally {
+      if (version === favoriteVideoVersion) button.disabled = false;
+    }
+  }
+
   /* ============================== الفيديو ============================== */
   let videoLoadVersion = 0;
   async function loadVideo(parsed, opts) {
@@ -921,8 +1038,10 @@
     const version = ++videoLoadVersion;
     clearAutoplayPrompt();
     session.videoParsed = parsed;
+    session.videoTitle = String(opts.title || '').replace(/\s+/g, ' ').trim().slice(0, 180);
     st.url = parsed.src;
     st.kind = parsed.kind;
+    updateFavoriteCurrentButton(parsed);
     /* فيديو جديد → أخفِ طبقة «التالي» وأوقف أي معاينة سابقة */
     if (window.WTUpNext && window.WTUpNext.onVideoChanged) {
       try { window.WTUpNext.onVideoChanged(parsed); } catch (err) { console.error(err); }
@@ -2821,28 +2940,157 @@
     document.addEventListener('webkitfullscreenchange', syncChatWidgetFullscreen);
   }
 
+  function safePreviewImage(raw) {
+    try {
+      const url = new URL(String(raw || '').trim());
+      return url.protocol === 'https:' && !url.username && !url.password ? url.href : '';
+    } catch (_) { return ''; }
+  }
+
+  function previewThumbFor(url, meta) {
+    return safePreviewImage(meta && (meta.thumbnail || meta.thumb)) ||
+      safePreviewImage(MediaPreview && MediaPreview.thumbnail ? MediaPreview.thumbnail(url) : '');
+  }
+
+  function updateQueuePreview(url, meta) {
+    if (!el.queuePreview) return;
+    const thumbnail = previewThumbFor(url, meta);
+    const title = String(el.newTitle.value || (meta && meta.title) || 'معاينة الفيديو').trim();
+    el.queuePreview.hidden = false;
+    el.queuePreviewTitle.textContent = title || 'معاينة الفيديو';
+    el.queuePreviewMeta.textContent = (meta && meta.author ? meta.author + ' · ' : '') + 'سيُضاف إلى قائمة الغرفة';
+    el.queuePreviewMedia.innerHTML = thumbnail
+      ? '<img src="' + U.esc(thumbnail) + '" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer">'
+      : '<span class="ic">' + IC.html('film', 19) + '</span>';
+  }
+
+  function scheduleQueuePreview() {
+    if (!el.queuePreview) return;
+    clearTimeout(previewInputTimer);
+    const raw = String(el.newUrl.value || '').trim();
+    const previousUrl = previewInputUrl;
+    const version = ++previewInputVersion;
+    if (raw !== previousUrl) {
+      previewInputTouched = false;
+      el.newTitle.value = '';
+    }
+    previewInputUrl = raw;
+    previewInputMeta = null;
+    if (!raw) {
+      el.queuePreview.hidden = true;
+      return;
+    }
+    const local = MediaPreview && MediaPreview.localInfo ? MediaPreview.localInfo(raw) : null;
+    updateQueuePreview(raw, local);
+    previewInputTimer = setTimeout(async () => {
+      if (!MediaPreview || typeof MediaPreview.describe !== 'function') return;
+      const meta = await MediaPreview.describe(raw).catch(() => null);
+      if (version !== previewInputVersion || raw !== previewInputUrl) return;
+      previewInputMeta = meta;
+      if (!previewInputTouched && meta && meta.title) {
+        previewInputTouched = false;
+        el.newTitle.value = String(meta.title).slice(0, 120);
+      }
+      updateQueuePreview(raw, meta);
+    }, 280);
+  }
+
+  function resetQueuePreview() {
+    clearTimeout(previewInputTimer);
+    previewInputVersion++;
+    previewInputUrl = '';
+    previewInputMeta = null;
+    previewInputTouched = false;
+    if (el.queuePreview) el.queuePreview.hidden = true;
+  }
+
+  function renderQueueThumb(row, url, meta) {
+    if (!row) return;
+    const holder = row.querySelector('.queue-item__thumb');
+    if (!holder) return;
+    const thumbnail = previewThumbFor(url, meta);
+    if (thumbnail) holder.innerHTML = '<img src="' + U.esc(thumbnail) + '" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer">';
+  }
+
+  function fetchQueueMetadata(item) {
+    if (!MediaPreview || typeof MediaPreview.describe !== 'function' || !item || !item.url) return;
+    const url = String(item.url);
+    if (queueMetadata.has(url) || queueMetadataPending.has(url)) return;
+    queueMetadataPending.add(url);
+    MediaPreview.describe(url).then(meta => {
+      if (!meta || (!usefulMediaTitle(meta.title) && !safePreviewImage(meta.thumbnail || meta.thumb))) return;
+      queueMetadata.set(url, meta);
+      const rows = el.queueList.querySelectorAll('.queue-item');
+      rows.forEach(row => {
+        if (String(row.getAttribute('data-queue-id') || '') !== String(item.id || '')) return;
+        renderQueueThumb(row, url, meta);
+        const title = row.querySelector('.queue-item__body strong');
+        if (title && !usefulMediaTitle(item.title) && meta.title) title.textContent = meta.title;
+      });
+    }).catch(() => { /* لا نوقف قائمة الغرفة إن غابت بيانات المعاينة */ })
+      .finally(() => queueMetadataPending.delete(url));
+  }
+
   /* ============================== قائمة التشغيل المشتركة ============================== */
   function setQueue(items) {
     session.queue = Array.isArray(items) ? items.slice() : [];
-    renderQueue();
+    renderQueue(!el.playlistModal.hidden);
   }
 
-  function renderQueue() {
+  function renderQueue(loadMetadata) {
     const queue = session.queue || [];
+    if (queuePreviewObserver) { queuePreviewObserver.disconnect(); queuePreviewObserver = null; }
     el.playlistCount.textContent = String(queue.length);
     el.queueEmpty.hidden = queue.length > 0;
     if (!queue.length) { el.queueList.innerHTML = ''; return; }
     el.queueList.innerHTML = queue.map((item, index) => {
-      const title = item.title || item.url || 'فيديو';
+      const cached = queueMetadata.get(String(item.url || '')) || null;
+      const title = usefulMediaTitle(item.title) || usefulMediaTitle(cached && cached.title) || item.url || 'فيديو';
+      const thumbnail = safePreviewImage(item.thumbnail || item.thumb) || safePreviewImage(cached && (cached.thumbnail || cached.thumb)) ||
+        safePreviewImage(MediaPreview && MediaPreview.thumbnail ? MediaPreview.thumbnail(item.url) : '');
+      const thumb = thumbnail
+        ? '<img src="' + U.esc(thumbnail) + '" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer">'
+        : '<span class="ic">' + IC.html('film', 17) + '</span>';
       const canRemove = session.role === 'owner' || session.role === 'organizer' || item.addedByClient === session.clientId || item.added_by_client === session.clientId;
       return '<article class="queue-item" data-queue-id="' + U.esc(item.id) + '">' +
         '<span class="queue-item__index">' + String(index + 1).padStart(2, '0') + '</span>' +
+        '<span class="queue-item__thumb" data-queue-preview-index="' + index + '">' + thumb + '</span>' +
         '<span class="queue-item__body"><strong>' + U.esc(title) + '</strong><small dir="ltr">' + U.esc(item.url || '') + '</small>' +
         '<small>أُضيف بواسطة ' + U.esc(item.addedBy || item.added_by || 'مشارك') + '</small></span>' +
         (canControl() ? '<button type="button" class="queue-item__play" data-play-queue="' + U.esc(item.id) + '" aria-label="تشغيل الآن">' + IC.html('play', 16) + '</button>' : '') +
         (canRemove ? '<button type="button" class="queue-item__remove" data-remove-queue="' + U.esc(item.id) + '" aria-label="إزالة من القائمة">' + IC.html('x', 16) + '</button>' : '') +
         '</article>';
     }).join('');
+
+    if (loadMetadata) {
+      const holders = el.queueList.querySelectorAll('.queue-item__thumb');
+      const needsMetadata = (item) => {
+        const cached = queueMetadata.get(String(item.url || '')) || null;
+        const thumb = safePreviewImage(item.thumbnail || item.thumb) || safePreviewImage(cached && (cached.thumbnail || cached.thumb)) ||
+          safePreviewImage(MediaPreview && MediaPreview.thumbnail ? MediaPreview.thumbnail(item.url) : '');
+        const title = usefulMediaTitle(item.title) || usefulMediaTitle(cached && cached.title);
+        return !thumb || !title;
+      };
+      if (typeof IntersectionObserver === 'function') {
+        const observer = new IntersectionObserver(entries => {
+          entries.forEach(entry => {
+            if (!entry.isIntersecting) return;
+            const index = Number(entry.target.getAttribute('data-queue-preview-index'));
+            if (Number.isInteger(index) && queue[index]) fetchQueueMetadata(queue[index]);
+            observer.unobserve(entry.target);
+          });
+        }, { root: el.queueList, rootMargin: '120px' });
+        queuePreviewObserver = observer;
+        queue.forEach((item, index) => {
+          if (needsMetadata(item) && holders[index]) observer.observe(holders[index]);
+        });
+      } else {
+        let requested = 0;
+        queue.forEach(item => {
+          if (needsMetadata(item) && requested < 8) { requested++; fetchQueueMetadata(item); }
+        });
+      }
+    }
 
     el.queueList.querySelectorAll('[data-play-queue]').forEach(btn => btn.addEventListener('click', () => {
       const id = btn.getAttribute('data-play-queue');
@@ -2854,28 +3102,53 @@
     }));
   }
 
+  let queueAddInFlight = false;
   async function addQueueItem() {
-    /* رابط قائمة يوتيوب (…?list=PL…) → نافذة استيراد بدل إضافة رابط واحد */
-    if (window.WTSuggest && window.WTUpNext && window.WTSuggest.parseListUrl(el.newUrl.value)) {
-      try {
-        if (await window.WTUpNext.importFromUrl(el.newUrl.value)) return;
-      } catch (err) { console.error(err); }   /* فشل الاستيراد → نكمل بالإضافة العادية */
-    }
-    const parsed = U.parseWatchUrl(el.newUrl.value);
-    if (!parsed) { U.toast('الرابط غير صالح — أدخل رابط يوتيوب أو mp4 أو m3u8', 'error'); el.newUrl.focus(); return; }
-    if (!session.transport || typeof session.transport.addQueueItem !== 'function') {
-      U.toast('قائمة التشغيل غير متاحة في وضع الاتصال الحالي', 'warn'); return;
-    }
-    const item = { url: parsed.src, title: U.cleanName(el.newTitle.value) || parsed.label || 'فيديو', addedBy: session.name, addedByClient: session.clientId };
+    if (queueAddInFlight) return;
+    queueAddInFlight = true;
+    el.applyUrlBtn.disabled = true;
     try {
+      const rawUrl = String(el.newUrl.value || '').trim();
+      const parsed = U.parseWatchUrl(rawUrl);
+      if (!parsed) { U.toast('الرابط غير صالح — أدخل رابط يوتيوب أو mp4 أو m3u8', 'error'); el.newUrl.focus(); return; }
+      /* رابط قائمة يوتيوب صافية → نافذة استيراد، ورابط فيديو مع list= يبقى فيديو واحداً. */
+      if (parsed.kind === 'youtube-playlist') {
+        if (window.WTSuggest && window.WTUpNext && window.WTSuggest.parseListUrl(rawUrl)) {
+          try {
+            if (await window.WTUpNext.importFromUrl(rawUrl)) return;
+          } catch (err) { console.error(err); }
+        }
+        U.toast('تعذّر استيراد قائمة يوتيوب — تحقق من أن القائمة عامة ثم أعد المحاولة', 'error', 3200);
+        return;
+      }
+      if (!session.transport || typeof session.transport.addQueueItem !== 'function') {
+        U.toast('قائمة التشغيل غير متاحة في وضع الاتصال الحالي', 'warn'); return;
+      }
+      let title = U.cleanName(el.newTitle.value);
+      let meta = previewInputUrl === rawUrl ? previewInputMeta : null;
+      if (!title && parsed.kind === 'youtube' && MediaPreview && typeof MediaPreview.video === 'function') {
+        meta = await MediaPreview.video(parsed.id).catch(() => null);
+        if (meta && meta.title) {
+          title = U.cleanName(meta.title);
+          if (!previewInputTouched) el.newTitle.value = title;
+          previewInputMeta = meta;
+          updateQueuePreview(rawUrl, meta);
+        }
+      }
+      title = title || (meta && U.cleanName(meta.title)) || parsed.label || 'فيديو';
+      const item = { url: parsed.src, title: title.slice(0, 120), addedBy: session.name, addedByClient: session.clientId };
       const result = await session.transport.addQueueItem(item);
       if (Array.isArray(result)) setQueue(result);
       el.newUrl.value = '';
       el.newTitle.value = '';
+      resetQueuePreview();
       el.changeBar.hidden = true;
       U.toast('أُضيف الفيديو إلى قائمة الغرفة', 'success', 2200);
     } catch (err) {
-      U.toast('تعذّر إضافة الفيديو — تحقق من الاتصال ثم أعد المحاولة', 'error', 3200);
+      U.toast(err && err.message ? err.message : 'تعذّر إضافة الفيديو — تحقق من الاتصال ثم أعد المحاولة', 'error', 3200);
+    } finally {
+      queueAddInFlight = false;
+      el.applyUrlBtn.disabled = false;
     }
   }
 
@@ -2963,7 +3236,7 @@
     st.pos = 0;
     st.playing = true;
     session.lastAppliedRev = -1;
-    loadVideo(parsed, { autoplay: true });
+    loadVideo(parsed, { autoplay: true, title: item.title || parsed.label || '' });
     publish({ force: true });
     el.playlistModal.hidden = true;
     sysMessage('بدأ ' + session.name + ' عرض «' + (item.title || parsed.label) + '»');
@@ -3112,11 +3385,17 @@
     el.addVideoBtn.addEventListener('click', openChangeBar);
     el.messagesBtn.addEventListener('click', () => setChatOpen(!session.chatOpen));
     bindChatWidget();
-    el.playlistBtn.addEventListener('click', () => { renderQueue(); el.playlistModal.hidden = false; });
+    el.playlistBtn.addEventListener('click', () => { el.playlistModal.hidden = false; renderQueue(true); });
     el.playlistCloseBtn.addEventListener('click', () => { el.playlistModal.hidden = true; });
     el.playlistModal.addEventListener('click', (e) => { if (e.target === el.playlistModal) el.playlistModal.hidden = true; });
-    el.cancelUrlBtn.addEventListener('click', () => { el.changeBar.hidden = true; });
+    el.favoriteCurrentBtn.addEventListener('click', toggleCurrentFavorite);
+    el.cancelUrlBtn.addEventListener('click', () => { el.changeBar.hidden = true; resetQueuePreview(); });
     el.applyUrlBtn.addEventListener('click', addQueueItem);
+    el.newUrl.addEventListener('input', scheduleQueuePreview);
+    el.newTitle.addEventListener('input', () => {
+      if (!previewInputTouched) previewInputTouched = true;
+      if (previewInputUrl) updateQueuePreview(previewInputUrl, previewInputMeta);
+    });
     el.newUrl.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); addQueueItem(); } });
 
     /* ---- القائمة الجانبية ---- */
@@ -3462,6 +3741,7 @@
     el.changeBar.hidden = false;
     el.newUrl.value = '';
     el.newTitle.value = '';
+    resetQueuePreview();
     el.newUrl.focus();
     el.changeBar.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   }

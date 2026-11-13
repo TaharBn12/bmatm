@@ -136,7 +136,7 @@ class El {
   animate() { return { finished: Promise.resolve() }; }
   closest(sel) {
     let n = this;
-    while (n) { if (sel.startsWith('.') && n.classList.contains(sel.slice(1))) return n; n = n.parentNode; }
+    while (n) { if (n.matches(sel)) return n; n = n.parentNode; }
     return null;
   }
   querySelector(sel) { return this._query(sel)[0] || null; }
@@ -164,7 +164,21 @@ class El {
     walk(this);
     return out;
   }
-  matches() { return false; }
+  matches(sel) {
+    if (sel.startsWith('#')) return this.id === sel.slice(1);
+    if (sel.startsWith('.')) return this.classList.contains(sel.slice(1));
+    if (sel.startsWith('[')) {
+      const exact = sel.match(/^\[([a-zA-Z-]+)="([^"]*)"\]$/);
+      if (exact) {
+        const key = exact[1];
+        return key.startsWith('data-') ? this.dataset[key.slice(5)] === exact[2] : this.attrs[key] === exact[2];
+      }
+      const present = sel.match(/^\[([a-zA-Z-]+)\]$/);
+      return !!present && (this.attrs[present[1]] !== undefined ||
+        (present[1].startsWith('data-') && this.dataset[present[1].slice(5)] !== undefined));
+    }
+    return this.tagName === String(sel || '').toUpperCase();
+  }
   getBoundingClientRect() { return { left: 0, width: 100, top: 0, height: 22 }; }
 }
 
@@ -340,7 +354,8 @@ export function createRoomEnv(o = {}) {
   vm.createContext(sandbox);
 
   const scripts = o.scripts || ['assets/js/config.js', 'assets/js/util.js', 'assets/js/icons.js',
-    'assets/js/auth.js', 'assets/js/transport.js', 'assets/js/player.js', 'assets/js/media.js', 'assets/js/room.js'];
+    'assets/js/auth.js', 'assets/js/favorites.js', 'assets/js/transport.js', 'assets/js/player.js',
+    'assets/js/media.js', 'assets/js/media-preview.js', 'assets/js/room.js'];
   const loaded = [];
   for (const f of scripts) {
     try {
