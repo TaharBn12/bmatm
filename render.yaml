@@ -24,6 +24,11 @@ services:
       # لإعادة «الموقع + API» على Render اجعلها false.
       - key: WT_API_ONLY
         value: "true"
+      # Public project config used to validate bearer tokens for account-level Java presence.
+      - key: WT_SUPABASE_URL
+        value: https://cazwkhcbkzhnsluuafwz.supabase.co
+      - key: WT_SUPABASE_ANON_KEY
+        value: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNhendraGNia3pobnNsdXVhZnd6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njc5NDQ3ODIsImV4cCI6MjA4MzUyMDc4Mn0.u1l9BrzI7ZA9P3CSdXN0tYkHu1TUNTGsqczByNSPUN0
       - key: PORT
         value: "10000"
       - key: HOST

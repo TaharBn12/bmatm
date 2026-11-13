@@ -99,7 +99,7 @@ const fetch = async (url, options = {}) => {
     return response({ ok: true });
   }
   if (String(url).includes('/rest/v1/presence?')) {
-    assert.equal(new URL(url).searchParams.get('select'), 'room_id,client_id,name,last_seen');
+    assert.equal(new URL(url).searchParams.get('select'), 'room_id,client_id,name,last_seen,user_key');
     return presenceDenied ? response({ message: 'الحضور غير متاح' }, 404) : response(serverPeople);
   }
   assert.ok(String(url).includes('select=room_id,title,video_url,created_at'));
@@ -116,13 +116,13 @@ assert.equal(writes[0].p_owner_token, creator.context.WTUtil.store.get('owner:' 
 assert.equal((await visitor.rooms.list()).rooms[0].title, 'غرفة مشتركة');
 assert.equal(visitor.context.WTUtil.store.get('owner:' + shared.id), undefined, 'viewing a card grants no ownership');
 assert.equal(creator.rooms.href(shared), 'room.html?id=' + shared.id);
-for (let i = 0; i < 11; i++) serverPeople.push({ room_id: shared.id, client_id: 'person-' + i, name: 'منضم ' + i, last_seen: new Date().toISOString(), owner_token: 'must-not-leak' });
-serverPeople.push(serverPeople[0]); // duplicated transport delivery must not inflate the total
+for (let i = 0; i < 11; i++) serverPeople.push({ room_id: shared.id, client_id: 'person-' + i, user_key: i < 2 ? 'same-account' : 'account-' + i, name: 'منضم ' + i, last_seen: new Date().toISOString(), owner_token: 'must-not-leak' });
+serverPeople.push(serverPeople[0]); // duplicate row and another tab for the same account must not inflate the total
 serverPeople.push({ room_id: shared.id, client_id: 'old', name: 'سابق', last_seen: new Date(Date.now() - 20000).toISOString() });
 serverRooms[0].current_video_url = 'https://media.example/current.webm';
 const currentShared = (await visitor.rooms.list()).rooms[0];
 assert.equal(currentShared.videoUrl, serverRooms[0].current_video_url);
-assert.equal(currentShared.participantCount, 11);
+assert.equal(currentShared.participantCount, 10, 'two connections for one account are counted once');
 assert.equal(currentShared.participants.length, 5);
 assert.ok(!JSON.stringify(currentShared).includes('must-not-leak'));
 presenceDenied = true;

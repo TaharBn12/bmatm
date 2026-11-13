@@ -40,8 +40,10 @@ try {
   });
   const owned = await rpc(A, 'wt_get_owned_room', { p_room_id: roomId, p_owner_token: ownerToken });
   assert.equal(owned.is_private, true);
-  assert.equal(owned.control_mode, 'owner');
-  checks += 2;
+  assert.equal(owned.control_mode, 'everyone', 'legacy owner-only settings are migrated away');
+  await assert.rejects(() => db.query("update public.rooms set control_mode='owner' where room_id=$1", [roomId]),
+    error => error.code === '23514', 'database constraint permanently rejects owner-only mode');
+  checks += 3;
   await denied(() => rpc(B, 'wt_get_owned_room', { p_room_id: roomId, p_owner_token: ownerToken }));
   await denied(() => rpc(null, 'wt_get_owned_room', { p_room_id: roomId, p_owner_token: ownerToken }));
   const publicRows = await as(null, 'select room_id from public.rooms order by room_id');
@@ -50,30 +52,36 @@ try {
   checks += 2;
   await denied(() => as(null, 'select * from public.room_reports'));
 
-  const joined = await rpc(null, 'wt_join_room', {
-    p_room_id: roomId, p_client_id: 'viewer-client', p_member_token: memberToken, p_display_name: 'مشاهد'
+  const joined = await rpc(A, 'wt_join_room', {
+    p_room_id: roomId, p_client_id: 'viewer-client', p_member_token: memberToken, p_display_name: 'مشارك'
   });
   assert.equal(joined.role, 'viewer');
+  const secondTabToken = 'c'.repeat(64);
+  const secondJoin = await rpc(A, 'wt_join_room', {
+    p_room_id: roomId, p_client_id: 'viewer-second-tab', p_member_token: secondTabToken, p_display_name: 'مشارك'
+  });
+  assert.equal(secondJoin.members[0].user_key, secondJoin.members[1].user_key, 'authenticated tabs receive one room-scoped identity key');
   const snapshot = await rpc(null, 'wt_room_snapshot', {
     p_room_id: roomId, p_client_id: 'viewer-client', p_member_token: memberToken
   });
   assert.equal(snapshot.is_private, true, 'a valid member token can snapshot a private invite room');
   checks += 2;
-  await denied(() => rpc(null, 'wt_apply_room_state', {
-    p_room_id: roomId, p_client_id: 'viewer-client', p_member_token: memberToken,
-    p_state: { url: 'https://media.example/forbidden.mp4', playing: true, pos: 0 }
-  }));
-  await rpc(A, 'wt_update_room', {
-    p_room_id: roomId, p_owner_token: ownerToken, p_title: null, p_video_url: null,
-    p_is_private: true, p_control_mode: 'everyone'
-  });
   const accepted = await rpc(null, 'wt_apply_room_state', {
     p_room_id: roomId, p_client_id: 'viewer-client', p_member_token: memberToken,
     p_state: { url: 'https://media.example/allowed.mp4', playing: true, pos: 15 }
   });
   assert.equal(accepted.url, 'https://media.example/allowed.mp4');
   assert.equal(accepted.updatedBy, 'viewer-client');
+  await denied(() => rpc(null, 'wt_apply_room_state', {
+    p_room_id: roomId, p_client_id: 'not-joined', p_member_token: 'z'.repeat(64),
+    p_state: { url: 'https://media.example/forbidden.mp4', playing: true, pos: 0 }
+  }));
   checks += 2;
+  await as(A, `insert into public.presence(room_id,client_id,name) values($1,$2,$3),($1,$4,$3)`,
+    [roomId, 'presence-tab-one', 'مشارك', 'presence-tab-two']);
+  const presenceKeys = await db.query('select user_key from public.presence where room_id=$1 order by client_id', [roomId]);
+  assert.equal(presenceKeys.rows[0].user_key, presenceKeys.rows[1].user_key, 'presence trigger assigns one account key to both tabs');
+  checks++;
 
   assert.deepEqual(await rpc(B, 'wt_report_room', {
     p_room_id: roomId, p_reason: 'spam', p_details: 'رابط مضلل'
@@ -101,7 +109,7 @@ try {
 
   await db.exec(migration);
   checks++;
-  console.log(`Room management PostgreSQL: ${checks} checks passed (private listing, creator-bound settings/deletion, invite snapshot, control modes, private reports, cascade cleanup and repeatable migration)`);
+  console.log(`Room management PostgreSQL: ${checks} checks passed (private listing, creator-bound settings/deletion, invite snapshot, shared-control invariant, private reports, cascade cleanup and repeatable migration)`);
 } finally {
   await db.close();
 }

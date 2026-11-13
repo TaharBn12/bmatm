@@ -37,8 +37,8 @@ const run = async () => {
     'centerPlayBtn',
     'progressBar', 'progressFill', 'progressBuffer', 'progressKnob', 'progressTip',
     'addVideoBtn', 'messagesBtn', 'messagesCount', 'playlistBtn', 'playlistCount',
-    'changeBar', 'newUrl', 'newTitle', 'applyUrlBtn', 'cancelUrlBtn', 'chat', 'chatBody',
-    'chatEmpty', 'chatCount', 'clearChatBtn', 'chatForm', 'chatInput', 'chatSend',
+    'changeBar', 'newUrl', 'newTitle', 'applyUrlBtn', 'cancelUrlBtn', 'roomMain', 'chatWidget', 'chatFab',
+    'chatFabCount', 'chatCloseBtn', 'chat', 'chatBody', 'chatEmpty', 'chatCount', 'clearChatBtn', 'chatForm', 'chatInput', 'chatSend',
     'typing', 'messagesIcon', 'playlistModal', 'playlistCloseBtn', 'queueList', 'queueEmpty',
     'sbMeBtn', 'qrModal', 'qrBox', 'qrUrl', 'qrClose', 'qrCopy', 'meModal', 'meClose',
     'meAvatar', 'meName', 'meMail', 'meNameInput', 'meSave', 'meSignout', 'diagModal',
@@ -59,22 +59,23 @@ const run = async () => {
   t('الترتيب: رأس الغرفة ← إضافة الرابط ← المشغّل ← شريط التحكم ← الرسائل',
     order.every((n, i) => n >= 0 && (!i || n > order[i - 1])), order.join(','));
 
-  /* المطلب الصريح: لا شيء بين بطاقة المشغّل والرسائل — الرسائل تحت المشغّل مباشرة */
+  /* الفقاعة خارج تدفّق المشغّل، واللوحة داخلها ولا تحجز مساحة أسفل الفيديو. */
   const mainSlice = html.slice(html.indexOf('id="roomMain"'), html.indexOf('<!-- ===== سكربتات'));
-  const chatTag = mainSlice.indexOf('<section class="chat');           /* بداية بطاقة الرسائل نفسها */
-  const between = mainSlice.slice(mainSlice.indexOf('id="mediaShell"'), chatTag);
-  /* كل ما داخل بطاقة المشغّل مسموح. كان هنا «شريط اللحظات» (momentsRail) من وحدة
-     الميزات، وقد أُزيلت الوحدة كلها (features.js/features.css) فصار المشغّل
-     ينتهي عند شريط التقدّم مباشرة — وهذا أصل المطلب: لا شيء بينه وبين الرسائل. */
+  const widgetTag = mainSlice.indexOf('id="chatWidget"');
+  const chatTag = mainSlice.indexOf('<section class="chat');
+  const between = mainSlice.slice(mainSlice.indexOf('id="mediaShell"'), widgetTag);
+  /* كل ما داخل بطاقة المشغّل مسموح؛ فقاعة الدردشة تبدأ بعدها كعنصر عائم مستقل. */
   const allowedIds = new Set(['mediaShell', 'stage', 'player', 'playerPlaceholder', 'centerPlayBtn', 'videoFullscreenBtn', 'clickLayer',
     'ctrlbar', 'videoFullscreenBtn', 'iconPlay', 'iconPause', 'curTime', 'durTime', 'progressBar', 'progressBuffer',
     'progressFill', 'progressKnob', 'progressTip', 'muteBtn', 'iconSound', 'iconMuted']);
   const strayIds = [...between.matchAll(/id="([^"]+)"/g)].map(m => m[1]).filter(id => !allowedIds.has(id));
   const strayClasses = [...between.matchAll(/class="([^"]+)"/g)].map(m => m[1])
     .flatMap(c => c.split(/\s+/)).filter(c => ['room-bar', 'player-actions', 'change-bar', 'chat', 'player-action', 'rtopbar', 'drawer-open'].includes(c));
-  t('لا شيء بين المشغّل والرسائل (الرسائل تحت المشغّل مباشرة)',
-    chatTag > 0 && strayIds.length === 0 && strayClasses.length === 0,
+  t('فقاعة الدردشة العائمة تأتي بعد المشغّل دون إدخال لوحة في تدفّق الصفحة',
+    widgetTag > 0 && strayIds.length === 0 && strayClasses.length === 0,
     `ids=${strayIds.join(',')} classes=${strayClasses.join(',')}`);
+  t('لوحة Messenger داخل فقاعة الدردشة وتبدأ مغلقة',
+    widgetTag > 0 && chatTag > widgetTag && /id="chat"[^>]*hidden/.test(mainSlice.slice(chatTag, chatTag + 180)));
   t('أدوات الغرفة (إضافة فيديو · رسائل · تشغيل) في الرأس أعلى المشغّل',
     mainSlice.indexOf('id="roomBar"') < mainSlice.indexOf('id="mediaShell"') &&
     mainSlice.indexOf('id="addVideoBtn"') < mainSlice.indexOf('id="mediaShell"'), '');
@@ -111,6 +112,25 @@ const run = async () => {
   t('شارة «أنت» ظاهرة', byId.get('membersList').innerHTML.includes('(أنت)'));
   t('المنشئ يظهر بقائمة المنظّمين', byId.get('organizerList').innerHTML.includes('أمين بن علي'));
   t('عداد المشاركين يساوي 1', byId.get('membersCount').textContent === '1' && byId.get('sideMembersCount').textContent === '1');
+  env.sandbox.WTRoom.session.transport.emit('settings', { controlMode: 'owner' });
+  t('إعداد خادم قديم لا يعيد قفل التحكم', env.sandbox.WTRoom.session.controlMode === 'everyone' && !byId.get('centerPlayBtn').disabled);
+  env.sandbox.WTRoom.session.transport.emit('members', [
+    { id: env.sandbox.WTRoom.session.clientId, name: 'أمين بن علي', role: 'owner', userKey: 'account-a' },
+    { id: 'same-account-other-tab', name: 'أمين بن علي', role: 'viewer', userKey: 'account-a' },
+    { id: 'another-account', name: 'مشارك آخر', role: 'viewer', userKey: 'account-b' }
+  ]);
+  const visibleCards = (byId.get('membersList').innerHTML.match(/class="member-card(?:\s|")/g) || []).length;
+  t('الحساب نفسه في تبويبين يظهر مرة واحدة', visibleCards === 2 && byId.get('membersCount').textContent === '2', 'cards=' + visibleCards);
+  t('سجل الاتصالات يحتفظ بكلا التبويبين للإدارة', Object.keys(env.sandbox.WTRoom.session.members).length === 3);
+  const selfId = env.sandbox.WTRoom.session.clientId;
+  const otherActiveId = Object.keys(env.sandbox.WTRoom.session.members).find(id => id !== selfId);
+  env.sandbox.WTRoom.state.updatedBy = selfId;
+  t('كاتب الحالة الحالي ينسّق الانتقال التلقائي', env.sandbox.WTRoom.canAutoAdvance());
+  env.sandbox.WTRoom.state.updatedBy = otherActiveId;
+  t('تبويب آخر يظل المتحكم الوحيد في الانتقال التلقائي', !env.sandbox.WTRoom.canAutoAdvance());
+  env.sandbox.WTRoom.state.updatedBy = 'offline-controller';
+  const electedLeader = Object.keys(env.sandbox.WTRoom.session.members).sort()[0];
+  t('غياب كاتب الحالة ينتخب جهازاً نشطاً واحداً بصورة حتمية', env.sandbox.WTRoom.canAutoAdvance() === (selfId === electedLeader));
 
   const drawer = byId.get('roomDrawer');
   byId.get('drawerOpenBtn').dispatch('click', {});
@@ -127,8 +147,8 @@ const run = async () => {
   t('الرسالة أُضيفت وحقل الإدخال فُرّغ', chatBody.children.length > before && byId.get('chatInput').value === '');
   t('عداد الرسائل يتحدث', /رسالة|رسائل/.test(byId.get('chatCount').textContent));
   t('رسائل الانضمام محصورة في نافذة الرسائل', chatBody.children.some(c => String(c._className).includes('msg--system')));
-  t('الرسائل ظاهرة دائماً (لا عدّاد «غير مقروء» يغطّيها)',
-    sandbox.WTRoom.session.unread === 0 && byId.get('messagesCount').hidden === true);
+  t('المحادثة مغلقة ابتدائياً والعدادان مخفيان عند عدم وجود رسائل غير مقروءة',
+    byId.get('chat').hidden && byId.get('chatFabCount').hidden && byId.get('messagesCount').hidden);
   const sentMsg = chatBody.children.at(-1);
   t('إزالة شريط الإيموجي فوق حقل الكتابة', !byId.has('reactRow'));
   t('الرسالة المدمجة بلا اسم ظاهر وبلا أيقونة تفاعل داخل الفقاعة',
@@ -142,9 +162,32 @@ const run = async () => {
 
   byId.get('messagesBtn').dispatch('click', {});
   await wait(40);
-  t('زر الرسائل يكبّر المحادثة', documentStub.body.classList.contains('chat-focus') && byId.get('messagesBtn').getAttribute('aria-expanded') === 'true' && byId.get('messagesIcon').innerHTML === sandbox.WTIcons.html('chatUp', 19));
-  byId.get('messagesBtn').dispatch('click', {});
-  t('العودة للفيديو تغلق وضع المحادثة', !documentStub.body.classList.contains('chat-focus') && byId.get('messagesBtn').getAttribute('aria-expanded') === 'false' && byId.get('messagesIcon').innerHTML === sandbox.WTIcons.html('chatDown', 19));
+  t('زر الرسائل يفتح لوحة Messenger دون إخفاء الفيديو', sandbox.WTRoom.session.chatOpen && !byId.get('chat').hidden &&
+    !byId.get('stage').hidden && byId.get('messagesBtn').getAttribute('aria-expanded') === 'true' &&
+    byId.get('messagesIcon').innerHTML === sandbox.WTIcons.html('chatUp', 19));
+  byId.get('chatCloseBtn').dispatch('click', {});
+  t('زر التصغير يغلق اللوحة ويبقي المشغّل ظاهراً', !sandbox.WTRoom.session.chatOpen && byId.get('chat').hidden &&
+    !byId.get('stage').hidden && byId.get('messagesBtn').getAttribute('aria-expanded') === 'false');
+  byId.get('chatFab').dispatch('click', {});
+  t('فقاعة الدردشة تفتح المحادثة', sandbox.WTRoom.session.chatOpen && !byId.get('chat').hidden &&
+    byId.get('chatFab').getAttribute('aria-expanded') === 'true');
+  byId.get('chatFab').dispatch('click', {});
+  t('الفقاعة نفسها تغلق اللوحة', !sandbox.WTRoom.session.chatOpen && byId.get('chat').hidden);
+  sandbox.WTRoom.session.transport.emit('chat', { id: 'unread-1', client: 'remote-unread', name: 'مشارك', text: 'رسالة جديدة', kind: 'chat' });
+  t('تظهر شارة غير المقروء على الفقاعة وزر الرأس', sandbox.WTRoom.session.unread === 1 &&
+    byId.get('chatFabCount').textContent === '1' && byId.get('messagesCount').textContent === '1');
+  byId.get('chatFab').dispatch('click', {});
+  t('فتح المحادثة يصفّر عداد غير المقروء', sandbox.WTRoom.session.unread === 0 &&
+    byId.get('chatFabCount').hidden && byId.get('messagesCount').hidden);
+  byId.get('chatFab').dispatch('click', {});
+  documentStub.fullscreenElement = byId.get('stage');
+  documentStub.dispatch('fullscreenchange', {});
+  t('فقاعة الدردشة تنتقل إلى عنصر الفيديو كي تبقى داخل ملء الشاشة', byId.get('chatWidget').parentNode === byId.get('stage') &&
+    byId.get('chatWidget').classList.contains('is-fullscreen'));
+  documentStub.fullscreenElement = null;
+  documentStub.dispatch('fullscreenchange', {});
+  t('بعد الخروج من ملء الشاشة تعود الفقاعة إلى تخطيط الغرفة', byId.get('chatWidget').parentNode === byId.get('roomMain') &&
+    !byId.get('chatWidget').classList.contains('is-fullscreen'));
 
   byId.get('addVideoBtn').dispatch('click', {});
   t('إضافة فيديو تفتح حقل الرابط', !byId.get('changeBar').hidden);
@@ -161,7 +204,7 @@ const run = async () => {
   byId.get('playlistCloseBtn').dispatch('click', {});
   t('زر إغلاق قائمة التشغيل يعمل', byId.get('playlistModal').hidden);
 
-  const clickIds = ['videoFullscreenBtn', 'centerPlayBtn', 'progressBar', 'addVideoBtn', 'messagesBtn', 'playlistBtn',
+  const clickIds = ['videoFullscreenBtn', 'centerPlayBtn', 'progressBar', 'addVideoBtn', 'messagesBtn', 'playlistBtn', 'chatFab', 'chatCloseBtn',
     'drawerOpenBtn', 'drawerCloseBtn', 'copyCodeBtn', 'copyLinkBtn', 'qrBtn', 'leaveBtn', 'clearChatBtn',
     'sbMeBtn', 'meClose', 'meSave', 'meSignout', 'cancelUrlBtn', 'applyUrlBtn', 'playlistCloseBtn'];
   clickIds.forEach(id => {

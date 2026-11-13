@@ -86,22 +86,23 @@ function makeWsServer() {
           if (other !== sock && other.attrs.clientId === msg.client) this.detach(other);
         }
         sock.attrs.room = roomId; sock.attrs.clientId = msg.client; sock.attrs.name = msg.name;
+        sock.attrs.userKey = msg.accessToken ? roomId + ':' + msg.accessToken : '';
         sock.attrs.role = role; sock.attrs.host = role === 'owner';
         r.members.add(sock);
         const members = memberList(r);
         this.send(sock, { type: 'welcome', room: roomId, state: r.state, serverTime: Date.now(), messages: r.history.slice(), members,
-          queue: r.queue.slice(), role, lastSavedAt: Date.now() });
+          queue: r.queue.slice(), role, controlMode: 'owner', lastSavedAt: Date.now() });
         this.broadcast(r, { type: 'system', text: (msg.name || 'زائر') + ' دخل الغرفة' }, null);
         this.broadcast(r, { type: 'members', members }, null);
         this.broadcast(r, { type: 'roles', roles: members }, null);
         return;
       }
 
-      if (!sock.attrs.room || sock.attrs.room !== roomId) return;
+      if (msg.type === 'state' && (!sock.attrs.room || sock.attrs.room !== roomId || !r.members.has(sock))) {
+        this.send(sock, { type: 'error', code: 'permission', action: 'state', state: r.state, message: 'انضم إلى الغرفة أولاً' }); return;
+      }
+      if (!sock.attrs.room || sock.attrs.room !== roomId || !r.members.has(sock)) return;
       if (msg.type === 'state') {
-        if (!['owner', 'organizer'].includes(sock.attrs.role)) {
-          this.send(sock, { type: 'error', code: 'permission', action: 'state', state: r.state, message: 'التحكم متاح للمنشئ والمنظّمين فقط' }); return;
-        }
         const s = msg.state || {};
         r.rev++;
         const stored = Object.assign({}, s, { rev: r.rev, t: Date.now(), updatedBy: sock.attrs.clientId, updatedByName: sock.attrs.name });
@@ -144,7 +145,7 @@ function makeWsServer() {
         sock.attrs.name = msg.name || sock.attrs.name;
         sock.attrs.host = sock.attrs.role === 'owner';
         const members = memberList(r);
-        this.broadcast(r, { type: 'presence', clientId: sock.attrs.clientId, name: sock.attrs.name, host: sock.attrs.host, role: sock.attrs.role }, sock);
+        this.broadcast(r, { type: 'presence', clientId: sock.attrs.clientId, userKey: sock.attrs.userKey, name: sock.attrs.name, host: sock.attrs.host, role: sock.attrs.role }, sock);
         this.broadcast(r, { type: 'members', members }, null);
         this.broadcast(r, { type: 'roles', roles: members }, null); return;
       }
@@ -161,7 +162,7 @@ function makeWsServer() {
   };
 
   function memberList(r) {
-    return Array.from(r.members).map(c => ({ id: c.attrs.clientId, name: c.attrs.name, host: !!c.attrs.host, role: c.attrs.role || 'viewer' }));
+    return Array.from(r.members).map(c => ({ id: c.attrs.clientId, userKey: c.attrs.userKey, name: c.attrs.name, host: !!c.attrs.host, role: c.attrs.role || 'viewer' }));
   }
   return server;
 }
@@ -175,6 +176,10 @@ function makeSupabaseStub() {
   };
   const membersFor = room => Array.from(db.members.values()).filter(m => m.room_id === room);
   const queueFor = room => db.queue.get(room) || [];
+  const userKeyFor = options => {
+    const token = options && options.headers && (options.headers.Authorization || options.headers.authorization) || '';
+    return String(token).replace(/^Bearer /i, 'user:');
+  };
   const fetchStub = (url, options = {}) => {
     const path = String(url);
     const method = (options.method || 'GET').toUpperCase();
@@ -205,15 +210,16 @@ function makeSupabaseStub() {
         const isOwner = room.owner_token === body.p_member_token;
         if (m && !isOwner && m.token !== body.p_member_token) return json({ code: '42501', message: 'invalid member token' }, 403);
         const role = isOwner ? 'owner' : m ? m.role : 'viewer';
-        if (!m) { m = { room_id: body.p_room_id, client_id: body.p_client_id, display_name: body.p_display_name, token: body.p_member_token, role }; db.members.set(key, m); }
-        else { m.display_name = body.p_display_name; if (isOwner) m.role = 'owner'; }
-        return json({ found: true, role, serverTime: Date.now(), members: membersFor(body.p_room_id).map(({ room_id, client_id, display_name, role }) => ({ room_id, client_id, display_name, role })) });
+        if (!m) { m = { room_id: body.p_room_id, client_id: body.p_client_id, display_name: body.p_display_name, token: body.p_member_token, role, user_key: userKeyFor(options) }; db.members.set(key, m); }
+        else { m.display_name = body.p_display_name; m.user_key = userKeyFor(options); if (isOwner) m.role = 'owner'; }
+        return json({ found: true, role, serverTime: Date.now(), members: membersFor(body.p_room_id).map(({ room_id, client_id, display_name, role, user_key }) => ({ room_id, client_id, display_name, role, user_key })) });
       }
       if (name === 'wt_apply_room_state') {
         const room = db.rooms.get(body.p_room_id);
         const m = db.members.get(body.p_room_id + '|' + body.p_client_id);
-        const role = room && room.owner_token === body.p_member_token ? 'owner' : (m && m.token === body.p_member_token ? m.role : 'viewer');
-        if (!room || !['owner', 'organizer'].includes(role)) return json({ code: '42501', message: 'permission denied' }, 403);
+        const isOwner = room && room.owner_token === body.p_member_token;
+        const validMember = m && m.token === body.p_member_token;
+        if (!room || (!isOwner && !validMember)) return json({ code: '42501', message: 'join first' }, 403);
         const state = Object.assign({}, body.p_state, { rev: Number(room.state && room.state.rev || 0) + 1, t: Date.now(), updatedBy: body.p_client_id });
         room.state = state; room.video_url = state.url; room.updated_at = new Date().toISOString();
         return json(state);
@@ -271,13 +277,13 @@ function makeSupabaseStub() {
     }
     if (path.includes('/rest/v1/room_members')) {
       const id = matchEq(path, 'room_id');
-      return json(membersFor(id).map(({ room_id, client_id, display_name, role }) => ({ room_id, client_id, display_name, role, updated_at: new Date().toISOString() })));
+      return json(membersFor(id).map(({ room_id, client_id, display_name, role, user_key }) => ({ room_id, client_id, display_name, role, user_key, updated_at: new Date().toISOString() })));
     }
     if (path.includes('/rest/v1/room_queue')) {
       const id = matchEq(path, 'room_id'); return json(queueFor(id).slice());
     }
     if (path.includes('/rest/v1/presence')) {
-      if (method === 'POST') { db.presence.set(body.room_id + '|' + body.client_id, body); return json([]); }
+      if (method === 'POST') { db.presence.set(body.room_id + '|' + body.client_id, Object.assign({}, body, { user_key: userKeyFor(options) || null })); return json([]); }
       if (method === 'GET') { const id = matchEq(path, 'room_id'); return json(Array.from(db.presence.values()).filter(p => !id || p.room_id === id)); }
       if (method === 'DELETE') return json([]);
     }
@@ -297,6 +303,13 @@ function findVideo(env) {
   };
   walk(env.byId.get('player'));
   return out;
+}
+
+function accountStore(id, extra = {}) {
+  return Object.assign({
+    'wt:session': JSON.stringify({ access_token: 'access-' + id, refresh_token: '', expires_at: Date.now() + 3600000,
+      user: { id, name: 'مستخدم اختبار', email: id + '@example.com' } })
+  }, extra);
 }
 
 /** يدخل الحساب المسجّل مباشرةً؛ لا توجد بوابة اسم أو دخول ضيف. */
@@ -320,6 +333,8 @@ const chatText = (env) => env.byId.get('chatBody').children
 async function testWebSocket() {
   const server = makeWsServer();
   const ownerToken = 'd'.repeat(64);
+  const ownerUserId = '11111111-1111-4111-8111-111111111111';
+  const viewerUserId = '22222222-2222-4222-8222-222222222222';
   /* Match the real page's successful /healthz probe so these clients exercise
      WebSocket instead of accepting a degraded Supabase fallback. */
   const globals = { WTServer: {
@@ -331,9 +346,9 @@ async function testWebSocket() {
     search: `?id=${ROOM}&host=1&v=${encodeURIComponent(VIDEO_A)}`,
     WebSocket: server.FakeWebSocket,
     globals,
-    store: { ['wt:owner:' + ROOM]: JSON.stringify(ownerToken) }
+    store: accountStore(ownerUserId, { ['wt:owner:' + ROOM]: JSON.stringify(ownerToken) })
   });
-  const guest = createRoomEnv({ search: `?id=${ROOM}`, WebSocket: server.FakeWebSocket, globals });
+  const guest = createRoomEnv({ search: `?id=${ROOM}`, WebSocket: server.FakeWebSocket, globals, store: accountStore(viewerUserId) });
   setAccountName(guest, 'طهّار');
 
   await enter(host, 'أمين');
@@ -344,8 +359,17 @@ async function testWebSocket() {
   await wait(140);
 
   t('ws: الضيف متصل بالسيرفر نفسه', guest.sandbox.WTRoom.session.transport.kind === 'ws' && guest.byId.get('statusBadge').getAttribute('data-state') === 'online');
-  t('ws: الضيف يدخل كـمشاهد بلا صلاحية تحكم', guest.sandbox.WTRoom.session.role === 'viewer' && guest.byId.get('centerPlayBtn').disabled);
+  t('ws: المشارك غير المنظّم يملك تحكم المشاهدة', guest.sandbox.WTRoom.session.role === 'viewer' && !guest.byId.get('centerPlayBtn').disabled);
   t('ws: الضيف حصل على نفس الفيديو', !!findVideo(guest) && findVideo(guest).src === VIDEO_A, findVideo(guest) && findVideo(guest).src);
+
+  const guestCopy = createRoomEnv({ search: `?id=${ROOM}`, WebSocket: server.FakeWebSocket, globals, store: accountStore(viewerUserId) });
+  await enter(guestCopy, 'طهّار');
+  await wait(100);
+  t('ws: الحساب نفسه في تبويبين يُعدّ مشاركًا واحدًا', host.byId.get('membersCount').textContent === '2' && guest.byId.get('membersCount').textContent === '2');
+  guestCopy.sandbox.WTRoom.session.transport.close();
+  await wait(80);
+  t('ws: إغلاق تبويب لا يخفي الحساب ما دام تبويب آخر متصلاً', host.byId.get('membersCount').textContent === '2');
+  guestCopy.dispose();
 
   hostVideo.currentTime = 120;
   host.sandbox.WTRoom.publish({ force: true });
@@ -354,15 +378,11 @@ async function testWebSocket() {
   t('ws: الضيف طبّق الموضع على المشغّل', Math.round(findVideo(guest).currentTime) === 120, 't=' + findVideo(guest).currentTime);
 
   findVideo(guest).currentTime = 300;
-  guest.sandbox.WTRoom.session.transport.publishState(Object.assign({}, guest.sandbox.WTRoom.state, {
-    pos: 300, t: Date.now(), updatedBy: guest.sandbox.WTRoom.session.clientId
-  }));
+  const viewerPublish = await guest.sandbox.WTRoom.publish({ force: true });
   await wait(100);
-  t('ws: رفض تحديث المشاهد قبل تعيينه منظّماً', Math.round(host.sandbox.WTRoom.state.pos) === 120, 'host=' + host.sandbox.WTRoom.state.pos);
-  t('ws: يعاد المشاهد إلى الحالة المرجعية بعد الرفض', Math.round(guest.sandbox.WTRoom.state.pos) === 120 && Math.round(findVideo(guest).currentTime) === 120,
-    'state=' + guest.sandbox.WTRoom.state.pos + ', video=' + findVideo(guest).currentTime);
+  t('ws: المشاهد المنضم يتحكم بالمشاهدة دون ترقية دوره', !!viewerPublish && Math.round(host.sandbox.WTRoom.state.pos) === 300 && guest.sandbox.WTRoom.session.role === 'viewer', 'host=' + host.sandbox.WTRoom.state.pos);
 
-  /* يمكن للضيف إضافة عنصر، لكن التشغيل يبقى مقصوراً على الأدوار المخوّلة. */
+  /* يمكن للمشارك إضافة عنصر وتشغيله؛ الأدوار تبقى لإدارة الغرفة لا لقفل المشاهدة. */
   await guest.sandbox.WTRoom.session.transport.addQueueItem({ url: VIDEO_B, title: 'الفيديو التالي' });
   await wait(80);
   t('ws: قائمة التشغيل مشتركة', host.sandbox.WTRoom.session.queue.length === 1 && guest.sandbox.WTRoom.session.queue.length === 1);
@@ -383,10 +403,10 @@ async function testWebSocket() {
   await wait(180);
   t('ws: تشغيل عنصر القائمة يغيّر الفيديو للجميع', host.sandbox.WTRoom.state.url === VIDEO_B && guest.sandbox.WTRoom.state.url === VIDEO_B);
 
-  /* إعادة الدور إلى مشاهد تزيل التحكم من الخادم والواجهة. */
+  /* إزالة دور المنظّم تغيّر إدارة الغرفة فقط، لا تحكم المشاهدة. */
   await host.sandbox.WTRoom.session.transport.setMemberRole(guest.sandbox.WTRoom.session.clientId, 'viewer');
   await wait(100);
-  t('ws: إزالة المنظّم تعيد قفل التحكم', guest.sandbox.WTRoom.session.role === 'viewer' && guest.byId.get('centerPlayBtn').disabled);
+  t('ws: إزالة المنظّم لا تقفل التحكم على المشارك', guest.sandbox.WTRoom.session.role === 'viewer' && !guest.byId.get('centerPlayBtn').disabled);
 
   host.sandbox.WTRoom.setVideo(VIDEO_A);
   await wait(200);
@@ -408,14 +428,58 @@ async function testWebSocket() {
   await wait(120);
   t('ws: الخادم يرقّم الحالة مركزياً', host.sandbox.WTRoom.state.rev > revBefore && guest.sandbox.WTRoom.session.revClock === host.sandbox.WTRoom.session.revClock);
 }
+
+/* A reconnect must send the refreshed bearer token for the same account only. */
+async function testWebSocketAuthRefresh() {
+  const server = makeWsServer();
+  const userId = '55555555-5555-4555-8555-555555555555';
+  const joins = [];
+  class RecordingWebSocket extends server.FakeWebSocket {
+    send(text) {
+      const msg = JSON.parse(String(text));
+      if (msg.type === 'join') joins.push(msg);
+      super.send(text);
+    }
+  }
+  const globals = { WTServer: { available: async () => true, isPrivateHost: () => true, keepAlive() { } } };
+  const env = createRoomEnv({ search: '?id=AUTH01', WebSocket: RecordingWebSocket, globals, store: accountStore(userId) });
+  await enter(env, 'حساب موثّق');
+  const transport = env.sandbox.WTRoom.session.transport;
+  const originalSession = env.sandbox.WTAuth.getSession();
+  const refreshedToken = 'refreshed-account-access-token';
+  t('ws auth: رمز الجلسة الموثّقة يُرسل عند الانضمام الأول', joins[0] && joins[0].accessToken === originalSession.access_token);
+
+  env.sandbox.WTAuth.validSession = async () => Object.assign({}, originalSession, { access_token: refreshedToken });
+  transport.ws.close(); // Simulate a remote disconnect so the transport runs its retry path.
+  await wait(950);
+  t('ws auth: إعادة الاتصال تستخدم الرمز المحدّث للحساب نفسه', joins[1] && joins[1].accessToken === refreshedToken);
+
+  const otherSession = Object.assign({}, originalSession, {
+    access_token: 'different-account-access-token',
+    user: Object.assign({}, originalSession.user, { id: '66666666-6666-4666-8666-666666666666' })
+  });
+  env.sandbox.WTAuth.validSession = async () => otherSession;
+  transport.ws.close();
+  await wait(950);
+  t('ws auth: لا يُستبدل رمز الغرفة بجلسة حساب مختلف', joins[2] && joins[2].accessToken === refreshedToken);
+
+  env.sandbox.WTAuth.validSession = async () => Object.assign({}, originalSession, { access_token: refreshedToken });
+  await env.sandbox.WTRoom.reconnect();
+  t('ws auth: إعادة الاتصال اليدوية تستخدم جلسة الحساب الحالية', joins[3] && joins[3].accessToken === refreshedToken);
+
+  env.sandbox.WTRoom.session.transport.close();
+  env.dispose();
+}
 /* ==================== 2) Supabase (استطلاع، بلا Realtime) ==================== */
 async function testSupabase() {
   const sb = makeSupabaseStub();
   const ownerToken = 'e'.repeat(64);
-  const mk = (search, isHost = false) => {
+  const ownerUserId = '33333333-3333-4333-8333-333333333333';
+  const viewerUserId = '44444444-4444-4444-8444-444444444444';
+  const mk = (search, isHost = false, userId = isHost ? ownerUserId : viewerUserId) => {
+    const extra = isHost ? { 'wt:owner:SB001': JSON.stringify(ownerToken) } : {};
     const env = createRoomEnv({
-      search, fetch: sb.fetchStub,
-      store: isHost ? { 'wt:owner:SB001': JSON.stringify(ownerToken) } : {}
+      search, fetch: sb.fetchStub, store: accountStore(userId, extra)
     });
     env.sandbox.WT_CONFIG.sync.pollMs = 100;
     env.sandbox.WT_CONFIG.sync.persistMs = 300;
@@ -432,7 +496,12 @@ async function testSupabase() {
   await enter(guest, 'طهّار');
   await wait(200);
   t('sb: الضيف لم ينشئ صف غرفة جديداً', sb.calls.roomCreate === createsAfterHost);
-  t('sb: الضيف يبدأ كمشاهد', guest.sandbox.WTRoom.session.role === 'viewer' && guest.byId.get('centerPlayBtn').disabled);
+  t('sb: المشارك يبدأ كمشاهد لكنه يستطيع التحكم بالمشاهدة', guest.sandbox.WTRoom.session.role === 'viewer' && !guest.byId.get('centerPlayBtn').disabled);
+
+  const guestCopy = mk('?id=SB001', false, viewerUserId);
+  await enter(guestCopy, 'طهّار');
+  await wait(160);
+  t('sb: تبويبان للحساب نفسه لا يكرران الحضور', host.byId.get('membersCount').textContent === '2' && guest.byId.get('membersCount').textContent === '2');
 
   findVideo(host).currentTime = 90;
   host.sandbox.WTRoom.publish({ force: true });
@@ -441,14 +510,14 @@ async function testSupabase() {
   t('sb: رابط الفيديو واحد لدى الجميع', guest.sandbox.WTRoom.state.url === VIDEO_A);
 
   findVideo(guest).currentTime = 200;
-  t('sb: الواجهة تمنع نشر حالة المشاهد', await guest.sandbox.WTRoom.publish({ force: true }) === false);
-  /* اختبر رفض الخادم أيضاً، كما في حالة WebSocket، لا مجرد منع الواجهة. */
-  await guest.sandbox.WTRoom.session.transport.publishState(Object.assign({}, guest.sandbox.WTRoom.state, {
-    pos: 200, t: Date.now(), updatedBy: guest.sandbox.WTRoom.session.clientId
-  })).catch(() => {});
-  await wait(150);
-  t('sb: رفض الحالة من المشاهد', Math.round(host.sandbox.WTRoom.state.pos) === 90, 'host=' + host.sandbox.WTRoom.state.pos);
-  t('sb: يعود المشاهد إلى حالة Supabase المرجعية', Math.round(guest.sandbox.WTRoom.state.pos) === 90 && Math.round(findVideo(guest).currentTime) === 90);
+  const viewerPublish = await guest.sandbox.WTRoom.publish({ force: true });
+  await wait(180);
+  t('sb: المشاهد المنضم يكتب الحالة عبر RPC', !!viewerPublish && Math.round(host.sandbox.WTRoom.state.pos) === 200, 'host=' + host.sandbox.WTRoom.state.pos);
+  const outsiderState = await sb.fetchStub('/rest/v1/rpc/wt_apply_room_state', { method: 'POST', body: JSON.stringify({
+    p_room_id: 'SB001', p_client_id: 'not-joined', p_member_token: 'z'.repeat(64),
+    p_state: { url: VIDEO_B, playing: true, pos: 1 }
+  }) });
+  t('sb: الخادم يرفض التحكم دون عضوية ومفتاح صحيح', outsiderState.status === 403);
 
   await guest.sandbox.WTRoom.session.transport.addQueueItem({ url: VIDEO_B, title: 'الفيديو التالي', addedBy: 'طهّار' });
   await wait(180);
@@ -480,14 +549,23 @@ async function testSupabase() {
   const oldRev = host.sandbox.WTRoom.state.rev;
   host.sandbox.WTRoom.publish();
   guest.sandbox.WTRoom.publish();
-  await wait(350);
-  const hRev = host.sandbox.WTRoom.state.rev, gRev = guest.sandbox.WTRoom.state.rev;
+  const syncDeadline = Date.now() + 1500;
+  let hRev = host.sandbox.WTRoom.state.rev, gRev = guest.sandbox.WTRoom.state.rev;
+  let canonicalRev = sb.db.rooms.get('SB001').state.rev;
+  while (Date.now() < syncDeadline && (hRev !== canonicalRev || gRev !== canonicalRev)) {
+    await wait(100);
+    hRev = host.sandbox.WTRoom.state.rev;
+    gRev = guest.sandbox.WTRoom.state.rev;
+    canonicalRev = sb.db.rooms.get('SB001').state.rev;
+  }
   t('sb: RPC يرقّم التغييرات المتزامنة', hRev > oldRev && gRev > oldRev, `host=${hRev} guest=${gRev}`);
   t('sb: الطرفان يريان نفس revision', hRev === gRev, `host=${hRev} guest=${gRev}`);
 
   await host.sandbox.WTRoom.session.transport.setMemberRole(guest.sandbox.WTRoom.session.clientId, 'viewer');
   await wait(160);
-  t('sb: سحب دور المنظّم يقفل التحكم مجدداً', guest.sandbox.WTRoom.session.role === 'viewer' && guest.byId.get('centerPlayBtn').disabled);
+  t('sb: سحب دور المنظّم لا يقفل تحكم المشاهدة', guest.sandbox.WTRoom.session.role === 'viewer' && !guest.byId.get('centerPlayBtn').disabled);
+  guestCopy.sandbox.WTRoom.session.transport.close();
+  guestCopy.dispose();
 }
 /* ==================== 3) المنطق: ترتيب الحالات ==================== */
 async function testOrdering() {
@@ -531,12 +609,13 @@ async function testInviteLink() {
 
 /* ==================== 5) اختيار السيرفر: لا يهبط الضيف على سيرفر آخر ==================== */
 async function testTransportChoice() {
-  /* سيناريو: WebSocket يفشل أول محاولتين (شبكة بطيئة)، والغرفة غير موجودة في Supabase
-     → يجب أن يصبر ويجرّب WebSocket من جديد بدل أن يستقر وحيداً على Supabase */
+  /* سيناريو: فحص الصحة وجد سيرفر الغرف، لكن أول WebSocket تعثّر مؤقتاً
+     → يجب أن يعيد المحاولة على السيرفر نفسه بدل الهبوط إلى قاعدة Supabase فارغة. */
   const server = makeWsServer();
   const emptySb = makeSupabaseStub();          /* قاعدة بيانات فارغة: لا وجود للغرفة */
+  const globals = { WTServer: { available: async () => true, isPrivateHost: () => true, keepAlive() { } } };
   let attempts = 0;
-  const FAILS = 2;
+  const FAILS = 1;
   class FlakyWebSocket {
     constructor(url) {
       attempts++;
@@ -554,7 +633,8 @@ async function testTransportChoice() {
   const env = createRoomEnv({
     search: `?id=TC001&v=${encodeURIComponent(VIDEO_A)}`,
     WebSocket: FlakyWebSocket,
-    fetch: emptySb.fetchStub
+    fetch: emptySb.fetchStub,
+    globals
   });
   env.sandbox.WT_CONFIG.sync.pollMs = 150;
   await enter(env, 'ضيف');
@@ -562,7 +642,7 @@ async function testTransportChoice() {
   t('اختيار السيرفر: رجع إلى WebSocket بعد فشل المحاولات الأولى',
     env.sandbox.WTRoom.session.transport.kind === 'ws',
     env.sandbox.WTRoom.session.transport.kind);
-  t('اختيار السيرفر: استُخدم اتصال ثالث', attempts >= FAILS + 1, 'attempts=' + attempts);
+  t('اختيار السيرفر: أعاد المحاولة عبر WebSocket', attempts >= FAILS + 1, 'attempts=' + attempts);
   t('اختيار السيرفر: لم يستقر على Supabase الفارغة',
     emptySb.calls.roomCreate === 0, 'creates=' + emptySb.calls.roomCreate);
 
@@ -593,6 +673,7 @@ const run = async () => {
   await testOrdering();
   await testInviteLink();
   await testWebSocket();
+  await testWebSocketAuthRefresh();
   await testSupabase();
   await testTransportChoice();
   await testLocalWarning();

@@ -44,6 +44,13 @@ cd watch_together/java-server
 ./build.sh && ./run.sh                 # المنفذ الافتراضي 8080
 PORT=80 java -cp out com.watchtogether.Main
 ```
+يستخدم سيرفر Java مفتاح Supabase العام الموجود افتراضياً في المشروع للتحقق من access token عبر `/auth/v1/user` قبل دمج حضور التبويبات بالحساب. إذا غيّرت مشروع Supabase في `assets/js/config.js`، اضبط للمضيف:
+```bash
+export WT_SUPABASE_URL="https://<project-ref>.supabase.co"
+export WT_SUPABASE_ANON_KEY="<publishable-or-anon-key>"
+```
+عند تعذّر التحقق يبقى دخول الغرفة متاحاً، لكن يُحسب الاتصال منفرداً بدلاً من الوثوق بمعرّف حساب يرسله المتصفح.
+
 اجعله يعمل دائماً:
 ```bash
 # systemd: /etc/systemd/system/watchtogether.service

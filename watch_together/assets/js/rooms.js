@@ -26,10 +26,9 @@
     } catch (_) { /* an empty room is valid */ }
     const date = value.createdAt || value.created_at;
     const createdAt = typeof date === 'number' ? date : Date.parse(date || '') || 0;
-    const controlMode = value.controlMode === 'everyone' || value.control_mode === 'everyone' ? 'everyone' : 'owner';
     const isPrivate = value.isPrivate === true || value.is_private === true;
     const queueCount = Number.isSafeInteger(value.queueCount) ? value.queueCount : Number.isSafeInteger(value.queue_count) ? value.queue_count : null;
-    const room = { id, title, videoUrl, createdAt, mode, isPrivate, controlMode, queueCount, isOwner: false,
+    const room = { id, title, videoUrl, createdAt, mode, isPrivate, controlMode: 'everyone', queueCount, isOwner: false,
       participants: [], participantCount: null, presenceKnown: false };
     if (mode === 'java' && Array.isArray(value.participants)) {
       Object.assign(room, participantSnapshot(value.participants));
@@ -48,20 +47,26 @@
     return Array.from(unique.values()).sort((a, b) => b.createdAt - a.createdAt).slice(0, 100);
   }
 
-  /* Only fresh, unique connections are people; saved role/history rows are not attendance. */
+  /* Fresh authenticated accounts count once across tabs/devices; anonymous sessions fall back to client id. */
   function participantSnapshot(rows, requireTimestamp) {
     const unique = new Map(), now = Date.now();
     rows.forEach(value => {
       if (!value || typeof value !== 'object') return;
       const id = String(value.id || value.client_id || '').slice(0, 128);
-      if (!id || unique.has(id)) return;
+      if (!id) return;
       const seen = value.last_seen || value.lastSeen;
       const at = typeof seen === 'number' ? seen : Date.parse(seen || '');
       if ((requireTimestamp || seen != null) && (!Number.isFinite(at) || now - at > PRESENCE_TTL || at - now > 60000)) return;
+      const accountKey = String(value.user_key || value.userKey || '').trim().slice(0, 128);
+      const key = accountKey ? 'user:' + accountKey : 'client:' + id;
       const name = String(value.name || 'زائر').replace(/\s+/g, ' ').trim().slice(0, 30) || 'زائر';
-      unique.set(id, { id, name });
+      const previous = unique.get(key);
+      if (!previous || (Number.isFinite(at) && at >= previous.seenAt)) {
+        unique.set(key, { id, name, seenAt: Number.isFinite(at) ? at : 0 });
+      }
     });
-    const people = Array.from(unique.values()).sort((a, b) => a.id.localeCompare(b.id));
+    const people = Array.from(unique.values()).sort((a, b) => a.id.localeCompare(b.id))
+      .map(({ id, name }) => ({ id, name }));
     return { participants: people.slice(0, 5), participantCount: people.length, presenceKnown: true };
   }
 
@@ -76,7 +81,7 @@
         if (!people || split < 0) continue;
         let value;
         try { value = JSON.parse(localStorage.getItem(key)); } catch (_) { continue; }
-        if (value && typeof value === 'object') people.push({ id: rest.slice(split + 1), name: value.name, lastSeen: value.lastSeen });
+        if (value && typeof value === 'object') people.push({ id: rest.slice(split + 1), name: value.name, userKey: value.userKey, lastSeen: value.lastSeen });
       }
       rooms.forEach(room => Object.assign(room, participantSnapshot(byRoom.get(room.id), true)));
     } catch (_) { /* Unavailable storage is not proof of zero people. */ }
@@ -90,17 +95,30 @@
     if (!rooms.length) return;
     const deadline = Date.now() + 3000, pageSize = 1000;
     const people = [], byRoom = new Map(rooms.map(room => [room.id, []]));
+    let includeUserKey = true;
     for (let page = 0; page < 10; page++) {
       const left = deadline - Date.now();
       if (left <= 0) throw new Error('انتهت مهلة الحضور');
-      const query = new URLSearchParams({
-        select: 'room_id,client_id,name,last_seen', room_id: 'in.(' + rooms.map(room => room.id).join(',') + ')',
+      const params = {
+        select: includeUserKey ? 'room_id,client_id,name,last_seen,user_key' : 'room_id,client_id,name,last_seen',
+        room_id: 'in.(' + rooms.map(room => room.id).join(',') + ')',
         last_seen: 'gte.' + new Date(Date.now() - PRESENCE_TTL).toISOString(),
         order: 'room_id.asc,client_id.asc', limit: String(pageSize), offset: String(people.length)
-      });
-      const result = await request(target.url + '/rest/v1/presence?' + query, {
-        headers: Object.assign({}, target.headers, { Prefer: 'count=exact' })
-      }, left, true);
+      };
+      const query = new URLSearchParams(params);
+      let result;
+      try {
+        result = await request(target.url + '/rest/v1/presence?' + query, {
+          headers: Object.assign({}, target.headers, { Prefer: 'count=exact' })
+        }, left, true);
+      } catch (error) {
+        if (!includeUserKey || (error.status !== 400 && error.status !== 404)) throw error;
+        includeUserKey = false;
+        params.select = 'room_id,client_id,name,last_seen';
+        result = await request(target.url + '/rest/v1/presence?' + new URLSearchParams(params), {
+          headers: Object.assign({}, target.headers, { Prefer: 'count=exact' })
+        }, left, true);
+      }
       if (!Array.isArray(result.data)) throw new Error('حضور غير صالح');
       people.push(...result.data);
       const complete = result.total == null ? result.data.length < pageSize : people.length >= result.total;
@@ -290,7 +308,7 @@
     const ownerToken = U.randomToken(32);
     const room = normalize({ id, title, videoUrl: input.videoUrl || '', createdAt: Date.now() }, target.mode);
     if (!room || (input.videoUrl && !room.videoUrl)) throw new Error('أدخل رابط فيديو صالحاً');
-    Object.assign(room, { participants: [], participantCount: 0, presenceKnown: true, isOwner: true, isPrivate: false, controlMode: 'owner', queueCount: 0 });
+    Object.assign(room, { participants: [], participantCount: 0, presenceKnown: true, isOwner: true, isPrivate: false, controlMode: 'everyone', queueCount: 0 });
     /* Save ownership before the network write: a lost response must not lose the room's key. */
     write('owner:' + id, ownerToken);
     if (target.mode === 'java') {
@@ -362,11 +380,6 @@
       } else payload.videoUrl = '';
     }
     if (Object.prototype.hasOwnProperty.call(changes, 'isPrivate')) payload.isPrivate = !!changes.isPrivate;
-    if (Object.prototype.hasOwnProperty.call(changes, 'controlMode')) {
-      if (!['owner', 'everyone'].includes(changes.controlMode)) throw new Error('إعداد التحكم غير صالح');
-      payload.controlMode = changes.controlMode;
-    }
-
     const target = await backend();
     if (target.mode === 'java') {
       await request(target.url, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
@@ -393,8 +406,7 @@
       Object.assign(rooms[index], {
         ...(Object.prototype.hasOwnProperty.call(payload, 'title') ? { title: payload.title } : {}),
         ...(Object.prototype.hasOwnProperty.call(payload, 'videoUrl') ? { videoUrl: payload.videoUrl } : {}),
-        ...(Object.prototype.hasOwnProperty.call(payload, 'isPrivate') ? { isPrivate: payload.isPrivate } : {}),
-        ...(Object.prototype.hasOwnProperty.call(payload, 'controlMode') ? { controlMode: payload.controlMode } : {})
+        ...(Object.prototype.hasOwnProperty.call(payload, 'isPrivate') ? { isPrivate: payload.isPrivate } : {})
       });
       write(LOCAL_KEY, rooms);
       if (Object.prototype.hasOwnProperty.call(payload, 'videoUrl')) {

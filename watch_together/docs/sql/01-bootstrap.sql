@@ -9,7 +9,7 @@
 
 -- ---------------------------------------------------------------------
 -- 1) الحالة الأساسية للغرف. لا يُسمح للعميل بالكتابة المباشرة إلى rooms؛
---    جميع تغييرات الحالة تمر عبر wt_apply_room_state للتحقق من الدور.
+--    جميع تغييرات الحالة تمر عبر wt_apply_room_state للتحقق من العضوية ومفتاحها.
 -- ---------------------------------------------------------------------
 create table if not exists public.rooms (
   room_id    text primary key,
@@ -184,8 +184,10 @@ create table if not exists public.presence (
   name       text,
   is_host    boolean not null default false,
   last_seen  timestamptz not null default now(),
+  user_key   text,
   primary key (room_id, client_id)
 );
+alter table public.presence add column if not exists user_key text;
 create index if not exists presence_room_idx on public.presence (room_id);
 
 create table if not exists public.room_members (
@@ -193,10 +195,12 @@ create table if not exists public.room_members (
   client_id    text not null,
   display_name text not null default 'زائر',
   role         text not null default 'viewer' check (role in ('owner', 'organizer', 'viewer')),
+  user_key     text,
   created_at   timestamptz not null default now(),
   updated_at   timestamptz not null default now(),
   primary key (room_id, client_id)
 );
+alter table public.room_members add column if not exists user_key text;
 create index if not exists room_members_room_updated_idx on public.room_members (room_id, updated_at);
 create table if not exists wt_private.member_secrets (
   room_id text not null,
@@ -245,7 +249,7 @@ begin
 end
 $$;
 grant select, insert, update, delete on public.presence to anon, authenticated;
-grant select (room_id, client_id, display_name, role, created_at, updated_at)
+grant select (room_id, client_id, display_name, role, user_key, created_at, updated_at)
   on public.room_members to anon, authenticated;
 grant select (id, room_id, url, title, added_by_client, added_by, created_at)
   on public.room_queue to anon, authenticated;
@@ -301,8 +305,27 @@ drop policy if exists wt_room_media_read on storage.objects;
 create policy wt_room_media_read on storage.objects for select to anon, authenticated using (
   bucket_id = 'wt-room-media'
 );
+create or replace function public.wt_set_presence_user_key()
+returns trigger
+language plpgsql security definer
+set search_path = public, pg_temp
+as $$
+begin
+  new.user_key := case when auth.uid() is null then null
+    else md5(new.room_id || ':' || auth.uid()::text) end;
+  return new;
+end;
+$$;
+revoke all on function public.wt_set_presence_user_key() from public;
+drop trigger if exists wt_presence_user_key on public.presence;
+create trigger wt_presence_user_key
+  before insert or update on public.presence
+  for each row execute function public.wt_set_presence_user_key();
+
 create policy presence_read_write on public.presence
-  for all to anon, authenticated using (true) with check (true);
+  for all to anon, authenticated using (true)
+  with check (user_key is not distinct from case when auth.uid() is null then null
+    else md5(room_id || ':' || auth.uid()::text) end);
 create policy room_members_read on public.room_members
   for select to anon, authenticated using (true);
 create policy room_queue_read on public.room_queue
@@ -435,12 +458,14 @@ begin
     end if;
   end if;
 
-  insert into public.room_members(room_id, client_id, display_name, role)
-  values (p_room_id, p_client_id, left(coalesce(nullif(p_display_name, ''), 'زائر'), 30), v_role)
+  insert into public.room_members(room_id, client_id, display_name, role, user_key)
+  values (p_room_id, p_client_id, left(coalesce(nullif(p_display_name, ''), 'زائر'), 30), v_role,
+    case when auth.uid() is null then null else md5(p_room_id || ':' || auth.uid()::text) end)
   on conflict (room_id, client_id) do update
     set display_name = excluded.display_name,
         updated_at = clock_timestamp(),
-        role = excluded.role;
+        role = excluded.role,
+        user_key = excluded.user_key;
 
   if v_role <> 'owner' then
     insert into wt_private.member_secrets(room_id, client_id, member_token)
@@ -465,7 +490,7 @@ begin
     'role', coalesce(v_role, 'viewer'),
     'serverTime', v_now_ms,
     'members', coalesce((
-      select jsonb_agg(jsonb_build_object('client_id', client_id, 'display_name', display_name, 'role', role)
+      select jsonb_agg(jsonb_build_object('client_id', client_id, 'display_name', display_name, 'role', role, 'user_key', user_key)
                        order by updated_at asc)
       from public.room_members where room_id = p_room_id
     ), '[]'::jsonb)
@@ -513,8 +538,8 @@ begin
       join wt_private.member_secrets s using (room_id, client_id)
       where m.room_id = p_room_id and m.client_id = p_client_id and s.member_token = p_member_token;
   end if;
-  if coalesce(v_role, 'viewer') not in ('owner', 'organizer') then
-    raise exception 'لا تملك صلاحية التحكم في هذه الغرفة' using errcode = '42501';
+  if v_role is null then
+    raise exception 'انضم إلى الغرفة أولاً للتحكم بالمشاهدة' using errcode = '42501';
   end if;
 
   v_rev := coalesce(nullif(v_room.state->>'rev', '')::bigint, 0) + 1;

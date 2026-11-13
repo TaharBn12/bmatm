@@ -178,16 +178,20 @@ async function addQueue(page, url, title) {
 async function chatMetrics(page) {
   return page.evaluate(() => {
     const body = document.getElementById('chatBody');
-    const chat = document.getElementById('chat').getBoundingClientRect();
+    const chatEl = document.getElementById('chat');
+    const chat = chatEl.getBoundingClientRect();
     const stage = document.getElementById('stage').getBoundingClientRect();
     const bounds = body.getBoundingClientRect();
     const style = getComputedStyle(body);
     const rows = Array.from(body.querySelectorAll('.msg'));
     return {
-      total: rows.length, height: body.clientHeight, chatTop: chat.top, chatHeight: chat.height,
-      stageBottom: stage.bottom, documentHeight: document.documentElement.scrollHeight,
-      viewportHeight: window.innerHeight, gap: parseFloat(style.rowGap) || 0, rowHeight: rows.length ? parseFloat(getComputedStyle(rows.at(-1)).minHeight) : 34,
-      padding: [style.paddingTop, style.paddingRight, style.paddingBottom, style.paddingLeft],
+      total: rows.length, height: body.clientHeight, chatTop: chat.top, chatLeft: chat.left,
+      chatHeight: chat.height, chatWidth: chat.width, chatHidden: chatEl.hidden,
+      panelPosition: getComputedStyle(chatEl).position,
+      stageTop: stage.top, stageBottom: stage.bottom, stageHeight: stage.height,
+      documentHeight: document.documentElement.scrollHeight,
+      viewportHeight: window.innerHeight, viewportWidth: window.innerWidth,
+      gap: parseFloat(style.rowGap) || 0,
       overflow: body.scrollHeight > body.clientHeight + 1,
       visible: rows.filter(row => {
         const rect = row.getBoundingClientRect();
@@ -196,8 +200,8 @@ async function chatMetrics(page) {
     };
   });
 }
-async function assertChatWindow(page, videoVisible, total, overflow, exactlyFour = false) {
-  if (overflow) {
+async function assertChatWindow(page, open, total, overflow) {
+  if (open && overflow) {
     await page.evaluate(() => {
       const body = document.getElementById('chatBody');
       body.scrollTo({ top: body.scrollHeight, behavior: 'instant' });
@@ -209,17 +213,16 @@ async function assertChatWindow(page, videoVisible, total, overflow, exactlyFour
   }
   const metrics = await chatMetrics(page);
   assert.equal(metrics.total, total, 'older messages remain in the DOM');
-  assert.deepEqual(metrics.padding, ['0px', '0px', '0px', '0px'], 'no padding around room messages');
-  assert.equal(metrics.overflow, overflow, `chat scroll threshold: ${JSON.stringify(metrics)}`);
-  if (videoVisible) {
-    assert.equal(metrics.height, 4 * metrics.rowHeight + 3 * metrics.gap, 'four short-message slots');
-    assert.ok(metrics.chatTop >= metrics.stageBottom - 1, 'chat stays under the player');
-    assert.ok(metrics.visible <= 4, 'never show a fifth message with the player');
-    if (exactlyFour) assert.equal(metrics.visible, 4, 'four short messages are visible');
-  } else {
-    assert.ok(metrics.height > 4 * metrics.rowHeight + 3 * metrics.gap, 'chat focus has more room');
-    assert.ok(metrics.chatTop + metrics.chatHeight <= metrics.viewportHeight + 1,
-      'focused chat fits the viewport');
+  assert.equal(metrics.chatHidden, !open, 'chat panel follows its open/closed state');
+  assert.ok(metrics.stageHeight > 0, 'opening and closing chat never hides the video stage');
+  if (open) {
+    assert.equal(metrics.panelPosition, 'fixed', 'Messenger panel floats above the room');
+    assert.ok(metrics.chatLeft >= 0 && metrics.chatTop >= 0 &&
+      metrics.chatLeft + metrics.chatWidth <= metrics.viewportWidth + 1 &&
+      metrics.chatTop + metrics.chatHeight <= metrics.viewportHeight + 1,
+    `Messenger panel stays inside the viewport: ${JSON.stringify(metrics)}`);
+    assert.equal(metrics.overflow, overflow, `chat scroll threshold: ${JSON.stringify(metrics)}`);
+    assert.ok(metrics.visible > 0 && metrics.visible <= total, 'visible messages scroll inside the panel');
   }
   return metrics;
 }
@@ -276,7 +279,8 @@ try {
     await ownerCard.locator('[data-room-action="settings"]').click();
     assert.equal(await page.locator('#roomActionDialog').isVisible(), true);
     await page.locator('[name="isPrivate"]').check();
-    await page.locator('[name="controlMode"][value="everyone"]').check();
+    assert.equal(await page.locator('[name="controlMode"]').count(), 0, 'playback control is no longer an owner-only setting');
+    assert.match(await page.locator('[data-room-action-form="settings"]').innerText(), /جميع المشاركين المنضمّين/);
     await page.locator('[data-room-action-form="settings"] [type="submit"]').click();
     await waitFor(page, () => document.querySelector('.room-tile')?.dataset.controlMode === 'everyone');
     assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('wt:local:rooms'))[0].isPrivate), true, 'private owner room remains visible to its creator');
@@ -293,6 +297,26 @@ try {
     assert.equal(await page.evaluate(() => WTRoom.player._video.crossOrigin), null);
     assert.ok(await page.locator('#centerPlayBtn').isVisible());
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'no horizontal overflow');
+    assert.equal(await page.locator('#chat').isVisible(), false, 'Messenger panel starts collapsed');
+    const bubbleStart = await page.locator('#chatFab').boundingBox();
+    await page.mouse.move(bubbleStart.x + bubbleStart.width / 2, bubbleStart.y + bubbleStart.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(bubbleStart.x + bubbleStart.width / 2 - 70, bubbleStart.y + bubbleStart.height / 2 - 90, { steps: 5 });
+    await page.mouse.up();
+    await page.waitForTimeout(380);
+    const bubbleMoved = await page.locator('#chatFab').boundingBox();
+    assert.ok(Math.abs(bubbleMoved.x - bubbleStart.x) > 20 && Math.abs(bubbleMoved.y - bubbleStart.y) > 20,
+      `chat bubble is draggable: ${JSON.stringify({ bubbleStart, bubbleMoved })}`);
+    assert.ok(bubbleMoved.x >= 0 && bubbleMoved.y >= 0 &&
+      bubbleMoved.x + bubbleMoved.width <= device.viewport.width && bubbleMoved.y + bubbleMoved.height <= device.viewport.height,
+    'dragged bubble stays within the viewport');
+    await page.click('#chatFab');
+    assert.ok(await page.locator('#chat').isVisible(), 'bubble opens the Messenger panel');
+    const openedPanel = await page.locator('#chat').boundingBox();
+    assert.ok(openedPanel.x >= 0 && openedPanel.y >= 0 && openedPanel.x + openedPanel.width <= device.viewport.width &&
+      openedPanel.y + openedPanel.height <= device.viewport.height, 'Messenger panel stays on screen');
+    await page.click('#chatCloseBtn');
+    assert.equal(await page.locator('#chat').isVisible(), false, 'panel close button collapses the chat');
 
     /* Real decode, fullscreen, play/pause, pointer seeking and keyboard seeking. */
     await page.click('#videoFullscreenBtn');
@@ -313,8 +337,22 @@ try {
     assert.ok(Math.abs(fullscreenLayout.player.bottom - fullscreenLayout.ctrlbar.top) <= 1 &&
       Math.abs(fullscreenLayout.ctrlbar.bottom - fullscreenLayout.stage.bottom) <= 1,
       `fullscreen video and controls meet the bottom edge without a black gap: ${JSON.stringify(fullscreenLayout)}`);
+    await waitFor(page, () => document.getElementById('chatWidget').parentElement?.id === 'stage');
+    await page.click('#chatFab');
+    await waitFor(page, () => !document.getElementById('chat').hidden);
+    const fullscreenChat = await page.evaluate(() => {
+      const chat = document.getElementById('chat').getBoundingClientRect();
+      return { parent: document.getElementById('chatWidget').parentElement.id, left: chat.left, top: chat.top,
+        right: chat.right, bottom: chat.bottom, width: innerWidth, height: innerHeight };
+    });
+    assert.equal(fullscreenChat.parent, 'stage', 'chat widget is moved into the fullscreen subtree');
+    assert.ok(fullscreenChat.left >= 0 && fullscreenChat.top >= 0 && fullscreenChat.right <= fullscreenChat.width &&
+      fullscreenChat.bottom <= fullscreenChat.height, `chat is usable over fullscreen video: ${JSON.stringify(fullscreenChat)}`);
+    await page.click('#chatCloseBtn');
+    assert.equal(await page.locator('#stage').isVisible(), true, 'closing chat leaves the fullscreen player visible');
     await page.click('#videoFullscreenBtn');
     await waitFor(page, () => !document.fullscreenElement);
+    await waitFor(page, () => document.getElementById('chatWidget').parentElement?.id === 'roomMain');
     await page.click('#centerPlayBtn');
     await waitFor(page, () => WTRoom.player.isPlaying() && WTRoom.player.getCurrentTime() > 0.2);
     await page.locator('#clickLayer').click({ position: { x: 20, y: 20 } });
@@ -345,7 +383,9 @@ try {
     await waitFor(page, () => WTRoom.session.queue.length === 0);
     await page.click('#playlistCloseBtn');
 
-    /* Chat submit/Enter/reaction, focus mode and cancel/clear are actual pointer/keyboard actions. */
+    /* Messenger bubble/panel, submit/Enter/reactions and clear are real pointer/keyboard actions. */
+    await page.click('#chatFab');
+    assert.ok(await page.locator('#chat').isVisible());
     assert.equal(await page.locator('#reactRow').count(), 0, 'emoji bar above chat input is removed');
     await page.fill('#chatInput', 'رسالة بزر الإرسال');
     await page.click('#chatSend');
@@ -395,19 +435,24 @@ try {
     assert.ok(await picker.isVisible(), 'long press/right click exposes emoji reactions');
     await picker.locator('[data-emoji="🔥"]').click();
     assert.equal(await emojiRow.locator('.msg__reaction').textContent(), '🔥 1');
+    await page.click('#chatCloseBtn');
+    assert.equal(await page.locator('#chat').isVisible(), false, 'close button collapses the floating panel');
     await page.click('#messagesBtn');
+    assert.equal(await page.locator('#chat').isVisible(), true, 'the room toolbar reopens the same panel');
     await openPickerFor(emojiRow);
     await page.keyboard.press('Escape');
     assert.equal(await picker.isVisible(), false);
-    assert.equal(await page.locator('#stage').isVisible(), false, 'Escape closes picker before exiting chat focus');
-    assert.equal(await page.locator('#stage').isVisible(), false);
+    assert.equal(await page.locator('#stage').isVisible(), true, 'Escape closes the reaction picker without hiding video');
+    assert.equal(await page.locator('#chat').isVisible(), true, 'closing a reaction picker does not close the chat');
     await page.click('#messagesBtn');
     await page.waitForTimeout(120);
-    assert.ok(await page.locator('#stage').isVisible());
+    assert.ok(await page.locator('#stage').isVisible(), 'video remains visible when chat is collapsed');
+    assert.equal(await page.locator('#chat').isVisible(), false);
+    await page.click('#chatFab');
     await page.click('#clearChatBtn');
     assert.equal(await page.locator('#chatBody .msg').count(), 0);
 
-    /* Four short rows fit with the video; new/long messages never move the chat or player. */
+    /* Many/long messages scroll inside a stationary Messenger panel without moving the video. */
     const emptyChat = await chatMetrics(page);
     await page.evaluate(() => {
       for (let i = 1; i <= 12; i++) WTRoom.chat.addChatMessage({
@@ -415,21 +460,25 @@ try {
       }, { silent: true });
     });
     await page.waitForTimeout(320); // let the last message animation finish before measuring rows
-    const fullChat = await assertChatWindow(page, true, 12, true, true);
-    assert.ok(Math.abs(fullChat.chatTop - emptyChat.chatTop) <= 1, 'chat remains anchored beneath the player');
-    assert.ok(Math.abs(fullChat.chatHeight - emptyChat.chatHeight) <= 1, 'new rows do not grow the chat panel');
-    assert.equal(fullChat.documentHeight, emptyChat.documentHeight, 'new rows do not lengthen the page');
+    const fullChat = await assertChatWindow(page, true, 12, true);
+    assert.ok(Math.abs(fullChat.chatTop - emptyChat.chatTop) <= 1, 'new messages do not reposition the floating panel');
+    assert.ok(Math.abs(fullChat.chatHeight - emptyChat.chatHeight) <= 1, 'new rows do not grow the Messenger panel');
+    assert.equal(fullChat.documentHeight, emptyChat.documentHeight, 'floating chat does not lengthen the room page');
     await page.click('#messagesBtn');
-    assert.equal(await page.locator('#stage').isVisible(), false);
-    const focused = await assertChatWindow(page, false, 12, true);
+    assert.equal(await page.locator('#stage').isVisible(), true, 'toolbar chat toggle never hides the player');
+    const collapsedChat = await chatMetrics(page);
+    assert.equal(collapsedChat.chatHidden, true);
+    await page.click('#messagesBtn');
+    const reopenedChat = await assertChatWindow(page, true, 12, true);
+    assert.ok(Math.abs(reopenedChat.chatHeight - fullChat.chatHeight) <= 1, 'reopening restores the full Messenger panel');
     await openPickerFor(page.locator('#chatBody .msg').last());
     await page.locator('.msg-menu__reaction[data-emoji="🔥"]').click();
-    const reacted = await assertChatWindow(page, false, 12, true);
-    assert.ok(Math.abs(reacted.chatHeight - focused.chatHeight) <= 1, 'reactions do not resize chat focus');
+    const reacted = await assertChatWindow(page, true, 12, true);
+    assert.ok(Math.abs(reacted.chatHeight - fullChat.chatHeight) <= 1, 'reactions do not resize the floating panel');
     await page.evaluate(() => WTRoom.chat.addChatMessage({
       id: 'window-13', client: 'window-test', name: 'فاحص', text: 'الرسالة الثالثة عشرة', ts: Date.now(), kind: 'chat'
     }));
-    await assertChatWindow(page, false, 13, true);
+    await assertChatWindow(page, true, 13, true);
     await page.evaluate(() => document.getElementById('chatBody').scrollTo({ top: 0, behavior: 'instant' }));
     await waitFor(page, () => document.getElementById('chatBody').scrollTop === 0);
     assert.ok(await page.evaluate(() => {
@@ -437,7 +486,6 @@ try {
       const first = document.querySelector('#chatBody .msg').getBoundingClientRect();
       return first.top >= body.top && first.bottom <= body.bottom;
     }), 'scrolling reaches older messages');
-    await page.click('#messagesBtn');
     await assertChatWindow(page, true, 13, true);
     await page.click('#clearChatBtn');
     assert.equal(await page.locator('#chatBody .msg').count(), 0);
@@ -512,8 +560,34 @@ try {
     await addQueue(page, videoUrl + '?locked=1', 'عنصر محفوظ');
 
     await page.click('#drawerOpenBtn');
+    await page.evaluate(() => {
+      const transport = WTRoom.session.transport;
+      const send = transport._bc.bind(transport);
+      transport._bc = message => {
+        if (message.type !== 'leave') return send(message);
+        sessionStorage.setItem('test:leave-start', String(Date.now()));
+        return new Promise(resolve => setTimeout(() => {
+          send(message);
+          sessionStorage.setItem('test:leave-delivered', String(Date.now()));
+          resolve();
+        }, 300));
+      };
+      const close = transport.close.bind(transport);
+      transport.close = () => {
+        sessionStorage.setItem('test:transport-closed', String(Date.now()));
+        close();
+      };
+    });
     await page.click('#leaveBtn');
+    assert.equal(await page.locator('#leaveBtn').isDisabled(), true, 'leave disables its button while cleanup is pending');
     await page.waitForURL('**/index.html');
+    const leaveTimes = await page.evaluate(() => [
+      Number(sessionStorage.getItem('test:leave-start')),
+      Number(sessionStorage.getItem('test:leave-delivered')),
+      Number(sessionStorage.getItem('test:transport-closed'))
+    ]);
+    assert.ok(leaveTimes[0] > 0 && leaveTimes[1] - leaveTimes[0] >= 250 && leaveTimes[2] >= leaveTimes[1],
+      `attendance leave completes before transport close/navigation: ${JSON.stringify(leaveTimes)}`);
     const ownedCard = page.locator('.room-tile').filter({ hasText: 'سهرة الاختبار' });
     await ownedCard.locator('.room-tile__menu-toggle').click();
     await ownedCard.locator('[data-room-action="edit"]').click();
@@ -746,6 +820,8 @@ try {
   const second = await makePage({}, {}, first.context());
   await enter(second, '', 'سليم');
   await first.bringToFront();
+  await first.click('#chatFab');
+  await second.click('#chatFab');
   await first.fill('#chatInput', 'رسالة مشتركة للتفاعل');
   await first.click('#chatSend');
   await waitFor(second, () => !!document.querySelector('#chatBody .msg .msg__text'));
@@ -770,6 +846,7 @@ try {
   await waitFor(first, () => Array.from(document.querySelectorAll('.msg__reaction')).map(b => b.textContent).join('|') === '❤️ 1|😂 1');
   await second.reload();
   await waitReady(second);
+  await second.click('#chatFab');
   assert.equal(await message(second).locator('.msg__reaction').count(), 2, 'history restores reactions, not extra messages');
   assert.equal(await message(second).locator('[data-emoji="😂"]').getAttribute('aria-pressed'), 'true');
   assert.equal(await message(second).locator('[data-emoji="❤️"]').getAttribute('aria-pressed'), 'false');

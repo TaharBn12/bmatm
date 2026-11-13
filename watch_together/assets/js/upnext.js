@@ -2,9 +2,9 @@
    WatchTogether — «التالي» واستيراد القوائم (upnext.js)
    • عند انتهاء فيديو يوتيوب: طبقة اقتراحات فوق المشغّل،
      أول مقترح يُعرض منه 10 ثوان صامتة، ثم يكمل تلقائياً
-     إن كان هذا الجهاز هو المتحكم (وإلا ينتظر المنظّم).
+     على جهاز واحد منسّق؛ ويظل الاختيار اليدوي متاحاً لكل عضو منضم.
    • لصق رابط قائمة يوتيوب في حقل الرابط → استيرادها كلها.
-   القرارات الجماعية تمر عبر قائمة الغرفة + صلاحيات التحكم،
+   القرارات الجماعية تمر عبر قائمة الغرفة + صلاحية العضوية،
    فلا يفرض أحد جهازاً فيديو على البقية.
    ========================================================= */
 (function (global) {
@@ -23,7 +23,7 @@
   let tickTimer = null;
   let endTimer = null;
   let left = 0;
-  let waiting = false;          /* بعد العدّ: ننتظر المنظّم (لمشاهد فقط) */
+  let waiting = false;          /* بعد العدّ: ننتظر اكتمال الانضمام للغرفة */
   let seq = 0;                  /* يمنع تداخل الطلبات عند تبديل الفيديو بسرعة */
 
   const esc = (s) => U.esc(String(s == null ? '' : s));
@@ -31,6 +31,7 @@
   function room() { return R || (R = global.WTRoom || null); }
   function playerEl() { const r = room(); return r && r.el && r.el.player ? r.el.player : null; }
   function canControl() { const r = room(); return !!(r && r.canControl && r.canControl()); }
+  function canAutoAdvance() { const r = room(); return !!(r && r.canAutoAdvance && r.canAutoAdvance()); }
   function seconds() { return Math.max(3, Math.min(30, Number(CFG().previewSeconds) || 10)); }
 
   /* ============================ الطبقة ============================ */
@@ -151,10 +152,12 @@
     const g = overlay.querySelector('#upNextGrid');
     const label = overlay.querySelector('#upNextLabel');
     const ctrl = canControl();
+    const auto = canAutoAdvance();
     if (label) {
-      label.title = ctrl
+      label.title = auto
         ? 'يبدأ الأول تلقائياً بعد العدّ — أو اختر أنت الآن'
-        : 'المنظّم هو من يبدأ التالي؛ يمكنك إضافة أي مقترح إلى القائمة';
+        : ctrl ? 'يمكنك اختيار أي مقترح الآن؛ التشغيل التلقائي منسّق على جهاز واحد'
+          : 'انضم إلى الغرفة لبدء المقترح؛ ويمكنك إضافته إلى القائمة';
     }
 
     /* صور مصغّرة فقط: الشريط لا يحجب الفيديو، والاسم يظهر عند المرور/التركيز */
@@ -177,7 +180,7 @@
         '</button>';
     }).join('');
 
-    /* المتحكم: النقر يبدأ المقترح. المشاهد: النقر يضيفه للقائمة فقط */
+    /* العضو المنضم يبدأ المقترح؛ من لم يكتمل انضمامه يستطيع إضافته للقائمة */
     g.querySelectorAll('.upnext__thumbcard').forEach(card => {
       card.addEventListener('click', () => {
         const it = items.find(x => x.id === card.getAttribute('data-sug-id'));
@@ -252,12 +255,14 @@
     const ring = overlay && overlay.querySelector('#upNextRing');
     if (ring) ring.hidden = true;
     if (!first) return;
-    if (canControl()) {
+    if (canAutoAdvance()) {
       paintFoot('يكمل تلقائياً الآن…', 'is-good');
       playNow(first);
     } else {
       waiting = true;
-      paintFoot('بانتظار المنظّم لبدء التالي…', 'is-wait');
+      paintFoot(canControl()
+        ? 'يمكنك اختيار مقترح الآن؛ التشغيل التلقائي منسّق لتجنّب التكرار…'
+        : 'انضم إلى الغرفة لتشغيل التالي…', 'is-wait');
     }
   }
 
@@ -270,7 +275,7 @@
     if (btn) btn.disabled = false;
     if (ok) {
       U.toast('أُضيف إلى قائمة الغرفة: ' + it.title, 'success', 2200);
-      if (!canControl()) paintFoot('أُضيف المقترح للقائمة — المنظّم يبدأ التشغيل', 'is-good');
+      if (!canControl()) paintFoot('أُضيف المقترح للقائمة — انضم إلى الغرفة لبدء التشغيل', 'is-good');
     }
   }
 
@@ -278,7 +283,7 @@
     const r = room();
     if (!r) return;
     if (!canControl()) {
-      U.toast('التحكم متاح لمنشئ الغرفة والمنظّمين فقط', 'warn', 2400);
+      U.toast('انضم إلى الغرفة للتحكم بالمشاهدة', 'warn', 2400);
       return;
     }
     seq++;                      /* أوقف أي عدّاد جارٍ */
