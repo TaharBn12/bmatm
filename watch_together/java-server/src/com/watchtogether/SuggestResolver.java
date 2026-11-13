@@ -49,15 +49,38 @@ public final class SuggestResolver {
 
     private static final String FIELDS = "%(id)s	%(title)s	%(webpage_url)s	%(thumbnail)s";
 
-    /** يشغّل yt-dlp ويعيد الأسطر الناتجة (كل سطر: id \t title \t url \t thumb). */
+    /** Generic extraction is limited to hosts used by our direct-upload providers. */
+    private static boolean allowGenericMetadata(String raw) {
+        try {
+            URI uri = new URI(raw);
+            if (!"https".equalsIgnoreCase(uri.getScheme()) || uri.getHost() == null || uri.getUserInfo() != null ||
+                (uri.getPort() != -1 && uri.getPort() != 443)) return false;
+            String host = uri.getHost().toLowerCase(Locale.ROOT);
+            return host.equals("0x0.st") || host.equals("files.catbox.moe") || host.equals("litter.catbox.moe") ||
+                host.equals("litterbox.catbox.moe") || host.equals("pixeldrain.com") || host.equals("tmpfiles.org") ||
+                host.equals("oshi.at") || host.equals("file.io") || host.equals("www.file.io") ||
+                host.equals("uguu.se") || host.equals("www.uguu.se") || host.equals("gofile.io") ||
+                host.equals("www.gofile.io") || host.endsWith(".gofile.io") ||
+                host.equals("cazwkhcbkzhnsluuafwz.supabase.co");
+        } catch (Exception error) {
+            return false;
+        }
+    }
+
+    /** Runs yt-dlp with bounded output and a strict timeout. */
     private static List<String> runYtDlp(List<String> tail, int seconds) throws Exception {
+        return runYtDlp(tail, seconds, false);
+    }
+
+    private static List<String> runYtDlp(List<String> tail, int seconds, boolean allowGeneric) throws Exception {
         Path out = Files.createTempFile("wt-suggest-", ".tsv");
         Process p = null;
         try {
             List<String> cmd = new ArrayList<>(Arrays.asList(
-                "--ignore-config", "--no-warnings", "--socket-timeout", "8", "--retries", "0",
-                "--use-extractors", "default,-generic", "--flat-playlist",
-                "--print", FIELDS));
+                "--ignore-config", "--no-warnings", "--socket-timeout", "8", "--retries", "0"));
+            if (allowGeneric) cmd.addAll(Arrays.asList("--use-extractors", "default"));
+            else cmd.addAll(Arrays.asList("--use-extractors", "default,-generic"));
+            cmd.addAll(Arrays.asList("--flat-playlist", "--print", FIELDS));
             cmd.addAll(tail);
             /* Py.process يضمن ترميز UTF‑8 لخراج yt-dlp على ويندوز */
             p = Py.process(cmd).redirectOutput(out.toFile())
@@ -124,43 +147,52 @@ public final class SuggestResolver {
             acquired = SLOTS.tryAcquire();
             if (!acquired) { status = 429; throw new IllegalArgumentException("الخدمة مشغولة؛ أعد المحاولة بعد قليل"); }
 
-            List<Map<String, Object>> items = new ArrayList<>();
-            String source = "none";
+            if (Boolean.TRUE.equals(req.get("metadataOnly"))) {
+                List<String> metadataRows = runYtDlp(
+                    Arrays.asList("--no-playlist", "--skip-download", "--", url), 14, allowGenericMetadata(url));
+                Map<String, Object> metadata = metadataRows.isEmpty() ? null : parseRow(metadataRows.get(0));
+                result.put("metadata", metadata);
+                result.put("items", Collections.emptyList());
+                result.put("source", metadata == null ? "none" : "yt-dlp");
+            } else {
+                List<Map<String, Object>> items = new ArrayList<>();
+                String source = "none";
 
-            /* 1) سلسلة/قائمة: أكثر من مدخل في الرابط نفسه */
-            List<String> rows = runYtDlp(Arrays.asList("--playlist-end", String.valueOf(limit + 4), "--", url), 22);
-            for (String row : rows) {
-                Map<String, Object> m = parseRow(row);
-                if (m == null) continue;
-                if (sameVideo(url, (String) m.get("url"))) continue;   /* لا نقترح الفيديو الحالي */
-                m.put("source", "series");
-                items.add(m);
-                if (items.size() >= limit) break;
-            }
-            if (!items.isEmpty()) source = "series";
-
-            /* 2) فيديو مفرد: العنوان ← بحث يوتيوب (نتائج قابلة للتشغيل عندنا) */
-            if (items.isEmpty()) {
-                String title = rows.size() == 1 ? titleOf(rows.get(0)) : "";
-                if (title.isEmpty()) {
-                    List<String> one = runYtDlp(Arrays.asList("--no-playlist", "--", url), 18);
-                    if (!one.isEmpty()) title = titleOf(one.get(0));
+                /* 1) سلسلة/قائمة: أكثر من مدخل في الرابط نفسه */
+                List<String> rows = runYtDlp(Arrays.asList("--playlist-end", String.valueOf(limit + 4), "--", url), 22);
+                for (String row : rows) {
+                    Map<String, Object> m = parseRow(row);
+                    if (m == null) continue;
+                    if (sameVideo(url, (String) m.get("url"))) continue;   /* لا نقترح الفيديو الحالي */
+                    m.put("source", "series");
+                    items.add(m);
+                    if (items.size() >= limit) break;
                 }
-                if (!title.isEmpty()) {
-                    String q = "ytsearch" + (limit + 3) + ":" + cleanQuery(title);
-                    for (String row : runYtDlp(Arrays.asList("--playlist-end", String.valueOf(limit + 3), "--", q), 22)) {
-                        Map<String, Object> m = parseRow(row);
-                        if (m == null) continue;
-                        m.put("source", "search");
-                        items.add(m);
-                        if (items.size() >= limit) break;
+                if (!items.isEmpty()) source = "series";
+
+                /* 2) فيديو مفرد: العنوان ← بحث يوتيوب (نتائج قابلة للتشغيل عندنا) */
+                if (items.isEmpty()) {
+                    String title = rows.size() == 1 ? titleOf(rows.get(0)) : "";
+                    if (title.isEmpty()) {
+                        List<String> one = runYtDlp(Arrays.asList("--no-playlist", "--", url), 18);
+                        if (!one.isEmpty()) title = titleOf(one.get(0));
                     }
-                    if (!items.isEmpty()) source = "search";
+                    if (!title.isEmpty()) {
+                        String q = "ytsearch" + (limit + 3) + ":" + cleanQuery(title);
+                        for (String row : runYtDlp(Arrays.asList("--playlist-end", String.valueOf(limit + 3), "--", q), 22)) {
+                            Map<String, Object> m = parseRow(row);
+                            if (m == null) continue;
+                            m.put("source", "search");
+                            items.add(m);
+                            if (items.size() >= limit) break;
+                        }
+                        if (!items.isEmpty()) source = "search";
+                    }
                 }
-            }
 
-            result.put("items", items);
-            result.put("source", source);
+                result.put("items", items);
+                result.put("source", source);
+            }
         } catch (IllegalArgumentException e) {
             if (status == 200) status = 400;
             result.clear();

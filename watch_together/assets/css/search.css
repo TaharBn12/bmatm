@@ -604,3 +604,142 @@
   width: 16px;
   height: 16px;
 }
+
+/* ---------- أنواع نتائج يوتيوب والتصفّح ---------- */
+.search-type-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 14px;
+}
+.search-type-tab {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 7px 13px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: rgba(255,255,255,.035);
+  color: var(--muted);
+  font: 700 12px/1.2 var(--font);
+  cursor: pointer;
+  transition: .18s ease;
+}
+.search-type-tab:hover { color: var(--text); border-color: rgba(197,165,114,.42); }
+.search-type-tab:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+.search-type-tab.is-active { color: #141006; border-color: transparent; background: var(--grad); }
+.search-type-tab--favorites { margin-inline-start: auto; }
+.search-type-tab--favorites .ic { display: inline-flex; }
+.search-type-tab--favorites.is-active .ic { color: #7b182a; }
+
+.search-browsebar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 2px 0 16px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: rgba(255,255,255,.035);
+}
+.search-browsebar[hidden], .search-more[hidden] { display: none !important; }
+.search-browsebar__back { flex: 0 0 auto; }
+.search-browsebar__title { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 3px; }
+.search-browsebar__title strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+.search-browsebar__title span { color: var(--muted-2); font-size: 11px; }
+.search-more { display: flex; justify-content: center; padding: 18px 0 2px; }
+.search-more .btn { min-width: 170px; justify-content: center; }
+
+/* بطاقة نتيجة ذات زرين شقيقين: فتح المحتوى وحفظ الفيديو؛ لا توجد أزرار متداخلة. */
+.result-card { text-align: start; }
+.result-card__main {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  width: 100%;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+.result-card__main:focus-visible { outline: 2px solid var(--brand); outline-offset: -3px; }
+.result-card__main .result-card__thumb { width: 100%; }
+.result-card__favorite {
+  position: absolute;
+  z-index: 2;
+  inset-block-start: 8px;
+  inset-inline-start: 8px;
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid rgba(255,255,255,.24);
+  border-radius: 50%;
+  background: rgba(8,12,18,.78);
+  color: #f7f2e8;
+  cursor: pointer;
+  transition: transform .16s, color .16s, background .16s;
+}
+.result-card__favorite:hover { transform: scale(1.06); background: rgba(8,12,18,.95); }
+.result-card__favorite.is-on { color: #ff8da0; border-color: rgba(255,141,160,.48); }
+.result-card__favorite:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+.result-card__favorite svg { width: 18px; height: 18px; }
+.result-card__type {
+  position: absolute;
+  inset-block-end: 8px;
+  inset-inline-start: 8px;
+  padding: 3px 8px;
+  border: 1px solid rgba(255,255,255,.14);
+  border-radius: 999px;
+  background: rgba(0,0,0,.72);
+  color: #f5e8cf;
+  font-size: 10px;
+  font-weight: 800;
+}
+.result-card__thumb--placeholder {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  min-height: 115px;
+  color: var(--brand);
+  background: radial-gradient(circle at 50% 40%, rgba(197,165,114,.17), transparent 55%), linear-gradient(140deg,#10161f,#0b0f16);
+}
+.result-card__thumb--placeholder svg { width: 38px; height: 38px; opacity: .72; }
+.result-card__channel {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  padding: 0;
+  overflow: hidden;
+  border: 0;
+  background: transparent;
+  color: var(--brand);
+  font: inherit;
+  text-align: start;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.result-card__channel:hover { text-decoration: underline; }
+.result-card__channel:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+.result-card.is-busy { cursor: progress; }
+.result-card.is-busy .result-card__main { cursor: progress; }
+
+@media (max-width: 560px) {
+  .search-type-tabs { flex-wrap: nowrap; overflow-x: auto; padding: 0 0 5px; scrollbar-width: thin; }
+  .search-type-tab { flex: 0 0 auto; padding-inline: 11px; }
+  .search-type-tab--favorites { margin-inline-start: 0; }
+  .search-browsebar { gap: 7px; padding: 8px; }
+  .search-browsebar__back { padding-inline: 9px; font-size: 11px; }
+  .search-browsebar__title strong { max-width: 33vw; }
+}
+.play-actions #playFavorite.is-on { color: #ff8da0; border-color: rgba(255,141,160,.48); }
+.play-actions #playFavorite.is-on .ic { color: #ff8da0; }

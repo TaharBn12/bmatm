@@ -17,17 +17,20 @@
   const IC = window.WTIcons;
   const Auth = window.WTAuth;
   const Rooms = window.WTRooms;
+  const Favorites = window.WTFavorites;
 
   const $ = id => document.getElementById(id);
   const el = {
     form: $('searchForm'), input: $('searchInput'), go: $('searchGo'), clear: $('searchClear'),
-    sources: $('searchSources'), chips: $('searchChips'), status: $('searchStatus'), note: $('serverNote'),
+    sources: $('searchSources'), types: $('searchTypes'), chips: $('searchChips'), status: $('searchStatus'), note: $('serverNote'),
     noteText: $('serverNoteText'),
     results: $('results'), empty: $('empty'), emptyText: $('emptyText'),
+    browseBar: $('browseBar'), browseBack: $('browseBack'), browseTitle: $('browseTitle'), browseMeta: $('browseMeta'),
+    browseMore: $('browseMore'), browseLoadMore: $('browseLoadMore'),
     dialog: $('playDialog'), dTitle: $('playTitle'), dClose: $('playClose'),
     stage: $('playStage'), spinner: $('playSpinner'), spinnerText: $('playSpinnerText'),
     video: $('playVideo'), error: $('playError'),
-    room: $('playRoom'), queue: $('playQueue'), copy: $('playCopy'),
+    room: $('playRoom'), queue: $('playQueue'), favorite: $('playFavorite'), channel: $('playChannel'), copy: $('playCopy'),
     source: $('playSource'), hint: $('playHint'),
     picker: $('roomPicker'), pickerList: $('pickerList'), pickerEmpty: $('pickerEmpty'),
     pickerClose: $('pickerClose')
@@ -52,7 +55,8 @@
   };
 
   const state = {
-    query: '', site: 'dailymotion', items: [], loading: false,
+    query: '', site: 'dailymotion', searchType: 'all', items: [], viewItems: [], view: 'search', loading: false,
+    browse: null, favoriteKeys: new Set(), favoriteError: null,
     server: null,            /* null = لم يُختبر · true = سيرفر Java · false = استضافة ثابتة */
     reason: '',              /* سبب تعذّر الوصول إلى /api/search (نص تشخيصي) */
     token: 0,                /* رقم مسلسل للبحث الجاري — يمنع نتائج قديمة من التغطية على جديدة */
@@ -105,31 +109,77 @@
 
   /* ============================== 2) مصدر النتائج ============================== */
 
+  function safeYouTubeProfile(raw) {
+    try {
+      const url = new URL(String(raw || '').trim());
+      const host = url.hostname.toLowerCase().replace(/^www\./, '');
+      if (url.protocol !== 'https:' || !['youtube.com', 'm.youtube.com'].includes(host) || url.username || url.password) return '';
+      if (!/^\/(?:channel\/UC[A-Za-z0-9_-]{20,30}|@[A-Za-z0-9._-]{3,64}|c\/[A-Za-z0-9._-]{1,64}|user\/[A-Za-z0-9._-]{1,64})(?:\/.*)?$/.test(url.pathname)) return '';
+      const match = url.pathname.match(/^\/(channel\/UC[A-Za-z0-9_-]{20,30}|@[A-Za-z0-9._-]{3,64}|c\/[A-Za-z0-9._-]{1,64}|user\/[A-Za-z0-9._-]{1,64})/);
+      return match ? 'https://www.youtube.com/' + match[1] : '';
+    } catch (_) { return ''; }
+  }
+
+  function safeWebUrl(raw, httpsOnly) {
+    try {
+      const url = new URL(String(raw || '').trim());
+      if (!(httpsOnly ? url.protocol === 'https:' : ['http:', 'https:'].includes(url.protocol)) || url.username || url.password) return '';
+      return url.href;
+    } catch (_) { return ''; }
+  }
+
   function normalize(raw, site) {
     if (!raw || typeof raw !== 'object') return null;
-    const id = String(raw.id || '').trim();
-    if (!id) return null;
-    const isYT = site === 'youtube';
-    const isDM = site === 'dailymotion';
-    /* يوتيوب: معرف 11 محرفاً صارم. ديليموشن: أحرف وأرقام حتى 32. */
-    if (isYT && !/^[A-Za-z0-9_-]{11}$/.test(id)) return null;
-    if (isDM && !/^[a-zA-Z0-9]{1,32}$/.test(id)) return null;
+    const source = String(raw.site || site || '').toLowerCase();
+    const isYT = source === 'youtube' || source === 'yt';
+    const isDM = source === 'dailymotion' || source === 'dm';
+    const type = ['video', 'channel', 'playlist'].includes(String(raw.type || '').toLowerCase())
+      ? String(raw.type || '').toLowerCase() : 'video';
+    let id = String(raw.id || '').trim();
     let url = String(raw.url || '').trim();
-    if (!url) {
-      if (isYT) url = 'https://www.youtube.com/watch?v=' + id;
-      else if (isDM) url = 'https://www.dailymotion.com/video/' + id;
+    if (type === 'video') {
+      if (isYT) {
+        if (!/^[A-Za-z0-9_-]{11}$/.test(id)) id = U.parseYouTube(url) || '';
+        if (!/^[A-Za-z0-9_-]{11}$/.test(id)) return null;
+        url = 'https://www.youtube.com/watch?v=' + id;
+      } else if (isDM) {
+        if (!/^[A-Za-z0-9]{1,32}$/.test(id)) {
+          const match = url.match(/(?:dailymotion\.com\/(?:video)\/|dai\.ly\/)([A-Za-z0-9]+)/i);
+          id = match ? match[1] : '';
+        }
+        if (!/^[A-Za-z0-9]{1,32}$/.test(id)) return null;
+        if (!url) url = 'https://www.dailymotion.com/video/' + id;
+      } else {
+        if (!url) return null;
+        id = id || url;
+      }
+    } else if (type === 'channel') {
+      if (!isYT) return null;
+      const profile = safeYouTubeProfile(url || raw.channelUrl || raw.channel_url);
+      if (!profile) return null;
+      url = profile;
+      id = id || String(raw.channelId || raw.channel_id || profile);
+    } else if (type === 'playlist') {
+      if (!isYT) return null;
+      const playlist = U.parseYouTubePlaylist(url) || id;
+      if (!/^[A-Za-z0-9_-]{2,64}$/.test(playlist)) return null;
+      id = playlist;
+      url = 'https://www.youtube.com/playlist?list=' + id;
     }
-    let thumb = String(raw.thumb || '').trim();
-    if (!thumb && isYT) thumb = 'https://i.ytimg.com/vi/' + id + '/hqdefault.jpg';
+    url = safeWebUrl(url, false);
+    if (!url) return null;
+    let thumb = safeWebUrl(raw.thumb || raw.thumbnail || '', true);
+    if (!thumb && isYT && type === 'video') thumb = 'https://i.ytimg.com/vi/' + id + '/hqdefault.jpg';
     if (!thumb && isDM) thumb = 'https://www.dailymotion.com/thumbnail/video/' + id;
-    let author = String(raw.author || raw.owner || '').trim();
-    if (author === 'undefined' || author === 'null') author = '';
-    const siteName = isYT ? 'youtube' : 'dailymotion';
+    const author = String(raw.author || raw.owner || raw.channel || '').replace(/\s+/g, ' ').trim().slice(0, 140);
+    const channelId = String(raw.channelId || raw.channel_id || '').trim().slice(0, 120);
+    const channelUrl = isYT ? safeYouTubeProfile(raw.channelUrl || raw.channel_url ||
+      (channelId.match(/^UC[A-Za-z0-9_-]{20,30}$/) ? 'https://www.youtube.com/channel/' + channelId : '')) : '';
+    const title = String(raw.title || '').replace(/\s+/g, ' ').trim().slice(0, 240) || 'بدون عنوان';
     return {
-      id: id, site: siteName,
-      title: String(raw.title || '').trim() || 'بدون عنوان',
-      url: url, thumb: thumb,
-      duration: Number(raw.duration) || 0, author: author
+      id, type, site: isYT ? 'youtube' : isDM ? 'dailymotion' : (source || 'external'),
+      title, url, thumb, duration: Number(raw.duration) || 0, author,
+      channelId, channelUrl, count: Number(raw.count || raw.channel_follower_count || 0) || 0
     };
   }
 
@@ -140,9 +190,17 @@
    *   2) السيرفر موجود لكن خدمة البحث معطّلة (5xx) → خطأ serverDown
    *   3) خطأ من عندنا (4xx) → خطأ عادي
    */
-  async function fromServer(term, limit, site) {
+  async function fromServer(term, limit, site, type, browse) {
     const api = (window.WTServer && window.WTServer.api) ? window.WTServer.api('api/search') : 'api/search';
-    const url = api + '?q=' + encodeURIComponent(term) + '&limit=' + limit + '&site=' + encodeURIComponent(site);
+    const params = new URLSearchParams({ q: term || '', limit: String(limit), site: String(site || '') });
+    if (browse) {
+      params.set('browse', browse.type);
+      params.set('url', browse.url);
+      params.set('offset', String(browse.offset || 0));
+    } else if (site === 'youtube') {
+      params.set('type', type || 'video');
+    }
+    const url = api + '?' + params.toString();
     let response = null;
     try {
       response = await fetch(url, { headers: { Accept: 'application/json' }, cache: 'no-store' });
@@ -175,7 +233,10 @@
     }
     if (!data || !Array.isArray(data.items)) { state.reason = 'استجابة غير مفهومة من /api/search'; return null; }
     state.reason = '';
-    return { items: data.items.map(item => normalize(item, site)).filter(Boolean), source: data.source || 'server' };
+    return {
+      items: data.items.map(item => normalize(item, site)).filter(Boolean), source: data.source || 'server',
+      hasMore: !!data.hasMore, nextOffset: Number(data.nextOffset) || 0, browseType: data.browseType || '', browseUrl: data.browseUrl || ''
+    };
   }
 
   /** هل الصفحة على جهازك أو شبكتك المحلية؟ (خلاف ذلك: استضافة عامة/ثابتة) */
@@ -245,12 +306,13 @@
   async function runSearch(term) {
     const query = String(term || '').trim();
     if (query.length < 2) { status('اكتب كلمتين على الأقل للبحث', true); el.input.focus(); return; }
-    /* رقم مسلسل للطلب: أي بحث أحدث يُلغي نتائج البحث الذي سبقه.
-       بدونه، تبديل المصدر أثناء بحث جارٍ كان يُتجاهل بسبب حاجز state.loading
-       فتبقى نتائج المصدر القديم معروضة تحت تبويب المصدر الجديد. */
     const token = ++state.token;
+    state.view = 'search';
+    state.browse = null;
     state.loading = true;
     state.query = query;
+    el.browseBar.hidden = true;
+    el.browseMore.hidden = true;
     el.go.disabled = true;
     skeleton(8);
     el.empty.hidden = true;
@@ -258,57 +320,55 @@
     try {
       let result = null;
       try {
-        result = await fromServer(query, LIMIT, state.site);
-        if (token !== state.token) return;            /* بحث أحدث تولّى العرض */
+        result = await fromServer(query, LIMIT, state.site, state.site === 'youtube' ? state.searchType : 'video');
+        if (token !== state.token) return;
         state.server = result !== null;
       } catch (error) {
         if (token !== state.token) return;
         if (error && error.serverDown) {
-          /* السيرفر موجود، لكن خدمة البحث فيه معطّلة (yt-dlp/Python) — لا نقول «استضافة ثابتة» */
           state.server = true;
-          if (state.site !== 'dailymotion') throw error;            /* يوتيوب: لا بديل في المتصفح */
+          if (state.site !== 'dailymotion') throw error;
           try {
-            result = await fromDailymotion(query, LIMIT);           /* بديل المتصفح لديليموشن */
+            result = await fromDailymotion(query, LIMIT);
             if (token !== state.token) return;
-          } catch (browserError) { throw error; }
+          } catch (_) { throw error; }
         } else {
           state.server = null;
-          throw error;                                 /* خطأ صريح من السيرفر (400/429/…) */
+          throw error;
         }
       }
       if (!result) {
         state.server = false;
-        if (state.site === 'youtube') {
-          result = { items: [], source: 'none' };
-        } else {
-          result = await fromDailymotion(query, LIMIT);
-          if (token !== state.token) return;
-        }
+        result = state.site === 'youtube' ? { items: [], source: 'none' } : await fromDailymotion(query, LIMIT);
+        if (token !== state.token) return;
       }
-      state.items = result.items;
+      state.items = result.items.map(item => normalize(item, state.site)).filter(Boolean);
+      state.viewItems = state.items;
       updateNote();
       if (!state.items.length) {
         el.results.innerHTML = '';
         el.results.setAttribute('aria-busy', 'false');
         el.empty.hidden = false;
-        el.emptyText.textContent = state.site === 'youtube'
-          ? (state.server === false
-              ? 'بحث يوتيوب يحتاج سيرفر Java مع yt-dlp' + (state.reason ? ' — ' + state.reason : '') +
-                (privateHost()
-                  ? ' — افتح الصفحة من العنوان الذي تطبعه لافتة run.bat (مثل http://localhost:8081/search.html)'
-                  : ' — على استضافة ثابتة: اضبط javaServer.apiBase بعنوان سيرفر Render في assets/js/config.js') +
-                ' — حدّث yt-dlp ثم أعد المحاولة: py -m pip install -U yt-dlp'
-              : 'لم يُرجع يوتيوب نتائج عن «' + query + '» — حدّث yt-dlp ثم أعد المحاولة: py -m pip install -U yt-dlp')
-          : 'لا نتائج لـ «' + query + '» في ديليموشن — جرّب كلمة أخرى.';
+        if (state.site === 'youtube') {
+          const requestedType = state.searchType === 'all' ? 'الفيديوهات والقنوات والقوائم' :
+            ({ video: 'الفيديوهات', channel: 'القنوات', playlist: 'قوائم التشغيل' }[state.searchType] || 'النتائج');
+          el.emptyText.textContent = state.server === false
+            ? 'بحث يوتيوب يحتاج سيرفر Java مع yt-dlp' + (state.reason ? ' — ' + state.reason : '') +
+              (privateHost()
+                ? ' — افتح الصفحة من العنوان الذي تطبعه لافتة run.bat (مثل http://localhost:8081/search.html)'
+                : ' — على استضافة ثابتة: اضبط javaServer.apiBase بعنوان سيرفر Render في assets/js/config.js') +
+              ' — حدّث yt-dlp ثم أعد المحاولة: py -m pip install -U yt-dlp'
+            : 'لم يُرجع يوتيوب ' + requestedType + ' عن «' + query + '» — حدّث yt-dlp ثم أعد المحاولة: py -m pip install -U yt-dlp';
+        } else {
+          el.emptyText.textContent = 'لا نتائج لـ «' + query + '» في ديليموشن — جرّب كلمة أخرى.';
+        }
         status('');
-        /* عرض اقتراحات حقيقية من المنصة نفسها عندما يكون البحث فارغاً */
-        const suggested = SUGGESTED[state.site] || [];
+        const suggested = state.searchType === 'video' ? (SUGGESTED[state.site] || []) : [];
         if (suggested.length) {
           el.empty.hidden = true;
           renderSuggested(suggested);
         }
       } else {
-        /* إزالة تلميح الاقتراحات إن كان موجوداً من بحث سابق */
         const existing = el.results.parentNode.querySelector('.search-status--suggested');
         if (existing) existing.remove();
         render(state.items);
@@ -317,6 +377,9 @@
           result.source === 'yt-dlp' ? 'yt-dlp على السيرفر' :
           result.source === 'dailymotion-api' ? 'واجهة ديليموشن' : 'ديليموشن مباشرة'
         ));
+        loadFavoriteState(false).then(() => {
+          if (token === state.token && state.view === 'search' && !state.browse) render(state.items);
+        });
       }
       renderChips();
     } catch (error) {
@@ -365,24 +428,102 @@
 
   /* ============================== 3) العرض ============================== */
 
+  function favoriteKey(item) {
+    try { return Favorites && Favorites.identity ? Favorites.identity(item) : ''; }
+    catch (_) { return ''; }
+  }
+
+  function isFavorite(item) {
+    const key = favoriteKey(item);
+    return !!key && state.favoriteKeys.has(key);
+  }
+
+  async function loadFavoriteState(force) {
+    if (!Favorites || typeof Favorites.list !== 'function') return null;
+    try {
+      const list = await Favorites.list({ force: !!force });
+      state.favoriteKeys = new Set(list.map(favoriteKey).filter(Boolean));
+      state.favoriteError = null;
+      return list;
+    } catch (error) {
+      state.favoriteError = error;
+      state.favoriteKeys = new Set();
+      return null;
+    }
+  }
+
+  function paintFavoriteButton(button, saved) {
+    if (!button) return;
+    const on = !!saved;
+    button.classList.toggle('is-on', on);
+    button.setAttribute('aria-pressed', String(on));
+    const label = on ? 'إزالة من المفضّلة' : 'إضافة إلى المفضّلة';
+    button.setAttribute('aria-label', label);
+    button.setAttribute('title', label);
+  }
+
+  async function toggleFavorite(item) {
+    if (!Favorites || typeof Favorites.toggle !== 'function') throw new Error('خدمة المفضّلة غير متاحة');
+    const result = await Favorites.toggle(item);
+    const key = favoriteKey(item);
+    if (key) {
+      if (result.saved) state.favoriteKeys.add(key);
+      else state.favoriteKeys.delete(key);
+    }
+    if (state.view === 'favorites' && !result.saved)
+      state.items = state.items.filter(value => favoriteKey(value) !== key);
+    if (state.browse) {
+      render(state.browse.items);
+    } else {
+      state.viewItems = state.items;
+      render(state.items);
+      if (state.view === 'favorites' && !result.saved) {
+        status(state.items.length ? state.items.length + ' فيديو في مفضّلتك' : '');
+        el.empty.hidden = state.items.length > 0;
+        if (!state.items.length) el.emptyText.textContent = 'لم تحفظ فيديوهات بعد — اضغط القلب على فيديو لإضافته إلى مفضّلتك';
+      }
+    }
+    paintFavoriteButton(el.favorite, state.current && isFavorite(state.current));
+    U.toast(result.saved ? 'حُفظ الفيديو في مفضّلتك الشخصية' : 'أُزيل الفيديو من مفضّلتك', 'success', 2200);
+    return result;
+  }
+
   function render(items) {
-    el.empty.hidden = true;
+    items = Array.isArray(items) ? items : [];
+    state.viewItems = items;
+    el.empty.hidden = items.length > 0;
     el.results.setAttribute('aria-busy', 'false');
     el.results.innerHTML = items.map((item, index) => {
-      const badge = duration(item.duration);
-      const author = item.author ? '<span class="result-card__author">' + U.esc(item.author) + '</span>' : '';
-      return '' +
-        '<button class="result-card" type="button" data-index="' + index + '" aria-label="تشغيل: ' + U.esc(item.title) + '">' +
-          '<span class="result-card__thumb">' +
-            '<img class="result-card__img" src="' + U.esc(item.thumb) + '" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer">' +
+      const type = item.type || 'video';
+      const isVideo = type === 'video';
+      const badge = isVideo ? duration(item.duration) : '';
+      const tag = type === 'channel' ? 'قناة' : type === 'playlist' ? 'قائمة تشغيل' : '';
+      const thumb = item.thumb
+        ? '<img class="result-card__img" src="' + U.esc(item.thumb) + '" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer">'
+        : '<span class="result-card__thumb--placeholder">' + IC.html(type === 'channel' ? 'users' : type === 'playlist' ? 'playlist' : 'film', 36) + '</span>';
+      const channel = isVideo && item.channelUrl
+        ? '<button class="result-card__channel" type="button" data-channel-index="' + index + '" aria-label="تصفّح قناة ' + U.esc(item.author || 'الفيديو') + '">' +
+            IC.html('users', 14) + '<span>' + U.esc(item.author || 'افتح القناة') + ' · القناة</span></button>'
+        : '';
+      const author = item.author && !channel ? '<span class="result-card__author">' + U.esc(item.author) + '</span>' : '';
+      const count = item.count > 0 ? '<span>' + U.esc(U.fmtCount ? U.fmtCount(item.count) : item.count) + '</span>' : '';
+      const heart = isVideo
+        ? '<button class="result-card__favorite' + (isFavorite(item) ? ' is-on' : '') + '" type="button" data-favorite-index="' + index + '" aria-pressed="' + String(isFavorite(item)) + '" aria-label="' + (isFavorite(item) ? 'إزالة من المفضّلة' : 'إضافة إلى المفضّلة') + '" title="' + (isFavorite(item) ? 'إزالة من المفضّلة' : 'إضافة إلى المفضّلة') + '">' + IC.html('heart', 18) + '</button>'
+        : '';
+      const action = isVideo ? 'تشغيل' : 'تصفّح';
+      return '<article class="result-card result-card--' + U.esc(type) + '">' +
+        '<button class="result-card__main" type="button" data-index="' + index + '" aria-label="' + action + ': ' + U.esc(item.title) + '">' +
+          '<span class="result-card__thumb">' + thumb +
             (badge ? '<span class="result-card__badge">' + badge + '</span>' : '') +
-            '<span class="result-card__play"><span>' + IC.html('play', 22) + '</span></span>' +
+            (tag ? '<span class="result-card__type">' + tag + '</span>' : '') +
+            (isVideo ? '<span class="result-card__play"><span>' + IC.html('play', 22) + '</span></span>' : '') +
           '</span>' +
           '<span class="result-card__body">' +
             '<span class="result-card__title">' + U.esc(item.title) + '</span>' +
-            '<span class="result-card__meta">' + author + '</span>' +
+            '<span class="result-card__meta">' + author + count + '</span>' +
           '</span>' +
-        '</button>';
+        '</button>' + channel + heart +
+      '</article>';
     }).join('');
   }
 
@@ -431,24 +572,195 @@
   }
 
   function renderTabs() {
-    el.sources.querySelectorAll('[data-site]').forEach(tab => {
+    if (el.sources) el.sources.querySelectorAll('[data-site]').forEach(tab => {
       const on = tab.getAttribute('data-site') === state.site;
+      tab.classList.toggle('is-active', on);
+      tab.setAttribute('aria-selected', String(on));
+    });
+    if (el.types) el.types.querySelectorAll('[data-search-type]').forEach(tab => {
+      const on = state.view === 'search' && tab.getAttribute('data-search-type') === state.searchType;
+      tab.classList.toggle('is-active', on);
+      tab.setAttribute('aria-selected', String(on));
+      if (['channel', 'playlist'].includes(tab.getAttribute('data-search-type')))
+        tab.hidden = state.site !== 'youtube';
+    });
+    if (el.types) el.types.querySelectorAll('[data-search-view]').forEach(tab => {
+      const on = state.view === 'favorites';
       tab.classList.toggle('is-active', on);
       tab.setAttribute('aria-selected', String(on));
     });
   }
 
   const SITE_LABEL_AR = { youtube: 'يوتيوب', dailymotion: 'ديليموشن' };
+  const TYPE_LABEL_AR = { all: 'الكل', video: 'فيديوهات', channel: 'قنوات', playlist: 'قوائم التشغيل' };
 
   function setSite(site, run) {
     state.site = ['youtube','dailymotion'].includes(site) ? site : 'dailymotion';
+    if (state.site !== 'youtube' && ['channel', 'playlist'].includes(state.searchType)) state.searchType = 'video';
+    state.view = 'search';
+    state.browse = null;
     store(SITE_KEY, state.site);
     const badge = $('searchSourceBadge');
     if (badge) badge.textContent = SITE_LABEL_AR[state.site];
     renderTabs();
     renderChips();
     updateNote();
+    el.browseBar.hidden = true;
+    el.browseMore.hidden = true;
     if (run && state.query) runSearch(state.query);
+  }
+
+  function setSearchType(type, run) {
+    state.searchType = ['all', 'video', 'channel', 'playlist'].includes(type) ? type : 'all';
+    state.view = 'search';
+    state.browse = null;
+    renderTabs();
+    el.browseBar.hidden = true;
+    el.browseMore.hidden = true;
+    if (run && state.query.length >= 2) runSearch(state.query);
+    else {
+      el.results.innerHTML = '';
+      el.empty.hidden = false;
+      el.emptyText.textContent = 'اكتب عبارة للبحث عن ' + (TYPE_LABEL_AR[state.searchType] || 'محتوى يوتيوب');
+      status('');
+    }
+  }
+
+  async function showFavorites() {
+    const token = ++state.token;
+    state.view = 'favorites';
+    state.browse = null;
+    state.loading = true;
+    el.browseBar.hidden = true;
+    el.browseMore.hidden = true;
+    renderTabs();
+    el.empty.hidden = true;
+    skeleton(6);
+    status('جارٍ تحميل مفضّلتك…');
+    try {
+      if (!Favorites || typeof Favorites.list !== 'function') throw new Error('خدمة المفضّلة غير متاحة');
+      const saved = await Favorites.list({ force: true });
+      if (token !== state.token) return;
+      state.favoriteKeys = new Set(saved.map(favoriteKey).filter(Boolean));
+      state.favoriteError = null;
+      state.items = saved.map(item => normalize(item, item.site)).filter(Boolean);
+      state.viewItems = state.items;
+      if (state.items.length) {
+        render(state.items);
+        status(state.items.length + ' فيديو في مفضّلتك الشخصية');
+      } else {
+        el.results.innerHTML = '';
+        el.results.setAttribute('aria-busy', 'false');
+        el.empty.hidden = false;
+        el.emptyText.textContent = 'لم تحفظ فيديوهات بعد — اضغط القلب على فيديو لإضافته إلى مفضّلتك';
+        status('');
+      }
+    } catch (error) {
+      if (token !== state.token) return;
+      state.items = [];
+      state.viewItems = [];
+      el.results.innerHTML = '';
+      el.results.setAttribute('aria-busy', 'false');
+      el.empty.hidden = false;
+      el.emptyText.textContent = error && error.message ? error.message : 'تعذّر تحميل المفضّلة';
+      status(error && error.message ? error.message : 'تعذّر تحميل المفضّلة', true);
+    } finally {
+      if (token === state.token) state.loading = false;
+    }
+  }
+
+  function openBrowse(type, rawUrl, title) {
+    type = type === 'playlist' ? 'playlist' : 'channel';
+    let url = '';
+    if (type === 'channel') url = safeYouTubeProfile(rawUrl);
+    else {
+      const id = U.parseYouTubePlaylist(rawUrl) || String(rawUrl || '').trim();
+      if (/^[A-Za-z0-9_-]{2,64}$/.test(id)) url = 'https://www.youtube.com/playlist?list=' + id;
+      else if (U.parseYouTubePlaylist(rawUrl)) url = 'https://www.youtube.com/playlist?list=' + U.parseYouTubePlaylist(rawUrl);
+    }
+    if (!url) { U.toast('رابط القناة أو القائمة غير صالح', 'error'); return; }
+    state.browse = { type, url, title: String(title || (type === 'channel' ? 'قناة يوتيوب' : 'قائمة تشغيل')).trim(), offset: 0, nextOffset: 0, hasMore: true, items: [], loading: false };
+    state.viewItems = [];
+    el.browseTitle.textContent = state.browse.title;
+    el.browseMeta.textContent = type === 'channel' ? 'فيديوهات القناة' : 'فيديوهات قائمة التشغيل';
+    el.browseBar.hidden = false;
+    el.browseMore.hidden = true;
+    loadBrowsePage(false);
+  }
+
+  async function loadBrowsePage(append) {
+    const browse = state.browse;
+    if (!browse || browse.loading || (!browse.hasMore && append)) return;
+    const token = ++state.token;
+    browse.loading = true;
+    const offset = append ? browse.nextOffset : 0;
+    if (append) el.browseLoadMore.disabled = true;
+    else {
+      el.empty.hidden = true;
+      skeleton(6);
+      status('جارٍ تحميل فيديوهات ' + (browse.type === 'channel' ? 'القناة' : 'القائمة') + '…');
+    }
+    try {
+      const result = await fromServer(browse.title, LIMIT, 'youtube', 'video', { type: browse.type, url: browse.url, offset });
+      if (token !== state.token || state.browse !== browse) return;
+      if (!result) throw new Error(state.reason || 'التصفّح يحتاج سيرفر Java مع yt-dlp');
+      state.server = true;
+      const found = result.items.map(item => normalize(item, 'youtube')).filter(item => item && item.type === 'video');
+      const combined = append ? browse.items.concat(found) : found;
+      const seen = new Set();
+      browse.items = combined.filter(item => {
+        const key = item.id;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+      browse.nextOffset = Number(result.nextOffset) || offset + found.length;
+      browse.hasMore = !!result.hasMore;
+      state.viewItems = browse.items;
+      render(browse.items);
+      el.browseMore.hidden = !browse.hasMore;
+      if (!browse.items.length) {
+        el.empty.hidden = false;
+        el.emptyText.textContent = 'لا توجد فيديوهات متاحة هنا — قد تكون القناة أو القائمة خاصة أو فارغة';
+        status('');
+      } else {
+        status(browse.items.length + ' فيديو — ' + (browse.type === 'channel' ? 'القناة' : 'قائمة التشغيل'));
+      }
+      loadFavoriteState(false).then(() => {
+        if (token === state.token && state.browse === browse) render(browse.items);
+      });
+    } catch (error) {
+      if (token !== state.token || state.browse !== browse) return;
+      el.results.innerHTML = '';
+      el.results.setAttribute('aria-busy', 'false');
+      el.empty.hidden = false;
+      el.emptyText.textContent = error && error.message ? error.message : 'تعذّر تصفّح المحتوى';
+      status(error && error.message ? error.message : 'تعذّر التصفّح', true);
+      el.browseMore.hidden = true;
+    } finally {
+      if (token === state.token) {
+        browse.loading = false;
+        if (append) el.browseLoadMore.disabled = false;
+      }
+    }
+  }
+
+  function backFromBrowse() {
+    if (!state.browse) return;
+    state.browse = null;
+    el.browseBar.hidden = true;
+    el.browseMore.hidden = true;
+    renderTabs();
+    if (state.view === 'favorites') {
+      render(state.items);
+      status(state.items.length ? state.items.length + ' فيديو في مفضّلتك الشخصية' : '');
+      el.empty.hidden = state.items.length > 0;
+      if (!state.items.length) el.emptyText.textContent = 'لم تحفظ فيديوهات بعد — اضغط القلب على فيديو لإضافته إلى مفضّلتك';
+    } else {
+      render(state.items);
+      status(state.items.length ? state.items.length + ' نتيجة' : '');
+      el.empty.hidden = state.items.length > 0;
+    }
   }
 
   /* ============================== 4) التشغيل ============================== */
@@ -482,6 +794,10 @@
     el.room.disabled = true;
     el.queue.disabled = true;
     el.copy.disabled = true;
+    el.favorite.disabled = false;
+    paintFavoriteButton(el.favorite, isFavorite(item));
+    el.channel.hidden = !item.channelUrl;
+    el.channel.disabled = !item.channelUrl;
     el.source.href = item.url;
     el.source.hidden = true;
     el.hint.hidden = true;
@@ -527,6 +843,10 @@
 
   async function play(item) {
     if (!item) return;
+    if (item.type === 'channel' || item.type === 'playlist') {
+      openBrowse(item.type, item.url, item.title);
+      return;
+    }
     openDialog(item);
     /* يوتيوب لا يحتاج استخراجاً: مشغّله الرسمي يعمل داخل iframe */
     if (item.site === 'youtube') {
@@ -693,6 +1013,19 @@
     setSite(site, state.query.length >= 2);
   });
 
+  el.types.addEventListener('click', event => {
+    const favoriteTab = event.target.closest('[data-search-view]');
+    if (favoriteTab) { showFavorites(); return; }
+    const tab = event.target.closest('[data-search-type]');
+    if (!tab) return;
+    const type = tab.getAttribute('data-search-type');
+    if (type === state.searchType && state.view === 'search') return;
+    setSearchType(type, state.query.length >= 2);
+  });
+
+  el.browseBack.addEventListener('click', backFromBrowse);
+  el.browseLoadMore.addEventListener('click', () => loadBrowsePage(true));
+
   el.chips.addEventListener('click', event => {
     const remove = event.target.closest('[data-remove]');
     if (remove) {
@@ -709,11 +1042,31 @@
   });
 
   el.results.addEventListener('click', event => {
+    const favorite = event.target.closest('[data-favorite-index]');
+    if (favorite) {
+      event.preventDefault();
+      event.stopPropagation();
+      const item = state.viewItems[Number(favorite.getAttribute('data-favorite-index'))];
+      if (!item || favorite.disabled) return;
+      favorite.disabled = true;
+      toggleFavorite(item).catch(error => U.toast(error && error.message ? error.message : 'تعذّر حفظ المفضّلة', 'error', 3000))
+        .finally(() => { favorite.disabled = false; });
+      return;
+    }
+    const channel = event.target.closest('[data-channel-index]');
+    if (channel) {
+      event.preventDefault();
+      event.stopPropagation();
+      const item = state.viewItems[Number(channel.getAttribute('data-channel-index'))];
+      if (item && item.channelUrl) openBrowse('channel', item.channelUrl, item.author || 'قناة يوتيوب');
+      return;
+    }
     const card = event.target.closest('[data-index]');
     if (!card) return;
-    const item = state.items[Number(card.getAttribute('data-index'))];
+    const item = state.viewItems[Number(card.getAttribute('data-index'))];
     if (!item || state.busyId) return;
-    state.busyId = item.id;
+    const busyKey = item.type + ':' + item.site + ':' + item.id;
+    state.busyId = busyKey;
     card.classList.add('is-busy');
     play(item).finally(() => {
       state.busyId = null;
@@ -741,6 +1094,24 @@
   el.copy.addEventListener('click', copyLink);
   el.room.addEventListener('click', createRoom);
   el.queue.addEventListener('click', openPicker);
+  el.favorite.addEventListener('click', async () => {
+    if (!state.current || el.favorite.disabled) return;
+    el.favorite.disabled = true;
+    try { await toggleFavorite(state.current); }
+    catch (error) { U.toast(error && error.message ? error.message : 'تعذّر حفظ المفضّلة', 'error', 3000); }
+    finally {
+      el.favorite.disabled = false;
+      paintFavoriteButton(el.favorite, state.current && isFavorite(state.current));
+    }
+  });
+  el.channel.addEventListener('click', () => {
+    const item = state.current;
+    if (!item || !item.channelUrl) return;
+    try { el.video.pause(); } catch (_) { }
+    if (typeof el.dialog.close === 'function') el.dialog.close();
+    else el.dialog.removeAttribute('open');
+    openBrowse('channel', item.channelUrl, item.author || 'قناة يوتيوب');
+  });
 
   el.pickerClose.addEventListener('click', () => {
     if (typeof el.picker.close === 'function') el.picker.close();
@@ -771,6 +1142,8 @@
 
   const params = new URLSearchParams(location.search);
   if (params.get('site')) { const s = params.get('site'); if (['youtube','dailymotion'].includes(s)) state.site = s; }
+  if (['all', 'video', 'channel', 'playlist'].includes(params.get('type'))) state.searchType = params.get('type');
+  if (state.site !== 'youtube' && ['channel', 'playlist'].includes(state.searchType)) state.searchType = 'video';
   if (badge) badge.textContent = SITE_LABEL_AR[state.site];
   renderTabs();
   const initial = params.get('q');

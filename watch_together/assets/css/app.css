@@ -2853,3 +2853,37 @@ body.app-fullscreen-active { overflow: hidden; }
 @media (prefers-reduced-motion: reduce) {
   .room-body #chatFab { transition: none; }
 }
+
+/* صور ثابتة لقائمة الغرفة — لا تُنشئ مشغّلاً ولا تبدأ فيديو صامتاً. */
+.queue-item__thumb {
+  width: 64px; height: 40px; flex: 0 0 64px;
+  display: grid; place-items: center; overflow: hidden;
+  border: 1px solid var(--border); border-radius: 8px;
+  background: linear-gradient(140deg, #18202b, #0d121a); color: var(--muted-2);
+}
+.queue-item__thumb img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.queue-item__thumb .ic svg { width: 17px; height: 17px; }
+.queue-preview {
+  display: flex; align-items: center; gap: 10px;
+  margin: 8px 2px 0; padding: 8px 10px;
+  border: 1px solid var(--border); border-radius: 12px;
+  background: rgba(255,255,255,.035);
+}
+.queue-preview[hidden] { display: none !important; }
+.queue-preview__media {
+  width: 82px; height: 46px; flex: 0 0 82px;
+  display: grid; place-items: center; overflow: hidden;
+  border-radius: 8px; border: 1px solid var(--border);
+  background: linear-gradient(140deg, #18202b, #0d121a); color: var(--brand-2);
+}
+.queue-preview__media img { width: 100%; height: 100%; display: block; object-fit: cover; }
+.queue-preview__media .ic svg { width: 19px; height: 19px; }
+.queue-preview__body { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.queue-preview__body strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+.queue-preview__body small { color: var(--muted-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 10.5px; }
+.player-action--favorite.is-on .ic { color: #ff8297; }
+.room-bar .player-action--favorite.is-on .ic { color: #ff8297; }
+@media (max-width: 480px) {
+  .queue-item__thumb { width: 55px; height: 35px; flex-basis: 55px; }
+  .queue-preview__media { width: 70px; height: 40px; flex-basis: 70px; }
+}
