@@ -292,12 +292,24 @@ try {
     await ownerCard.locator('.room-tile__link').click();
     await page.waitForURL('**/room.html?**');
     await waitReady(page);
+    assert.ok(await page.locator('#chatFab').isVisible(), 'the floating chat bubble appears as soon as the room is ready');
+    assert.equal(await page.locator('#chatFab').getAttribute('aria-expanded'), 'false', 'room entry shows the compact bubble without opening the panel');
+    const viewerAccess = await page.evaluate(() => {
+      const previous = WTRoom.session.role;
+      WTRoom.session.role = 'viewer';
+      const access = { allowed: WTRoom.canControl(), disabled: document.getElementById('centerPlayBtn').disabled };
+      WTRoom.session.role = previous;
+      return access;
+    });
+    assert.deepEqual(viewerAccess, { allowed: true, disabled: false }, 'every joined viewer can control playback without organizer approval');
     await waitVideo(page);
     assert.equal(await page.evaluate(() => WTRoom.session.role), 'owner');
     assert.equal(await page.evaluate(() => WTRoom.player._video.crossOrigin), null);
     assert.ok(await page.locator('#centerPlayBtn').isVisible());
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'no horizontal overflow');
     assert.equal(await page.locator('#chat').isVisible(), false, 'Messenger panel starts collapsed');
+    assert.ok(await page.locator('#chatFab').isVisible(), 'the compact circular bubble is visible on room entry');
+    assert.equal(await page.locator('#chatFab').getAttribute('aria-expanded'), 'false');
     const bubbleStart = await page.locator('#chatFab').boundingBox();
     await page.mouse.move(bubbleStart.x + bubbleStart.width / 2, bubbleStart.y + bubbleStart.height / 2);
     await page.mouse.down();
@@ -310,13 +322,79 @@ try {
     assert.ok(bubbleMoved.x >= 0 && bubbleMoved.y >= 0 &&
       bubbleMoved.x + bubbleMoved.width <= device.viewport.width && bubbleMoved.y + bubbleMoved.height <= device.viewport.height,
     'dragged bubble stays within the viewport');
+    let layoutPrefs = await page.evaluate(() => WTUtil.store.get('room-chat-layout:' + WTRoom.roomId, null));
+    assert.ok(Number.isFinite(layoutPrefs.bubbleLeft) && Number.isFinite(layoutPrefs.bubbleTop), 'bubble position is saved per room');
+
     await page.click('#chatFab');
     assert.ok(await page.locator('#chat').isVisible(), 'bubble opens the Messenger panel');
-    const openedPanel = await page.locator('#chat').boundingBox();
-    assert.ok(openedPanel.x >= 0 && openedPanel.y >= 0 && openedPanel.x + openedPanel.width <= device.viewport.width &&
-      openedPanel.y + openedPanel.height <= device.viewport.height, 'Messenger panel stays on screen');
+    await page.click('#chatViewBtn');
+    assert.ok(await page.locator('#chatViewControls').isVisible(), 'chat size settings can be opened');
+    const setRange = (selector, value) => page.locator(selector).evaluate((input, next) => {
+      input.value = String(next);
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    }, value);
+    await setRange('#chatBubbleSize', 72);
+    await setRange('#chatPanelWidth', 320);
+    await setRange('#chatPanelHeight', 480);
+    assert.equal(await page.locator('#chatFab').evaluate(el => el.getBoundingClientRect().width), 72, 'bubble size is adjustable');
+    let openedPanel = await page.locator('#chat').boundingBox();
+    assert.equal(Math.round(openedPanel.width), 320, 'panel width is adjustable');
+    assert.equal(Math.round(openedPanel.height), 480, 'panel height is adjustable');
+    assert.ok(openedPanel.x >= 0 && openedPanel.y >= 0 && openedPanel.x + openedPanel.width <= device.viewport.width + 1 &&
+      openedPanel.y + openedPanel.height <= device.viewport.height + 1, 'resized Messenger panel stays on screen');
+
+    const dragSpace = await page.locator('#chatDragHandle .chat__spacer').boundingBox();
+    const panelBeforeDrag = await page.locator('#chat').boundingBox();
+    await page.mouse.move(dragSpace.x + dragSpace.width / 2, dragSpace.y + dragSpace.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(dragSpace.x + dragSpace.width / 2 + 22, dragSpace.y + dragSpace.height / 2 + 18, { steps: 4 });
+    await page.mouse.up();
+    const panelAfterDrag = await page.locator('#chat').boundingBox();
+    assert.ok(Math.abs(panelAfterDrag.x - panelBeforeDrag.x) > 10 && Math.abs(panelAfterDrag.y - panelBeforeDrag.y) > 10,
+      `chat panel header is draggable: ${JSON.stringify({ panelBeforeDrag, panelAfterDrag })}`);
+    const resizeBox = await page.locator('#chatResizeHandle').boundingBox();
+    await page.mouse.move(resizeBox.x + resizeBox.width / 2, resizeBox.y + resizeBox.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(resizeBox.x + resizeBox.width / 2 + 20, resizeBox.y + resizeBox.height / 2 + 20, { steps: 4 });
+    await page.mouse.up();
+    const panelResized = await page.locator('#chat').boundingBox();
+    assert.ok(panelResized.width > panelAfterDrag.width + 10 && panelResized.height > panelAfterDrag.height + 10,
+      `chat resize handle adjusts width and height: ${JSON.stringify({ panelAfterDrag, panelResized })}`);
+    layoutPrefs = await page.evaluate(() => WTUtil.store.get('room-chat-layout:' + WTRoom.roomId, null));
+    assert.ok(Number.isFinite(layoutPrefs.panelLeft) && Number.isFinite(layoutPrefs.panelTop) &&
+      layoutPrefs.panelWidth >= 330 && layoutPrefs.panelHeight >= 490, 'panel size and position are saved per room');
+
+    const draft = 'مسودة محفوظة ما دمت أكتب';
+    await page.fill('#chatInput', draft);
+    assert.equal(await page.evaluate(() => sessionStorage.getItem('wt:chat-draft:' + WTRoom.roomId)), draft,
+      'composer draft is saved while typing');
     await page.click('#chatCloseBtn');
     assert.equal(await page.locator('#chat').isVisible(), false, 'panel close button collapses the chat');
+    assert.equal(await page.locator('#chatInput').inputValue(), draft, 'collapsing the panel never clears the composer');
+    const bubblePositionBeforeReload = await page.locator('#chatWidget').boundingBox();
+    await page.reload();
+    await waitReady(page);
+    await waitVideo(page);
+    assert.ok(await page.locator('#chatFab').isVisible(), 'bubble remains visible after re-entering the room');
+    assert.equal(await page.locator('#chatInput').inputValue(), draft, 'the draft is restored after a room reload');
+    const bubblePositionAfterReload = await page.locator('#chatWidget').boundingBox();
+    assert.ok(Math.abs(bubblePositionAfterReload.x - bubblePositionBeforeReload.x) <= 2 &&
+      Math.abs(bubblePositionAfterReload.y - bubblePositionBeforeReload.y) <= 2, 'bubble position persists across reload');
+    await page.click('#chatFab');
+    const restoredPanel = await page.locator('#chat').boundingBox();
+    assert.ok(Math.abs(restoredPanel.width - panelResized.width) <= 1 && Math.abs(restoredPanel.height - panelResized.height) <= 1,
+      `custom panel dimensions persist across reload: ${JSON.stringify({ panelResized, restoredPanel })}`);
+    await page.click('#chatViewBtn');
+    await page.click('#chatLayoutReset');
+    const resetPrefs = await page.evaluate(() => WTUtil.store.get('room-chat-layout:' + WTRoom.roomId, null));
+    assert.equal(resetPrefs.bubbleSize, 64, 'layout reset restores bubble size');
+    assert.equal(resetPrefs.panelWidth, 400, 'layout reset restores panel width');
+    assert.equal(resetPrefs.panelHeight, 620, 'layout reset restores panel height');
+    await page.fill('#chatInput', '');
+    assert.equal(await page.evaluate(() => sessionStorage.getItem('wt:chat-draft:' + WTRoom.roomId)), null,
+      'clearing the composer clears the saved draft');
+    await page.click('#chatCloseBtn');
+    assert.equal(await page.locator('#chat').isVisible(), false);
 
     /* Real decode, fullscreen, play/pause, pointer seeking and keyboard seeking. */
     await page.click('#videoFullscreenBtn');

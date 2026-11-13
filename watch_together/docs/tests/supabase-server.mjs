@@ -82,6 +82,59 @@ function testClassify() {
       }));
 }
 
+/* A stale/missing member row must be repaired transparently before publishing playback. */
+async function testMembershipRepair() {
+  const env = createRoomEnv({ scripts: ['assets/js/config.js', 'assets/js/util.js', 'assets/js/transport.js'] });
+  const token = 'm'.repeat(64);
+  const transport = new env.sandbox.WTTransport.SupabaseTransport({ url: 'https://sb.example', anonKey: 'test-key' });
+  transport.roomId = 'REPAIR1';
+  transport.meta = { clientId: 'viewer-tab', memberToken: token, name: 'مشارك' };
+  const calls = [];
+  let joined = false, stateWrites = 0;
+  transport._rpc = (name, args) => {
+    calls.push({ name, args });
+    if (name === 'wt_apply_room_state') {
+      stateWrites++;
+      if (!joined) return Promise.reject(Object.assign(new Error('supabase: انضم إلى الغرفة أولاً للتحكم بالمشاهدة'), {
+        status: 403, code: '42501'
+      }));
+      return Promise.resolve(Object.assign({}, args.p_state, { rev: 1 }));
+    }
+    if (name === 'wt_join_room') {
+      joined = true;
+      return Promise.resolve({ found: true, role: 'viewer', members: [{ client_id: 'viewer-tab', role: 'viewer' }] });
+    }
+    return Promise.resolve(null);
+  };
+  transport._roomSnapshot = () => Promise.resolve(null);
+  const accepted = await transport.publishState({ url: 'https://media.example/shared.mp4', playing: true, pos: 12 });
+  const join = calls.find(call => call.name === 'wt_join_room');
+  t('رفض العضوية المؤقت لا يطلب موافقة؛ يعيد تسجيل العضو ثم يحفظ الحالة',
+    stateWrites === 2 && !!join && accepted && accepted.rev === 1 && transport._pendingState === null,
+    JSON.stringify({ stateWrites, joined: !!join, accepted }));
+  t('إصلاح العضوية يعيد استخدام معرّف العضو ومفتاحه ولا يرفع دوره',
+    !!join && join.args.p_client_id === 'viewer-tab' && join.args.p_member_token === token &&
+    join.args.p_display_name === 'مشارك' && transport.role === 'viewer');
+
+  const badKeyTransport = new env.sandbox.WTTransport.SupabaseTransport({ url: 'https://sb.example', anonKey: 'test-key' });
+  badKeyTransport.roomId = 'REPAIR1';
+  badKeyTransport.meta = { clientId: 'viewer-tab', memberToken: token, name: 'مشارك' };
+  badKeyTransport._scheduleRecovery = () => { };
+  const authCalls = [];
+  let authError = null;
+  badKeyTransport.on('error', error => { authError = error; });
+  badKeyTransport._rpc = name => {
+    authCalls.push(name);
+    return Promise.reject(Object.assign(new Error('supabase: Invalid API key'), { status: 401, code: 'PGRST301' }));
+  };
+  try { await badKeyTransport.publishState({ url: 'https://media.example/shared.mp4', playing: true, pos: 12 }); }
+  catch (_) { }
+  t('خطأ مفتاح API لا يُعامل كطلب صلاحية عضو ولا يطلق إعادة انضمام مضللة',
+    authCalls.length === 1 && authCalls[0] === 'wt_apply_room_state' && authError && !authError.permission,
+    JSON.stringify({ authCalls, permission: authError && authError.permission }));
+  env.dispose();
+}
+
 /* =========================================================
    2) تحمّل مشروع ناقص: جدول الرسائل مفقود
    ========================================================= */
@@ -130,8 +183,9 @@ function makePartialSupabaseStub() {
       if (name === 'wt_apply_room_state') {
         const row = db.rooms.get(body.p_room_id);
         const member = db.members.get(body.p_room_id + '|' + body.p_client_id);
-        const role = row && row.owner_token === body.p_member_token ? 'owner' : member && member.token === body.p_member_token ? member.role : 'viewer';
-        if (!row || !['owner', 'organizer'].includes(role)) return json({ code: '42501', message: 'permission denied' }, 403);
+        const isOwner = !!(row && row.owner_token === body.p_member_token);
+        const validMember = !!(member && member.token === body.p_member_token);
+        if (!row || (!isOwner && !validMember)) return json({ code: '42501', message: 'انضم إلى الغرفة أولاً للتحكم بالمشاهدة' }, 403);
         const rev = Number(row.state && row.state.rev || 0) + 1;
         row.state = Object.assign({}, body.p_state, { rev, t: Date.now(), updatedBy: body.p_client_id });
         return json(row.state);
@@ -696,6 +750,7 @@ async function testRoomDiagnostics() {
 (async () => {
   console.log('\n=== اختبارات سيرفر Supabase ===\n');
   testClassify();
+  await testMembershipRepair();
   await testPartialProject();
   await testLegacyMessagesTable();
   testSbctl();

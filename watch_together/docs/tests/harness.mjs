@@ -272,7 +272,7 @@ export function createRoomEnv(o = {}) {
   const documentStub = {
     body,
     head: new El('head'),
-    documentElement: new El('html'),
+    documentElement: Object.assign(new El('html'), { dir: 'rtl' }),
     getElementById: (id) => byId.get(id) || null,
     createElement: (tag) => new El(tag),
     querySelector: (s) => body.querySelector(s),
@@ -294,6 +294,9 @@ export function createRoomEnv(o = {}) {
     Uint32Array, Array, Object, String, Number, Boolean, RegExp, Error, Map, Set, Symbol, Blob,
     isNaN, isFinite, parseInt, parseFloat, encodeURIComponent, decodeURIComponent,
     URLSearchParams, URL, Intl, Proxy, MutationObserver: class { observe() { } disconnect() { } },
+    innerWidth: o.innerWidth || 1024,
+    innerHeight: o.innerHeight || 768,
+    visualViewport: o.visualViewport || null,
     document: documentStub,
     localStorage: localStorageStub,
     sessionStorage: {

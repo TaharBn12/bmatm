@@ -186,8 +186,20 @@
     this._seq = 0;
     this._closedByUser = false;
     this._retry = 0;
+    this._lastState = null;
+    this._pendingMembershipState = null;
+    this._membershipRepairAttempted = false;
+    this._membershipRepairStateSig = null;
   }
   WsTransport.prototype = Object.create(makeBase.prototype);
+
+  WsTransport.prototype._joinPayload = function () {
+    return {
+      type: 'join', room: this.roomId, client: this.meta.clientId, name: this.meta.name,
+      accessToken: this.meta.accessToken || '', host: !!this.meta.host,
+      ownerToken: this.meta.ownerToken || '', memberToken: this.meta.memberToken || this.meta.ownerToken || ''
+    };
+  };
 
   WsTransport.prototype.connect = function (roomId, meta) {
     const self = this;
@@ -206,9 +218,7 @@
 
       ws.onopen = () => {
         self._retry = 0;
-        self._send({ type: 'join', room: roomId, client: self.meta.clientId, name: self.meta.name,
-          accessToken: self.meta.accessToken || '', host: !!self.meta.host, ownerToken: self.meta.ownerToken || '',
-          memberToken: self.meta.memberToken || self.meta.ownerToken || '' });
+        self._send(self._joinPayload());
       };
 
       ws.onmessage = (ev) => {
@@ -222,14 +232,25 @@
           self.emit('members', msg.members || []);
           self.emit('roles', msg.members || []);
           self.emit('queue', msg.queue || []);
+          if (self._pendingMembershipState) {
+            const pending = self._pendingMembershipState;
+            self._pendingMembershipState = null;
+            self._membershipRepairStateSig = U.stateSig(pending);
+            self._send({ type: 'state', room: self.roomId, state: pending });
+          }
           resolve({ state: msg.state || null, messages: msg.messages || [], members: msg.members || [],
             roles: msg.members || [], queue: msg.queue || [], role: self.role, controlMode: 'everyone',
             room: msg.roomInfo || (msg.room && typeof msg.room === 'object' ? msg.room : null) });
           return;
         }
         if (msg.type === 'state') {
-          /* نُبلّغ دائماً (حتى صدى الذات) — سيرفر Java يرقّم الحالة مركزياً،
-             والواجهة تتجاهل صداها لكنها تحفظ رقمها التسلسلي المعتمد */
+          /* Echoes confirm a repaired state write and permit a future one-shot repair. */
+          const state = msg.state || {};
+          if (self._membershipRepairAttempted &&
+              (msg.sender === self.meta.clientId || state.updatedBy === self.meta.clientId)) {
+            self._membershipRepairAttempted = false;
+            self._membershipRepairStateSig = null;
+          }
           return self.emit('state', msg.state);
         }
         if (msg.type === 'chat') {
@@ -244,7 +265,19 @@
         if (msg.type === 'queue') return self.emit('queue', msg.items || []);
         if (msg.type === 'settings') return self.emit('settings', msg);
         if (msg.type === 'system') return self.emit('system', msg);
-        if (msg.type === 'error') return self.emit('error', Object.assign({ permission: msg.code === 'permission' }, msg));
+        if (msg.type === 'error') {
+          const stateFailure = msg.action === 'state' ||
+            (msg.code === 'permission' && /انضم إلى الغرفة أولاً/.test(String(msg.message || '')));
+          if (stateFailure && !self._closedByUser && !self._membershipRepairAttempted && ws.readyState === 1) {
+            self._membershipRepairAttempted = true;
+            self._pendingMembershipState = self._lastState || msg.state || null;
+            self._membershipRepairStateSig = self._pendingMembershipState
+              ? U.stateSig(self._pendingMembershipState) : null;
+            self._send(self._joinPayload());
+            return;
+          }
+          return self.emit('error', Object.assign({ permission: msg.code === 'permission' }, msg));
+        }
       };
 
       ws.onclose = () => {
@@ -286,6 +319,17 @@
     if (this.ws && this.ws.readyState === 1) this.ws.send(JSON.stringify(obj));
   };
   WsTransport.prototype.publishState = function (state) {
+    this._lastState = state;
+    if (this._pendingMembershipState) {
+      /* Coalesce newer user changes while the automatic rejoin is in flight. */
+      this._pendingMembershipState = state;
+      return;
+    }
+    const sig = U.stateSig(state);
+    if (this._membershipRepairAttempted && sig !== this._membershipRepairStateSig) {
+      this._membershipRepairAttempted = false;
+      this._membershipRepairStateSig = null;
+    }
     this._send({ type: 'state', room: this.roomId, state });
   };
   WsTransport.prototype.setMemberRole = function (clientId, role) {
@@ -341,6 +385,7 @@
     this._controlMode = 'everyone'; // retained only for protocol compatibility
     this._pendingState = null;
     this._pendingWrite = null;
+    this._membershipRepairAttempted = false;
     this._pendingChats = [];
     this._sendingChat = false;
     this._msgField = null;       /* عمود نصّ الرسالة الفعلي في الجدول (body عادةً) */
@@ -970,6 +1015,13 @@
     ws.onerror = () => { try { ws.close(); } catch (e) { self._scheduleRealtimeReconnect(); } };
   };
 
+  function isControlMembershipDenied(err) {
+    if (!err) return false;
+    const code = String(err.code || (err.body && err.body.code) || '');
+    const message = String((err.body && err.body.message) || err.message || '');
+    return code === '42501' || /انضم إلى الغرفة أولاً للتحكم بالمشاهدة|join the room first to control playback/i.test(message);
+  }
+
   SupabaseTransport.prototype.publishState = function (state, options) {
     this._pendingState = state;
     return this._flushPendingState(options || {});
@@ -981,13 +1033,33 @@
     if (this._pendingWrite) return this._pendingWrite;
     const state = this._pendingState;
     const sig = U.stateSig(state);
-    this._pendingWrite = this._rpc('wt_apply_room_state', {
+    const stateArgs = {
       p_room_id: this.roomId,
       p_client_id: this.meta.clientId,
       p_member_token: this.meta.memberToken || this.meta.ownerToken,
       p_state: state
-    }, { keepalive: !!options.keepalive }).then(accepted => {
+    };
+    this._pendingWrite = this._rpc('wt_apply_room_state', stateArgs, { keepalive: !!options.keepalive })
+      .catch(err => {
+        const permission = isControlMembershipDenied(err);
+        if (!permission || self._membershipRepairAttempted || self._closedByUser) throw err;
+        self._membershipRepairAttempted = true;
+        /* Re-register this same member token once: transient joins/recovery can leave
+           a room visible locally before the server has recorded the member secret. */
+        return self._rpc('wt_join_room', {
+          p_room_id: self.roomId,
+          p_client_id: self.meta.clientId,
+          p_member_token: self.meta.memberToken || self.meta.ownerToken,
+          p_display_name: self.meta.name || 'مشارك'
+        }).then(join => {
+          if (!join || join.found === false) throw err;
+          if (join.role) self.role = join.role;
+          if (Array.isArray(join.members)) self.emit('roles', join.members);
+          return self._rpc('wt_apply_room_state', stateArgs, { keepalive: !!options.keepalive });
+        });
+      }).then(accepted => {
       if (self._pendingState && U.stateSig(self._pendingState) === sig) self._pendingState = null;
+      self._membershipRepairAttempted = false;
       self._lastStateSig = U.stateSig(accepted || state);
       self._restConnected = true;
       self.connected = true;
@@ -996,7 +1068,7 @@
       return accepted || state;
     }).catch(err => {
       const d = (err && err.diag) || classifyError(err);
-      const permission = err && (err.status === 401 || err.status === 403 || err.code === '42501');
+      const permission = isControlMembershipDenied(err);
       if (permission) {
         self._pendingState = null;
         self._roomSnapshot().then(snapshot => {
@@ -1008,7 +1080,11 @@
           }).catch(() => { });
       } else { self.degraded = true; self._scheduleRecovery(); }
       self.emit('error', {
-        message: permission ? 'لا تملك صلاحية التحكم في هذه الغرفة' : 'تتم إعادة محاولة حفظ التغيير تلقائياً',
+        message: permission
+          ? (self._membershipRepairAttempted
+            ? 'تعذّر تثبيت عضويتك للتحكم. لا يحتاج التحكم إلى موافقة المنظّم؛ أعد تنفيذ docs/sql/01-bootstrap.sql و docs/sql/04-room-management.sql في Supabase ثم أعد الدخول.'
+            : 'تعذّر التحقق من عضويتك في هذه الغرفة')
+          : 'تتم إعادة محاولة حفظ التغيير تلقائياً',
         permission: !!permission, transient: !permission, diag: d
       });
       throw err;

@@ -22,6 +22,7 @@ const t = (name, cond, extra = '') => {
 };
 
 const css = fs.readFileSync(path.join(base, 'assets/css/app.css'), 'utf8');
+const roomJs = fs.readFileSync(path.join(base, 'assets/js/room.js'), 'utf8');
 const roomHtml = fs.readFileSync(path.join(base, 'room.html'), 'utf8');
 const indexHtml = fs.readFileSync(path.join(base, 'index.html'), 'utf8');
 const authHtml = fs.readFileSync(path.join(base, 'auth.html'), 'utf8');
@@ -91,6 +92,10 @@ t('الدراور خارج تدفّق المحتوى (ليس داخل #roomMain)
 t('لوحة المحادثة (#chat) داخل فقاعة الدردشة في #roomMain', !!chatEl && !!chatWidgetEl && insideOf(chatEl, 'chatWidget') && insideOf(chatEl, 'roomMain'));
 t('فقاعة الدردشة دائرية ومهيأة للتحريك', !!chatFabEl && chatFabEl.classes.includes('chat-fab') &&
   (chatFabEl.attrs['aria-keyshortcuts'] || '').includes('Alt+Arrow'));
+t('خيارات التحكم بالحجم والارتفاع والعرض موجودة للمحادثة',
+  ['chatBubbleSize', 'chatPanelWidth', 'chatPanelHeight', 'chatLayoutReset'].every(id => !!findById(roomTree, id)));
+t('رأس الدردشة ومقبضها مهيآن لتحريك النافذة وتغيير حجمها',
+  !!findById(roomTree, 'chatDragHandle') && !!findById(roomTree, 'chatResizeHandle'));
 /* لوحة الرسائل عائمة: عنصرها لا يضيف ارتفاعاً إلى تخطيط المشغّل. */
 const roomMainEl = findById(roomTree, 'roomMain');
 const siblings = roomMainEl.children.filter(c => c.id || c.classes.length);
@@ -451,6 +456,12 @@ for (const v of VIEWPORTS) {
   /* الأب الحقيقي لعنصر الوقت (span.vc__times) من الشجرة */
 
   const ctx = ctxOf(VIEWPORTS[1]);
+  const chatFabDisplay = val(chatFabEl, 'display', ctx);
+  t('فقاعة الغرفة مرئية دائماً على الهاتف والحاسوب', chatFabDisplay === 'grid' &&
+    /visibility:\s*visible\s*!important/.test(css) && /opacity:\s*1\s*!important/.test(css), chatFabDisplay);
+  t('حقل الكتابة يبقى أسفل نافذة المحادثة وثابتاً عند تكيف لوحة المفاتيح',
+    /\.room-body #chat \.chat__foot\s*\{[^}]*flex:\s*0 0 auto/s.test(css) &&
+    /visualViewport/.test(roomJs) && /chatInput\.addEventListener\('focus'/.test(roomJs));
   const tapChecks = [
     ['زر التشغيل المركزي', 'centerPlayBtn', ['width', 'height'], 44],
     ['زر ملء الشاشة', 'videoFullscreenBtn', ['width', 'height'], 44],

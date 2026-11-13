@@ -58,6 +58,10 @@ function makeWsServer() {
       sock.readyState = 3;
       sock.onclose && sock.onclose({});
     },
+    evictMembership(sock) {
+      const r = sock && sock.attrs.room ? rooms.get(sock.attrs.room) : null;
+      if (r) r.members.delete(sock); // Simulate stale server membership without closing the WebSocket.
+    },
     receive(sock, text) {
       let msg; try { msg = JSON.parse(text); } catch (e) { return; }
       const roomId = String(msg.room || sock.attrs.room || '?').toUpperCase();
@@ -381,6 +385,17 @@ async function testWebSocket() {
   const viewerPublish = await guest.sandbox.WTRoom.publish({ force: true });
   await wait(100);
   t('ws: المشاهد المنضم يتحكم بالمشاهدة دون ترقية دوره', !!viewerPublish && Math.round(host.sandbox.WTRoom.state.pos) === 300 && guest.sandbox.WTRoom.session.role === 'viewer', 'host=' + host.sandbox.WTRoom.state.pos);
+
+  const viewerTransport = guest.sandbox.WTRoom.session.transport;
+  const permissionErrors = [];
+  viewerTransport.on('error', error => permissionErrors.push(error));
+  server.evictMembership(viewerTransport.ws);
+  findVideo(guest).currentTime = 350;
+  await guest.sandbox.WTRoom.publish({ force: true });
+  await wait(120);
+  t('ws: استعادة العضوية تلقائياً بعد رفض مؤقت للحالة بلا طلب صلاحية',
+    Math.round(host.sandbox.WTRoom.state.pos) === 350 && guest.sandbox.WTRoom.session.role === 'viewer' && permissionErrors.length === 0,
+    'host=' + host.sandbox.WTRoom.state.pos + ', errors=' + permissionErrors.length);
 
   /* يمكن للمشارك إضافة عنصر وتشغيله؛ الأدوار تبقى لإدارة الغرفة لا لقفل المشاهدة. */
   await guest.sandbox.WTRoom.session.transport.addQueueItem({ url: VIDEO_B, title: 'الفيديو التالي' });

@@ -38,7 +38,9 @@ const run = async () => {
     'progressBar', 'progressFill', 'progressBuffer', 'progressKnob', 'progressTip',
     'addVideoBtn', 'messagesBtn', 'messagesCount', 'playlistBtn', 'playlistCount',
     'changeBar', 'newUrl', 'newTitle', 'applyUrlBtn', 'cancelUrlBtn', 'roomMain', 'chatWidget', 'chatFab',
-    'chatFabCount', 'chatCloseBtn', 'chat', 'chatBody', 'chatEmpty', 'chatCount', 'clearChatBtn', 'chatForm', 'chatInput', 'chatSend',
+    'chatFabCount', 'chatCloseBtn', 'chat', 'chatDragHandle', 'chatViewBtn', 'chatViewControls',
+    'chatBubbleSize', 'chatBubbleSizeValue', 'chatPanelWidth', 'chatPanelWidthValue', 'chatPanelHeight', 'chatPanelHeightValue',
+    'chatLayoutReset', 'chatResizeHandle', 'chatBody', 'chatEmpty', 'chatCount', 'clearChatBtn', 'chatForm', 'chatInput', 'chatSend',
     'typing', 'messagesIcon', 'playlistModal', 'playlistCloseBtn', 'queueList', 'queueEmpty',
     'sbMeBtn', 'qrModal', 'qrBox', 'qrUrl', 'qrClose', 'qrCopy', 'meModal', 'meClose',
     'meAvatar', 'meName', 'meMail', 'meNameInput', 'meSave', 'meSignout', 'diagModal',
@@ -46,6 +48,16 @@ const run = async () => {
   ];
   const missing = needed.filter(id => !byId.has(id));
   t('كل عناصر الواجهة الجديدة موجودة', missing.length === 0, missing.join(','));
+  t('فقاعة الدردشة الدائرية ظاهرة فور دخول الغرفة دون فتح اللوحة',
+    !byId.get('room').hidden && !byId.get('chatFab').hidden && byId.get('chatFab').style.display === 'grid' &&
+    byId.get('chatFab').getAttribute('aria-expanded') === 'false' && byId.get('chat').hidden);
+  const savedRole = sandbox.WTRoom.session.role;
+  sandbox.WTRoom.session.role = 'viewer';
+  t('المشارك المنضم يتحكم بالمشاهدة دون طلب موافقة أو ترقية دوره',
+    sandbox.WTRoom.canControl() && !byId.get('centerPlayBtn').disabled);
+  sandbox.WTRoom.session.role = savedRole;
+  t('نص الغرفة يوضح أن التحكم متاح لكل مشارك منضم بلا طلب صلاحية',
+    /أي مشارك منضم بدء عرضه للجميع دون طلب صلاحية/.test(html) && /لا يحتاج التحكم بالمشاهدة إلى موافقة المنظّم/.test(html));
 
   t('إزالة العنوان والشعار وأزرار الفيديو الزائدة وشريط الإيموجي العلوي', !/id="(roomTitle|collapseBtn|backToVideoBtn|reactRow)"|rtopbar__brand/.test(html));
 
@@ -171,6 +183,43 @@ const run = async () => {
   byId.get('chatFab').dispatch('click', {});
   t('فقاعة الدردشة تفتح المحادثة', sandbox.WTRoom.session.chatOpen && !byId.get('chat').hidden &&
     byId.get('chatFab').getAttribute('aria-expanded') === 'true');
+  byId.get('chatInput').value = 'مسودة محفوظة أثناء إغلاق الفقاعة';
+  byId.get('chatInput').dispatch('input', {});
+  byId.get('chatFab').dispatch('click', {});
+  t('إغلاق الفقاعة لا يمسح نص الرسالة الجاري كتابته', !sandbox.WTRoom.session.chatOpen && byId.get('chat').hidden &&
+    byId.get('chatInput').value === 'مسودة محفوظة أثناء إغلاق الفقاعة' &&
+    sandbox.sessionStorage.getItem('wt:chat-draft:ABC123') === 'مسودة محفوظة أثناء إغلاق الفقاعة');
+  byId.get('chatFab').dispatch('click', {});
+  t('إعادة فتح الدردشة تُبقي المسودة كما هي', !byId.get('chat').hidden && byId.get('chatInput').value === 'مسودة محفوظة أثناء إغلاق الفقاعة');
+  byId.get('chatInput').value = '';
+  byId.get('chatInput').dispatch('input', {});
+  byId.get('chatViewBtn').dispatch('click', {});
+  t('إعدادات حجم الدردشة قابلة للفتح', !byId.get('chatViewControls').hidden && byId.get('chatViewBtn').getAttribute('aria-expanded') === 'true');
+  byId.get('chatBubbleSize').value = '78';
+  byId.get('chatBubbleSize').dispatch('input', {});
+  t('حجم الفقاعة قابل للتعديل من الإعدادات', byId.get('chatFab').style.width === '78px' && byId.get('chatWidget').style.width === '78px');
+  byId.get('chatPanelWidth').value = '480';
+  byId.get('chatPanelWidth').dispatch('input', {});
+  byId.get('chatPanelHeight').value = '520';
+  byId.get('chatPanelHeight').dispatch('input', {});
+  t('عرض وارتفاع لوحة الرسائل قابلان للتعديل', byId.get('chat').style.width === '480px' && byId.get('chat').style.height === '520px');
+  byId.get('chatDragHandle').dispatch('pointerdown', { clientX: 10, clientY: 10, pointerId: 9, button: 0 });
+  byId.get('chatDragHandle').dispatch('pointermove', { clientX: 38, clientY: 42, pointerId: 9 });
+  byId.get('chatDragHandle').dispatch('pointerup', { clientX: 38, clientY: 42, pointerId: 9 });
+  t('رأس لوحة الرسائل قابل للسحب لحفظ موضعها', byId.get('chat').style.left === '28px' && byId.get('chat').style.top === '32px');
+  const panel = byId.get('chat');
+  panel.getBoundingClientRect = () => {
+    const left = parseFloat(panel.style.left) || 0, top = parseFloat(panel.style.top) || 0;
+    const width = parseFloat(panel.style.width) || 100, height = parseFloat(panel.style.height) || 22;
+    return { left, top, width, height, right: left + width, bottom: top + height };
+  };
+  byId.get('chatResizeHandle').dispatch('pointerdown', { clientX: 0, clientY: 0, pointerId: 10, button: 0 });
+  byId.get('chatResizeHandle').dispatch('pointermove', { clientX: 20, clientY: 20, pointerId: 10 });
+  byId.get('chatResizeHandle').dispatch('pointerup', { clientX: 20, clientY: 20, pointerId: 10 });
+  t('مقبض السحب يغيّر حجم لوحة الرسائل', byId.get('chat').style.width === '500px' && byId.get('chat').style.height === '540px');
+  byId.get('chatLayoutReset').dispatch('click', {});
+  t('إعادة الإعدادات تعيد حجم الفقاعة واللوحة', byId.get('chatFab').style.width === '64px' && byId.get('chat').style.width === '400px' &&
+    byId.get('chat').style.height === '620px');
   byId.get('chatFab').dispatch('click', {});
   t('الفقاعة نفسها تغلق اللوحة', !sandbox.WTRoom.session.chatOpen && byId.get('chat').hidden);
   sandbox.WTRoom.session.transport.emit('chat', { id: 'unread-1', client: 'remote-unread', name: 'مشارك', text: 'رسالة جديدة', kind: 'chat' });
