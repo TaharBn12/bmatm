@@ -34,7 +34,7 @@ const run = async () => {
     'copyLinkBtn', 'shareBtn', 'qrBtn', 'diagBtn', 'leaveBtn', 'drawerOpenBtn', 'drawerCloseBtn',
     'drawerScrim', 'roomDrawer', 'organizerList', 'organizerCount', 'membersList', 'membersCount',
     'sideMembersCount', 'stage', 'player', 'playerPlaceholder', 'ctrlbar', 'videoFullscreenBtn',
-    'centerPlayBtn',
+    'videoZoomControls', 'videoZoomOut', 'videoZoomLevel', 'videoZoomIn', 'centerPlayBtn',
     'progressBar', 'progressFill', 'progressBuffer', 'progressKnob', 'progressTip',
     'addVideoBtn', 'messagesBtn', 'messagesCount', 'playlistBtn', 'playlistCount',
     'changeBar', 'newUrl', 'newTitle', 'applyUrlBtn', 'cancelUrlBtn', 'roomMain', 'chatWidget', 'chatFab',
@@ -77,7 +77,8 @@ const run = async () => {
   const chatTag = mainSlice.indexOf('<section class="chat');
   const between = mainSlice.slice(mainSlice.indexOf('id="mediaShell"'), widgetTag);
   /* كل ما داخل بطاقة المشغّل مسموح؛ فقاعة الدردشة تبدأ بعدها كعنصر عائم مستقل. */
-  const allowedIds = new Set(['mediaShell', 'stage', 'player', 'playerPlaceholder', 'centerPlayBtn', 'videoFullscreenBtn', 'clickLayer',
+  const allowedIds = new Set(['mediaShell', 'stage', 'player', 'playerPlaceholder', 'centerPlayBtn', 'videoFullscreenBtn',
+    'videoZoomControls', 'videoZoomOut', 'videoZoomLevel', 'videoZoomIn', 'clickLayer',
     'ctrlbar', 'videoFullscreenBtn', 'iconPlay', 'iconPause', 'curTime', 'durTime', 'progressBar', 'progressBuffer',
     'progressFill', 'progressKnob', 'progressTip', 'muteBtn', 'iconSound', 'iconMuted']);
   const strayIds = [...between.matchAll(/id="([^"]+)"/g)].map(m => m[1]).filter(id => !allowedIds.has(id));

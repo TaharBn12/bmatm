@@ -32,7 +32,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800;900&family=Grand+Hotel&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="assets/css/app.css?v=4.5.0">
+  <link rel="stylesheet" href="assets/css/app.css?v=4.6.0">
   <link rel="stylesheet" href="assets/css/media.css?v=3.2.0">
   <link rel="stylesheet" href="assets/css/suggest.css?v=1.1.0">
   <link rel="stylesheet" href="assets/css/site.css?v=1.0.0">
@@ -176,7 +176,17 @@
             <span class="ic" data-icon="play" data-size="30"></span>
           </button>
 
-          <button class="video-fullscreen" id="videoFullscreenBtn" type="button" aria-label="تكبير الفيديو" title="تكبير الفيديو">
+          <div class="video-zoom-controls" id="videoZoomControls" role="group" aria-label="تكبير محتوى الفيديو">
+            <button class="video-zoom-btn" id="videoZoomOut" type="button" aria-label="تصغير الفيديو" title="تصغير الفيديو" disabled>
+              <span class="ic" data-icon="minus" data-size="18"></span>
+            </button>
+            <button class="video-zoom-level" id="videoZoomLevel" type="button" aria-label="إعادة التكبير إلى الحجم الأصلي" title="إعادة التكبير إلى الحجم الأصلي" disabled>100%</button>
+            <button class="video-zoom-btn" id="videoZoomIn" type="button" aria-label="تكبير الفيديو" title="تكبير الفيديو" disabled>
+              <span class="ic" data-icon="plus" data-size="18"></span>
+            </button>
+          </div>
+
+          <button class="video-fullscreen" id="videoFullscreenBtn" type="button" aria-label="ملء الشاشة" title="ملء الشاشة">
             <span class="ic" data-icon="expand" data-size="22"></span>
           </button>
 
@@ -414,7 +424,7 @@
   <!-- ===== سكربتات ===== -->
   <script src="assets/vendor/hls.min.js?v=3.0.0"></script>
   <script src="assets/vendor/qrcode.min.js?v=3.0.0"></script>
-  <script src="assets/js/config.js?v=3.8.1"></script>
+  <script src="assets/js/config.js?v=3.8.2"></script>
   <script src="assets/js/util.js?v=3.2.0"></script>
   <script src="assets/js/server-probe.js?v=1.5.0"></script>
   <script src="assets/js/icons.js?v=3.2.0"></script>
@@ -426,7 +436,7 @@
   <script src="assets/js/media-preview.js?v=1.0.0"></script>
   <script src="assets/js/upnext.js?v=1.3.0"></script>
   <script src="assets/js/media.js?v=3.1.5"></script>
-  <script src="assets/js/room.js?v=3.8.0"></script>
+  <script src="assets/js/room.js?v=3.8.2"></script>
   <script src="assets/js/site.js?v=1.0.2"></script>
 </body>
 </html>

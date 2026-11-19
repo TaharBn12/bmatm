@@ -623,9 +623,29 @@ public final class RoomStore implements WebSocketServer.Listener {
                 conn.send(Json.map("type", "error", "code", "permission", "action", "state", "message", "انضم إلى الغرفة أولاً", "state", r.state));
                 return;
             }
+            long currentRev = r.rev.get();
+            Object rawRevision = state.get("rev");
+            long clientRev = rawRevision instanceof Number ? ((Number) rawRevision).longValue() : -1L;
+            if (clientRev < 0 && r.state != null && !r.state.isEmpty()) {
+                Map<String, Object> canonical = new LinkedHashMap<>(r.state);
+                canonical.put("authoritative", Boolean.TRUE);
+                conn.send(Json.map("type", "state", "state", canonical));
+                return;
+            }
+            if (clientRev < 0) clientRev = currentRev + 1;
+            String currentBy = Json.str(r.state, "updatedBy", Json.str(r.state, "hostId", ""));
+            if (clientRev < currentRev || (clientRev == currentRev && selfId.compareTo(currentBy) <= 0)) {
+                if (r.state != null) {
+                    Map<String, Object> canonical = new LinkedHashMap<>(r.state);
+                    canonical.put("authoritative", Boolean.TRUE);
+                    conn.send(Json.map("type", "state", "state", canonical));
+                }
+                return;
+            }
             long rev = r.rev.incrementAndGet();
             long now = System.currentTimeMillis();
             stored = new LinkedHashMap<>(state);
+            stored.remove("authoritative");
             stored.put("rev", rev);
             stored.put("t", now);
             stored.put("hostId", selfId);
