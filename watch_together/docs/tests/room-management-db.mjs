@@ -5,6 +5,7 @@ import { fixtureDatabase, A, B } from './social/fixture-db.mjs';
 
 const { db, as } = await fixtureDatabase(false);
 const migration = readFileSync(new URL('../sql/04-room-management.sql', import.meta.url), 'utf8');
+const stateOrderingMigration = readFileSync(new URL('../sql/13-room-state-ordering.sql', import.meta.url), 'utf8');
 let checks = 0;
 const rpc = async (user, name, args = {}) => {
   assert.match(name, /^wt_[a-z_]+$/);
@@ -26,6 +27,8 @@ const count = async (table, roomId) => (await db.query(
 
 try {
   await db.exec(migration);
+  checks++;
+  await db.exec(stateOrderingMigration);
   checks++;
   const roomId = 'PRIV01';
   const ownerToken = 'a'.repeat(64);
@@ -68,10 +71,20 @@ try {
   checks += 2;
   const accepted = await rpc(null, 'wt_apply_room_state', {
     p_room_id: roomId, p_client_id: 'viewer-client', p_member_token: memberToken,
-    p_state: { url: 'https://media.example/allowed.mp4', playing: true, pos: 15 }
+    p_state: { rev: 1, url: 'https://media.example/allowed.mp4', playing: true, pos: 15, authoritative: true }
   });
   assert.equal(accepted.url, 'https://media.example/allowed.mp4');
   assert.equal(accepted.updatedBy, 'viewer-client');
+  assert.equal(accepted.rev, 1, 'the server advances the current revision only for an accepted snapshot');
+  assert.equal(Object.hasOwn(accepted, 'authoritative'), false, 'clients cannot spoof the server-only authoritative marker');
+  const stalePause = await rpc(null, 'wt_apply_room_state', {
+    p_room_id: roomId, p_client_id: 'viewer-second-tab', p_member_token: secondTabToken,
+    p_state: { rev: 0, url: 'https://media.example/allowed.mp4', playing: false, pos: 15 }
+  });
+  assert.equal(stalePause.rev, accepted.rev, 'a stale tab cannot advance the room revision');
+  assert.equal(stalePause.playing, true, 'a stale pause cannot override the newer playing state');
+  assert.equal(stalePause.updatedBy, accepted.updatedBy, 'stale snapshots return the canonical server state');
+  checks += 6;
   await denied(() => rpc(null, 'wt_apply_room_state', {
     p_room_id: roomId, p_client_id: 'not-joined', p_member_token: 'z'.repeat(64),
     p_state: { url: 'https://media.example/forbidden.mp4', playing: true, pos: 0 }
@@ -109,7 +122,9 @@ try {
 
   await db.exec(migration);
   checks++;
-  console.log(`Room management PostgreSQL: ${checks} checks passed (private listing, creator-bound settings/deletion, invite snapshot, shared-control invariant, private reports, cascade cleanup and repeatable migration)`);
+  await db.exec(stateOrderingMigration);
+  checks++;
+  console.log(`Room management PostgreSQL: ${checks} checks passed (private listing, creator-bound settings/deletion, invite snapshot, stale playback rejection, shared-control invariant, private reports, cascade cleanup and repeatable migration)`);
 } finally {
   await db.close();
 }

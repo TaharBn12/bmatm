@@ -330,6 +330,9 @@ declare
   v_role text;
   v_name text;
   v_rev bigint;
+  v_client_rev bigint;
+  v_current_rev bigint;
+  v_current_by text;
   v_state jsonb;
   v_now_ms bigint;
 begin
@@ -356,9 +359,28 @@ begin
     raise exception 'انضم إلى الغرفة أولاً للتحكم بالمشاهدة' using errcode = '42501';
   end if;
 
-  v_rev := coalesce(nullif(v_room.state->>'rev', '')::bigint, 0) + 1;
+  v_current_rev := coalesce(nullif(v_room.state->>'rev', '')::bigint, 0);
+  v_current_by := coalesce(v_room.state->>'updatedBy', v_room.state->>'hostId', '');
+  if coalesce(p_state->>'rev', '') ~ '^[0-9]{1,18}$' then
+    v_client_rev := (p_state->>'rev')::bigint;
+  else
+    v_client_rev := null;
+  end if;
+
+  /* Reject stale snapshots instead of letting a delayed tab overwrite newer play/pause state.
+     Equal revisions are concurrent; use the same stable client-id tie-break as WTUtil.stateWins. */
+  if v_client_rev is null then
+    if coalesce(v_room.state, '{}'::jsonb) <> '{}'::jsonb then return v_room.state; end if;
+    v_client_rev := v_current_rev + 1;
+  end if;
+  if v_client_rev < v_current_rev
+     or (v_client_rev = v_current_rev and p_client_id <= v_current_by) then
+    return v_room.state;
+  end if;
+
+  v_rev := v_current_rev + 1;
   v_now_ms := floor(extract(epoch from clock_timestamp()) * 1000)::bigint;
-  v_state := p_state || jsonb_build_object(
+  v_state := (p_state - 'authoritative') || jsonb_build_object(
     'rev', v_rev, 't', v_now_ms, 'updatedBy', p_client_id,
     'updatedByName', coalesce(nullif(v_name, ''), p_state->>'updatedByName', v_room.host_name, 'مشارك')
   );

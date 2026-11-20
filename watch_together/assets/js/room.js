@@ -172,6 +172,7 @@
     roomMain: $('roomMain'), mediaShell: $('mediaShell'),
     stage: $('stage'), player: $('player'), placeholder: $('playerPlaceholder'), ctrlbar: $('ctrlbar'),
     videoFullscreen: $('videoFullscreenBtn'),
+    videoZoomIn: $('videoZoomIn'), videoZoomOut: $('videoZoomOut'), videoZoomLevel: $('videoZoomLevel'),
     centerPlay: $('centerPlayBtn'),
     progressBar: $('progressBar'), progressFill: $('progressFill'), progressBuffer: $('progressBuffer'),
     progressKnob: $('progressKnob'), progressTip: $('progressTip'),
@@ -203,10 +204,111 @@
   el.codeText.textContent = roomId;
   document.title = 'غرفة ' + roomId + ' — WatchTogether';
 
+  /* تكبير محلي لسطح الفيديو فقط؛ لا يدخل في حالة الغرفة ولا يُزامَن مع الآخرين. */
+  const playerZoom = { scale: 1, x: 0, y: 0, drag: null, pointers: new Map(), pinch: null, suppressClickUntil: 0 };
+  const PLAYER_ZOOM_MIN = 1;
+  const PLAYER_ZOOM_MAX = 3;
+  const PLAYER_ZOOM_STEP = 0.25;
+  function activePlayerFrame() {
+    if (!el.player) return null;
+    /* The YouTube IFrame API may replace its placeholder div with a bare iframe. */
+    return el.player.querySelector('.player__frame') || el.player.querySelector('iframe');
+  }
+  function zoomViewport() {
+    const rect = el.player && el.player.getBoundingClientRect ? el.player.getBoundingClientRect() : null;
+    return {
+      rect,
+      width: Math.max(0, Number(el.player && el.player.clientWidth) || Number(rect && rect.width) || 0),
+      height: Math.max(0, Number(el.player && el.player.clientHeight) || Number(rect && rect.height) || 0)
+    };
+  }
+  function clampPlayerPan() {
+    const size = zoomViewport();
+    const maxX = size.width * (playerZoom.scale - 1) / 2;
+    const maxY = size.height * (playerZoom.scale - 1) / 2;
+    playerZoom.x = Math.max(-maxX, Math.min(maxX, playerZoom.x));
+    playerZoom.y = Math.max(-maxY, Math.min(maxY, playerZoom.y));
+    if (playerZoom.scale <= PLAYER_ZOOM_MIN) playerZoom.x = playerZoom.y = 0;
+  }
+  function updatePlayerZoomControls() {
+    const ready = !!activePlayerFrame() && !!(player && player.isReady && player.isReady());
+    const scale = playerZoom.scale;
+    if (el.videoZoomLevel) {
+      el.videoZoomLevel.textContent = Math.round(scale * 100) + '%';
+      el.videoZoomLevel.disabled = !ready || scale <= PLAYER_ZOOM_MIN;
+      el.videoZoomLevel.setAttribute('aria-label', scale <= PLAYER_ZOOM_MIN
+        ? 'التكبير الحالي 100 بالمئة' : 'إعادة التكبير إلى الحجم الأصلي؛ الحالي ' + Math.round(scale * 100) + ' بالمئة');
+      el.videoZoomLevel.setAttribute('title', scale <= PLAYER_ZOOM_MIN
+        ? 'التكبير الحالي 100%' : 'إعادة التكبير إلى 100%');
+    }
+    if (el.videoZoomIn) el.videoZoomIn.disabled = !ready || scale >= PLAYER_ZOOM_MAX;
+    if (el.videoZoomOut) el.videoZoomOut.disabled = !ready || scale <= PLAYER_ZOOM_MIN;
+  }
+  function renderPlayerZoom() {
+    const frame = activePlayerFrame();
+    clampPlayerPan();
+    if (frame) {
+      frame.style.transform = playerZoom.scale <= PLAYER_ZOOM_MIN
+        ? ''
+        : 'translate3d(' + (Math.round(playerZoom.x * 100) / 100) + 'px, ' +
+          (Math.round(playerZoom.y * 100) / 100) + 'px, 0) scale(' + playerZoom.scale + ')';
+    }
+    if (el.player) el.player.classList.toggle('is-zoomed', playerZoom.scale > PLAYER_ZOOM_MIN);
+    updatePlayerZoomControls();
+  }
+  function setPlayerZoom(nextScale, anchorX, anchorY) {
+    if (!activePlayerFrame() || !player || !player.isReady()) return false;
+    const next = Math.max(PLAYER_ZOOM_MIN, Math.min(PLAYER_ZOOM_MAX,
+      Math.round((Number(nextScale) || PLAYER_ZOOM_MIN) * 100) / 100));
+    if (Math.abs(next - playerZoom.scale) < 0.001) return false;
+    const ratio = next / playerZoom.scale;
+    const size = zoomViewport();
+    if (Number.isFinite(anchorX) && Number.isFinite(anchorY) && size.rect) {
+      const localX = anchorX - (size.rect.left + size.rect.width / 2);
+      const localY = anchorY - (size.rect.top + size.rect.height / 2);
+      playerZoom.x = localX - (localX - playerZoom.x) * ratio;
+      playerZoom.y = localY - (localY - playerZoom.y) * ratio;
+    } else {
+      playerZoom.x *= ratio;
+      playerZoom.y *= ratio;
+    }
+    playerZoom.scale = next;
+    renderPlayerZoom();
+    return true;
+  }
+  function stepPlayerZoom(direction, anchorX, anchorY) {
+    return setPlayerZoom(playerZoom.scale + (direction < 0 ? -PLAYER_ZOOM_STEP : PLAYER_ZOOM_STEP), anchorX, anchorY);
+  }
+  function resetPlayerZoom() {
+    playerZoom.scale = PLAYER_ZOOM_MIN;
+    playerZoom.x = playerZoom.y = 0;
+    playerZoom.drag = null;
+    playerZoom.pointers.clear();
+    playerZoom.pinch = null;
+    if (el.player) el.player.classList.remove('is-panning');
+    renderPlayerZoom();
+  }
+  function zoomGestureTarget(target) {
+    return !!(target && target.closest && target.closest(
+      '.video-zoom-controls, .video-fullscreen, .vcenter, .player__overlay, .player__placeholder'));
+  }
+  function captureZoomPointer(id) {
+    try { if (el.player && el.player.setPointerCapture) el.player.setPointerCapture(id); } catch (_) { }
+  }
+  function distanceBetween(a, b) {
+    const dx = a.x - b.x, dy = a.y - b.y;
+    return Math.sqrt(dx * dx + dy * dy);
+  }
+  function startPlayerPan(id, point) {
+    playerZoom.drag = { id, x: point.x, y: point.y,
+      panX: playerZoom.x, panY: playerZoom.y, moved: false };
+  }
+
   /* ============================== المشغّل ============================== */
   const player = new window.WTPlayer.UnifiedPlayer(el.player, {
     onReady: () => {
       if (el.placeholder) { el.placeholder.remove(); el.placeholder = null; }
+      renderPlayerZoom();
       session.applyingRemote = true;
       applyState(st, { initial: true });
       setTimeout(() => { session.applyingRemote = false; }, 350);
@@ -800,15 +902,33 @@
     session.controllerName = session.name;
 
     const snapshot = Object.assign({}, st);
+    const snapshotSig = U.stateSig(snapshot);
     const sent = session.transport.publishState(snapshot);
     if (sent && typeof sent.then === 'function') {
       return sent.then((canonical) => {
         const accepted = canonical && canonical.state ? canonical.state : canonical;
         if (accepted && Number.isFinite(+accepted.rev)) {
-          st = normalizeState(accepted);
-          session.revClock = Math.max(session.revClock, st.rev);
-          session.lastAppliedRev = st.rev;
-          session.lastApplied = { rev: st.rev, by: st.updatedBy };
+          const currentSig = U.stateSig(st);
+          const acceptedWins = U.stateWins(accepted, session.lastApplied);
+          const responseMatchesCurrentSend = +accepted.rev === +snapshot.rev &&
+            String(accepted.updatedBy || '') === String(snapshot.updatedBy || '') && currentSig === snapshotSig;
+          if (acceptedWins || responseMatchesCurrentSend) {
+            const changed = currentSig !== U.stateSig(accepted);
+            const previousUrl = st.url;
+            st = normalizeState(accepted);
+            session.revClock = Math.max(session.revClock, st.rev);
+            session.lastAppliedRev = st.rev;
+            session.lastApplied = { rev: st.rev, by: st.updatedBy };
+            session.lastAppliedAt = Date.now();
+            if (st.updatedBy !== session.clientId) session.lastRemoteAt = Date.now();
+            session.controllerName = st.updatedByName || session.controllerName;
+            if (changed && st.url && st.url !== previousUrl) {
+              const parsed = U.parseWatchUrl(st.url);
+              if (parsed) loadVideo(parsed, { autoplay: st.playing, remote: true });
+            } else if (changed) {
+              applyState(st, { initial: false });
+            }
+          }
         }
         session.lastPersistAt = Date.now();
         return true;
@@ -1036,6 +1156,7 @@
     opts = opts || {};
     if (!parsed) { renderPlayerPlaceholder('الرابط غير مدعوم'); return; }
     const version = ++videoLoadVersion;
+    resetPlayerZoom();
     clearAutoplayPrompt();
     session.videoParsed = parsed;
     session.videoTitle = String(opts.title || '').replace(/\s+/g, ' ').trim().slice(0, 180);
@@ -1051,7 +1172,9 @@
       el.ctrlbar.hidden = parsed.kind === 'embed';
       el.player.classList.toggle('is-embed', parsed.kind === 'embed');
       pokeVideoUI();
-      await player.load(parsed, { autoplay: !!opts.autoplay, controls: false });
+      const loading = player.load(parsed, { autoplay: !!opts.autoplay, controls: false });
+      renderPlayerZoom();
+      await loading;
       if (version !== videoLoadVersion) return;
       if (el.placeholder) { el.placeholder.remove(); el.placeholder = null; }
 
@@ -3286,11 +3409,111 @@
     el.player.addEventListener('click', (e) => {
       const t = e.target;
       if (t && t.closest && (t.closest('.vcontrols') || t.closest('.vcenter') || t.closest('.video-fullscreen') ||
-        t.closest('.player__overlay') || t.closest('.player__placeholder'))) return;
+        t.closest('.video-zoom-controls') || t.closest('.player__overlay') || t.closest('.player__placeholder'))) return;
+      if (Date.now() < playerZoom.suppressClickUntil) return;
       const now = Date.now();
       if (now - lastPlayerClick < 320) return;   /* تفادي النقر المزدوج */
       lastPlayerClick = now;
       togglePlay();
+    });
+
+    if (el.videoZoomIn) el.videoZoomIn.addEventListener('click', (event) => {
+      event.preventDefault(); event.stopPropagation(); stepPlayerZoom(1);
+    });
+    if (el.videoZoomOut) el.videoZoomOut.addEventListener('click', (event) => {
+      event.preventDefault(); event.stopPropagation(); stepPlayerZoom(-1);
+    });
+    if (el.videoZoomLevel) el.videoZoomLevel.addEventListener('click', (event) => {
+      event.preventDefault(); event.stopPropagation(); resetPlayerZoom();
+    });
+
+    el.player.addEventListener('wheel', (event) => {
+      if (!event.ctrlKey && !event.metaKey) return;
+      event.preventDefault();
+      stepPlayerZoom(event.deltaY < 0 ? 1 : -1, event.clientX, event.clientY);
+    }, { passive: false });
+
+    /* السحب لتحريك الصورة بعد تكبيرها، والقرص بإصبعين يغيّر مستوى التكبير على الهاتف. */
+    el.player.addEventListener('pointerdown', (event) => {
+      if (!player.isReady() || zoomGestureTarget(event.target)) return;
+      if (event.pointerType !== 'touch' && event.button !== undefined && event.button !== 0) return;
+      const point = { x: Number(event.clientX) || 0, y: Number(event.clientY) || 0 };
+      if (event.pointerType === 'touch') {
+        playerZoom.pointers.set(event.pointerId, point);
+        const touches = Array.from(playerZoom.pointers.entries());
+        if (touches.length >= 2) {
+          const first = touches[0], second = touches[1];
+          const p1 = first[1], p2 = second[1];
+          const distance = Math.max(1, distanceBetween(p1, p2));
+          playerZoom.pinch = {
+            ids: [first[0], second[0]], distance, scale: playerZoom.scale
+          };
+          playerZoom.drag = null;
+          el.player.classList.add('is-panning');
+          captureZoomPointer(first[0]); captureZoomPointer(second[0]);
+          playerZoom.suppressClickUntil = Date.now() + 500;
+          if (event.preventDefault) event.preventDefault();
+          return;
+        }
+      }
+      if (playerZoom.scale > PLAYER_ZOOM_MIN) startPlayerPan(event.pointerId, point);
+    });
+    el.player.addEventListener('pointermove', (event) => {
+      if (event.pointerType === 'touch' && playerZoom.pointers.has(event.pointerId)) {
+        playerZoom.pointers.set(event.pointerId, { x: Number(event.clientX) || 0, y: Number(event.clientY) || 0 });
+      }
+      if (playerZoom.pinch) {
+        const first = playerZoom.pointers.get(playerZoom.pinch.ids[0]);
+        const second = playerZoom.pointers.get(playerZoom.pinch.ids[1]);
+        if (!first || !second) return;
+        const distance = Math.max(1, distanceBetween(first, second));
+        const anchorX = (first.x + second.x) / 2;
+        const anchorY = (first.y + second.y) / 2;
+        setPlayerZoom(playerZoom.pinch.scale * distance / playerZoom.pinch.distance, anchorX, anchorY);
+        playerZoom.suppressClickUntil = Date.now() + 500;
+        if (event.preventDefault) event.preventDefault();
+        return;
+      }
+      const drag = playerZoom.drag;
+      if (!drag || drag.id !== event.pointerId) return;
+      const dx = (Number(event.clientX) || 0) - drag.x;
+      const dy = (Number(event.clientY) || 0) - drag.y;
+      if (!drag.moved && (Math.abs(dx) > 3 || Math.abs(dy) > 3)) {
+        drag.moved = true;
+        el.player.classList.add('is-panning');
+        captureZoomPointer(event.pointerId);
+      }
+      if (!drag.moved) return;
+      playerZoom.x = drag.panX + dx;
+      playerZoom.y = drag.panY + dy;
+      renderPlayerZoom();
+      playerZoom.suppressClickUntil = Date.now() + 450;
+      if (event.preventDefault) event.preventDefault();
+    });
+    const endPlayerZoomGesture = (event) => {
+      const drag = playerZoom.drag;
+      if (drag && drag.id === event.pointerId) {
+        if (drag.moved) playerZoom.suppressClickUntil = Date.now() + 450;
+        playerZoom.drag = null;
+      }
+      playerZoom.pointers.delete(event.pointerId);
+      if (playerZoom.pinch && playerZoom.pinch.ids.includes(event.pointerId)) {
+        playerZoom.pinch = null;
+        playerZoom.suppressClickUntil = Date.now() + 450;
+        const remaining = Array.from(playerZoom.pointers.entries());
+        if (remaining.length === 1 && playerZoom.scale > PLAYER_ZOOM_MIN) {
+          startPlayerPan(remaining[0][0], remaining[0][1]);
+          return;
+        }
+      }
+      if (!playerZoom.drag && !playerZoom.pinch) el.player.classList.remove('is-panning');
+    };
+    el.player.addEventListener('pointerup', endPlayerZoomGesture);
+    el.player.addEventListener('pointercancel', endPlayerZoomGesture);
+    el.player.addEventListener('lostpointercapture', endPlayerZoomGesture);
+    window.addEventListener('resize', () => {
+      clampPlayerPan();
+      renderPlayerZoom();
     });
 
     /* ---- تقديم/ترجيع بمفاتيح الأسهم فقط (لا أزرار في الواجهة) ---- */
@@ -3704,6 +3927,9 @@
       const tag = (e.target.tagName || '').toLowerCase();
       const interactive = ['input', 'textarea', 'select', 'button', 'a', 'summary'].includes(tag) || e.target.isContentEditable;
       if (interactive && e.key !== 'Escape') return;
+      if (e.key === '+' || e.key === '=') { e.preventDefault(); stepPlayerZoom(1); return; }
+      if (e.key === '-' || e.key === '_') { e.preventDefault(); stepPlayerZoom(-1); return; }
+      if (e.key === '0') { e.preventDefault(); resetPlayerZoom(); return; }
       if (e.key === ' ' || e.code === 'Space') { e.preventDefault(); togglePlay(); }
       else if (e.key === 'ArrowLeft') { e.preventDefault(); skip(+10); }
       else if (e.key === 'ArrowRight') { e.preventDefault(); skip(-10); }

@@ -560,6 +560,7 @@ footer a:hover { color: var(--brand-2); }
   overflow: hidden;
   background: #000 radial-gradient(circle at 50% 40%, rgba(197,165,114, .18), transparent 65%);
   border: 1px solid var(--border);
+  touch-action: pan-x pan-y;
 }
 
 .player__frame, .player__video, .player__iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
@@ -2316,6 +2317,36 @@ body.drawer-open { overscroll-behavior: none; }
   .video-fullscreen { width: 44px; height: 44px; }
 }
 .video-fullscreen:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.video-zoom-controls {
+  position: absolute; bottom: 12px; inset-inline-start: 12px; z-index: 15;
+  display: inline-flex; align-items: center; gap: 3px;
+  padding: 4px; border: 1px solid rgba(255,255,255,.24); border-radius: 13px;
+  background: rgba(0,0,0,.66); color: #fff; backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px); user-select: none;
+}
+.video-zoom-btn, .video-zoom-level {
+  height: 36px; border: 0; border-radius: 9px; color: #fff;
+  background: transparent; cursor: pointer; transition: background .16s, color .16s, opacity .16s;
+}
+.video-zoom-btn { display: grid; place-items: center; width: 36px; padding: 0; }
+.video-zoom-level {
+  min-width: 48px; padding: 0 5px; font: 800 11px/1 var(--font);
+  font-variant-numeric: tabular-nums;
+}
+.video-zoom-btn:hover:not(:disabled), .video-zoom-level:hover:not(:disabled) { background: rgba(255,255,255,.14); color: #e8c98d; }
+.video-zoom-btn:disabled, .video-zoom-level:disabled { opacity: .38; cursor: not-allowed; }
+.video-zoom-controls svg { width: 18px; height: 18px; }
+.video-zoom-controls :focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.player__frame, .player iframe { transform-origin: center center; transition: transform .18s ease; }
+.player.is-zoomed { touch-action: none; }
+.player.is-zoomed .vclicklayer { cursor: grab; }
+.player.is-zoomed.is-panning .vclicklayer { cursor: grabbing; }
+.player.is-panning .player__frame { transition: none !important; }
+@media (pointer: coarse) {
+  .video-zoom-btn, .video-zoom-level { height: 40px; }
+  .video-zoom-btn { width: 40px; }
+  .video-zoom-level { min-width: 50px; }
+}
 #stage:fullscreen {
   width: 100%; height: 100vh; height: 100dvh;
   max-width: none; max-height: none; min-height: 0;
