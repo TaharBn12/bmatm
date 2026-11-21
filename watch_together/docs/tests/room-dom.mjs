@@ -33,12 +33,13 @@ const run = async () => {
     'authStatus', 'room', 'roomSub', 'roomCodeText', 'copyCodeBtn', 'statusBadge', 'statusText',
     'copyLinkBtn', 'shareBtn', 'qrBtn', 'diagBtn', 'leaveBtn', 'drawerOpenBtn', 'drawerCloseBtn',
     'drawerScrim', 'roomDrawer', 'organizerList', 'organizerCount', 'membersList', 'membersCount',
-    'sideMembersCount', 'stage', 'player', 'playerPlaceholder', 'ctrlbar', 'videoFullscreenBtn',
-    'videoZoomControls', 'videoZoomOut', 'videoZoomLevel', 'videoZoomIn', 'centerPlayBtn',
+    'sideMembersCount', 'stage', 'player', 'playerPlaceholder', 'ctrlbar', 'videoFullscreenBtn', 'centerPlayBtn',
     'progressBar', 'progressFill', 'progressBuffer', 'progressKnob', 'progressTip',
-    'addVideoBtn', 'messagesBtn', 'messagesCount', 'playlistBtn', 'playlistCount',
+    'addVideoBtn', 'youtubeSearchBtn', 'youtubeSearchModal', 'youtubeSearchTitle', 'youtubeSearchClose',
+    'youtubeSearchForm', 'youtubeSearchInput', 'youtubeSearchSubmit', 'youtubeSearchStatus', 'youtubeSearchResults',
+    'messagesBtn', 'messagesCount', 'playlistBtn', 'playlistCount',
     'changeBar', 'newUrl', 'newTitle', 'applyUrlBtn', 'cancelUrlBtn', 'roomMain', 'chatWidget', 'chatFab',
-    'chatFabCount', 'chatCloseBtn', 'chat', 'chatDragHandle', 'chatViewBtn', 'chatViewControls',
+    'chatFabCount', 'chatCloseBtn', 'chat', 'chatDragHandle', 'chatViewBtn', 'chatViewControls', 'chatPositionResetBtn',
     'chatBubbleSize', 'chatBubbleSizeValue', 'chatPanelWidth', 'chatPanelWidthValue', 'chatPanelHeight', 'chatPanelHeightValue',
     'chatLayoutReset', 'chatResizeHandle', 'chatBody', 'chatEmpty', 'chatCount', 'clearChatBtn', 'chatForm', 'chatInput', 'chatSend',
     'typing', 'messagesIcon', 'playlistModal', 'playlistCloseBtn', 'queueList', 'queueEmpty',
@@ -48,6 +49,12 @@ const run = async () => {
   ];
   const missing = needed.filter(id => !byId.has(id));
   t('كل عناصر الواجهة الجديدة موجودة', missing.length === 0, missing.join(','));
+  t('أزرار التكبير البصري للفيديو أُزيلت وبقي زر ملء الشاشة',
+    !/videoZoom|video-zoom|PLAYER_ZOOM|playerZoom/.test(html + fs.readFileSync(path.join(base, 'assets/js/room.js'), 'utf8')) &&
+    byId.get('videoFullscreenBtn').getAttribute('aria-label') === 'ملء الشاشة');
+  t('نافذة بحث يوتيوب مضمّنة في الغرفة وتضيف النتائج لقائمتها المشتركة',
+    !!byId.get('youtubeSearchModal') && /role="dialog" aria-modal="true"/.test(html) &&
+    /أضف إلى قائمة الغرفة/.test(fs.readFileSync(path.join(base, 'assets/js/room.js'), 'utf8')));
   t('فقاعة الدردشة الدائرية ظاهرة فور دخول الغرفة دون فتح اللوحة',
     !byId.get('room').hidden && !byId.get('chatFab').hidden && byId.get('chatFab').style.display === 'grid' &&
     byId.get('chatFab').getAttribute('aria-expanded') === 'false' && byId.get('chat').hidden);
@@ -77,8 +84,7 @@ const run = async () => {
   const chatTag = mainSlice.indexOf('<section class="chat');
   const between = mainSlice.slice(mainSlice.indexOf('id="mediaShell"'), widgetTag);
   /* كل ما داخل بطاقة المشغّل مسموح؛ فقاعة الدردشة تبدأ بعدها كعنصر عائم مستقل. */
-  const allowedIds = new Set(['mediaShell', 'stage', 'player', 'playerPlaceholder', 'centerPlayBtn', 'videoFullscreenBtn',
-    'videoZoomControls', 'videoZoomOut', 'videoZoomLevel', 'videoZoomIn', 'clickLayer',
+  const allowedIds = new Set(['mediaShell', 'stage', 'player', 'playerPlaceholder', 'centerPlayBtn', 'videoFullscreenBtn', 'clickLayer',
     'ctrlbar', 'videoFullscreenBtn', 'iconPlay', 'iconPause', 'curTime', 'durTime', 'progressBar', 'progressBuffer',
     'progressFill', 'progressKnob', 'progressTip', 'muteBtn', 'iconSound', 'iconMuted']);
   const strayIds = [...between.matchAll(/id="([^"]+)"/g)].map(m => m[1]).filter(id => !allowedIds.has(id));
@@ -89,9 +95,11 @@ const run = async () => {
     `ids=${strayIds.join(',')} classes=${strayClasses.join(',')}`);
   t('لوحة Messenger داخل فقاعة الدردشة وتبدأ مغلقة',
     widgetTag > 0 && chatTag > widgetTag && /id="chat"[^>]*hidden/.test(mainSlice.slice(chatTag, chatTag + 180)));
-  t('أدوات الغرفة (إضافة فيديو · رسائل · تشغيل) في الرأس أعلى المشغّل',
+  t('أدوات الغرفة (إضافة فيديو · بحث يوتيوب · رسائل) في الرأس أعلى المشغّل',
     mainSlice.indexOf('id="roomBar"') < mainSlice.indexOf('id="mediaShell"') &&
-    mainSlice.indexOf('id="addVideoBtn"') < mainSlice.indexOf('id="mediaShell"'), '');
+    mainSlice.indexOf('id="addVideoBtn"') < mainSlice.indexOf('id="youtubeSearchBtn"') &&
+    mainSlice.indexOf('id="youtubeSearchBtn"') < mainSlice.indexOf('id="messagesBtn"') &&
+    mainSlice.indexOf('id="messagesBtn"') < mainSlice.indexOf('id="mediaShell"'), '');
   t('نموذج إضافة الرابط تحت الرأس ويظهر عند الطلب (مخفيّ افتراضياً)',
     mainSlice.indexOf('id="roomBar"') < mainSlice.indexOf('id="changeBar"') &&
     /<section class="change-bar glass" id="changeBar"\s+hidden>/.test(html), '');
@@ -207,7 +215,16 @@ const run = async () => {
   byId.get('chatDragHandle').dispatch('pointerdown', { clientX: 10, clientY: 10, pointerId: 9, button: 0 });
   byId.get('chatDragHandle').dispatch('pointermove', { clientX: 38, clientY: 42, pointerId: 9 });
   byId.get('chatDragHandle').dispatch('pointerup', { clientX: 38, clientY: 42, pointerId: 9 });
-  t('رأس لوحة الرسائل قابل للسحب لحفظ موضعها', byId.get('chat').style.left === '28px' && byId.get('chat').style.top === '32px');
+  t('رأس لوحة الرسائل قابل للسحب وحالة زر الإرجاع تتغير مع الموضع',
+    byId.get('chat').style.left === '28px' && byId.get('chat').style.top === '32px' &&
+    !byId.get('chatPositionResetBtn').disabled && byId.get('chatPositionResetBtn').getAttribute('data-position') === 'moved');
+  byId.get('chatPositionResetBtn').dispatch('click', {});
+  t('زر الإرجاع يعيد لوحة الرسائل إلى موضعها الأصلي ويعطل نفسه',
+    byId.get('chat').style.left === '12px' && byId.get('chat').style.top === '34px' &&
+    byId.get('chatPositionResetBtn').disabled && byId.get('chatPositionResetBtn').getAttribute('data-position') === 'default');
+  byId.get('chatDragHandle').dispatch('pointerdown', { clientX: 10, clientY: 10, pointerId: 11, button: 0 });
+  byId.get('chatDragHandle').dispatch('pointermove', { clientX: 38, clientY: 42, pointerId: 11 });
+  byId.get('chatDragHandle').dispatch('pointerup', { clientX: 38, clientY: 42, pointerId: 11 });
   const panel = byId.get('chat');
   panel.getBoundingClientRect = () => {
     const left = parseFloat(panel.style.left) || 0, top = parseFloat(panel.style.top) || 0;
@@ -254,7 +271,8 @@ const run = async () => {
   byId.get('playlistCloseBtn').dispatch('click', {});
   t('زر إغلاق قائمة التشغيل يعمل', byId.get('playlistModal').hidden);
 
-  const clickIds = ['videoFullscreenBtn', 'centerPlayBtn', 'progressBar', 'addVideoBtn', 'messagesBtn', 'playlistBtn', 'chatFab', 'chatCloseBtn',
+  const clickIds = ['videoFullscreenBtn', 'centerPlayBtn', 'progressBar', 'addVideoBtn', 'youtubeSearchBtn', 'youtubeSearchClose',
+    'chatPositionResetBtn', 'messagesBtn', 'playlistBtn', 'chatFab', 'chatCloseBtn',
     'drawerOpenBtn', 'drawerCloseBtn', 'copyCodeBtn', 'copyLinkBtn', 'qrBtn', 'leaveBtn', 'clearChatBtn',
     'sbMeBtn', 'meClose', 'meSave', 'meSignout', 'cancelUrlBtn', 'applyUrlBtn', 'playlistCloseBtn'];
   clickIds.forEach(id => {
@@ -262,6 +280,12 @@ const run = async () => {
     const count = node ? ((node._handlers.click || []).length + (node._handlers.pointerdown || []).length) : 0;
     t(`ربط الحدث ${id}`, count > 0, `handlers=${count}`);
   });
+  byId.get('youtubeSearchBtn').dispatch('click', {});
+  t('زر يوتيوب يفتح نافذة البحث ويركز خانة البحث', !byId.get('youtubeSearchModal').hidden &&
+    byId.get('youtubeSearchInput')._focused && byId.get('youtubeSearchModal').getAttribute('aria-hidden') === 'false');
+  documentStub.dispatch('keydown', { key: 'Escape', target: byId.get('youtubeSearchInput') });
+  t('Escape يغلق نافذة بحث يوتيوب ويعيد التركيز إلى زرها', byId.get('youtubeSearchModal').hidden &&
+    byId.get('youtubeSearchBtn')._focused);
 
   byId.get('qrBtn').dispatch('click', {});
   t('نافذة QR تفتح برابط الغرفة', !byId.get('qrModal').hidden && byId.get('qrUrl').textContent.includes('room.html?id=ABC123'));

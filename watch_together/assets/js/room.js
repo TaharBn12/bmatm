@@ -113,6 +113,8 @@
   };
 
   let favoriteVideoVersion = 0;
+  let youtubeSearchVersion = 0;
+  let youtubeSearchItems = [];
   let previewInputVersion = 0;
   let previewInputTimer = null;
   let previewInputTouched = false;
@@ -172,17 +174,20 @@
     roomMain: $('roomMain'), mediaShell: $('mediaShell'),
     stage: $('stage'), player: $('player'), placeholder: $('playerPlaceholder'), ctrlbar: $('ctrlbar'),
     videoFullscreen: $('videoFullscreenBtn'),
-    videoZoomIn: $('videoZoomIn'), videoZoomOut: $('videoZoomOut'), videoZoomLevel: $('videoZoomLevel'),
     centerPlay: $('centerPlayBtn'),
     progressBar: $('progressBar'), progressFill: $('progressFill'), progressBuffer: $('progressBuffer'),
     progressKnob: $('progressKnob'), progressTip: $('progressTip'),
-    addVideoBtn: $('addVideoBtn'), messagesBtn: $('messagesBtn'), messagesIcon: $('messagesIcon'), messagesCount: $('messagesCount'),
+    addVideoBtn: $('addVideoBtn'), youtubeSearchBtn: $('youtubeSearchBtn'), messagesBtn: $('messagesBtn'), messagesIcon: $('messagesIcon'), messagesCount: $('messagesCount'),
+    youtubeSearchModal: $('youtubeSearchModal'), youtubeSearchClose: $('youtubeSearchClose'),
+    youtubeSearchForm: $('youtubeSearchForm'), youtubeSearchInput: $('youtubeSearchInput'),
+    youtubeSearchSubmit: $('youtubeSearchSubmit'), youtubeSearchStatus: $('youtubeSearchStatus'), youtubeSearchResults: $('youtubeSearchResults'),
     playlistBtn: $('playlistBtn'), playlistCount: $('playlistCount'), favoriteCurrentBtn: $('favoriteCurrentBtn'),
     changeBar: $('changeBar'), newUrl: $('newUrl'), newTitle: $('newTitle'), applyUrlBtn: $('applyUrlBtn'), cancelUrlBtn: $('cancelUrlBtn'),
     queuePreview: $('queuePreview'), queuePreviewMedia: $('queuePreviewMedia'), queuePreviewTitle: $('queuePreviewTitle'), queuePreviewMeta: $('queuePreviewMeta'),
     membersPanel: $('membersPanel'), membersList: $('membersList'), sideMembersCount: $('sideMembersCount'),
     chatWidget: $('chatWidget'), chatFab: $('chatFab'), chatFabCount: $('chatFabCount'), chatCloseBtn: $('chatCloseBtn'),
     chat: $('chat'), chatViewBtn: $('chatViewBtn'), chatViewControls: $('chatViewControls'),
+    chatPositionResetBtn: $('chatPositionResetBtn'),
     chatBubbleSize: $('chatBubbleSize'), chatBubbleSizeValue: $('chatBubbleSizeValue'),
     chatPanelWidth: $('chatPanelWidth'), chatPanelWidthValue: $('chatPanelWidthValue'),
     chatPanelHeight: $('chatPanelHeight'), chatPanelHeightValue: $('chatPanelHeightValue'),
@@ -204,111 +209,10 @@
   el.codeText.textContent = roomId;
   document.title = 'غرفة ' + roomId + ' — WatchTogether';
 
-  /* تكبير محلي لسطح الفيديو فقط؛ لا يدخل في حالة الغرفة ولا يُزامَن مع الآخرين. */
-  const playerZoom = { scale: 1, x: 0, y: 0, drag: null, pointers: new Map(), pinch: null, suppressClickUntil: 0 };
-  const PLAYER_ZOOM_MIN = 1;
-  const PLAYER_ZOOM_MAX = 3;
-  const PLAYER_ZOOM_STEP = 0.25;
-  function activePlayerFrame() {
-    if (!el.player) return null;
-    /* The YouTube IFrame API may replace its placeholder div with a bare iframe. */
-    return el.player.querySelector('.player__frame') || el.player.querySelector('iframe');
-  }
-  function zoomViewport() {
-    const rect = el.player && el.player.getBoundingClientRect ? el.player.getBoundingClientRect() : null;
-    return {
-      rect,
-      width: Math.max(0, Number(el.player && el.player.clientWidth) || Number(rect && rect.width) || 0),
-      height: Math.max(0, Number(el.player && el.player.clientHeight) || Number(rect && rect.height) || 0)
-    };
-  }
-  function clampPlayerPan() {
-    const size = zoomViewport();
-    const maxX = size.width * (playerZoom.scale - 1) / 2;
-    const maxY = size.height * (playerZoom.scale - 1) / 2;
-    playerZoom.x = Math.max(-maxX, Math.min(maxX, playerZoom.x));
-    playerZoom.y = Math.max(-maxY, Math.min(maxY, playerZoom.y));
-    if (playerZoom.scale <= PLAYER_ZOOM_MIN) playerZoom.x = playerZoom.y = 0;
-  }
-  function updatePlayerZoomControls() {
-    const ready = !!activePlayerFrame() && !!(player && player.isReady && player.isReady());
-    const scale = playerZoom.scale;
-    if (el.videoZoomLevel) {
-      el.videoZoomLevel.textContent = Math.round(scale * 100) + '%';
-      el.videoZoomLevel.disabled = !ready || scale <= PLAYER_ZOOM_MIN;
-      el.videoZoomLevel.setAttribute('aria-label', scale <= PLAYER_ZOOM_MIN
-        ? 'التكبير الحالي 100 بالمئة' : 'إعادة التكبير إلى الحجم الأصلي؛ الحالي ' + Math.round(scale * 100) + ' بالمئة');
-      el.videoZoomLevel.setAttribute('title', scale <= PLAYER_ZOOM_MIN
-        ? 'التكبير الحالي 100%' : 'إعادة التكبير إلى 100%');
-    }
-    if (el.videoZoomIn) el.videoZoomIn.disabled = !ready || scale >= PLAYER_ZOOM_MAX;
-    if (el.videoZoomOut) el.videoZoomOut.disabled = !ready || scale <= PLAYER_ZOOM_MIN;
-  }
-  function renderPlayerZoom() {
-    const frame = activePlayerFrame();
-    clampPlayerPan();
-    if (frame) {
-      frame.style.transform = playerZoom.scale <= PLAYER_ZOOM_MIN
-        ? ''
-        : 'translate3d(' + (Math.round(playerZoom.x * 100) / 100) + 'px, ' +
-          (Math.round(playerZoom.y * 100) / 100) + 'px, 0) scale(' + playerZoom.scale + ')';
-    }
-    if (el.player) el.player.classList.toggle('is-zoomed', playerZoom.scale > PLAYER_ZOOM_MIN);
-    updatePlayerZoomControls();
-  }
-  function setPlayerZoom(nextScale, anchorX, anchorY) {
-    if (!activePlayerFrame() || !player || !player.isReady()) return false;
-    const next = Math.max(PLAYER_ZOOM_MIN, Math.min(PLAYER_ZOOM_MAX,
-      Math.round((Number(nextScale) || PLAYER_ZOOM_MIN) * 100) / 100));
-    if (Math.abs(next - playerZoom.scale) < 0.001) return false;
-    const ratio = next / playerZoom.scale;
-    const size = zoomViewport();
-    if (Number.isFinite(anchorX) && Number.isFinite(anchorY) && size.rect) {
-      const localX = anchorX - (size.rect.left + size.rect.width / 2);
-      const localY = anchorY - (size.rect.top + size.rect.height / 2);
-      playerZoom.x = localX - (localX - playerZoom.x) * ratio;
-      playerZoom.y = localY - (localY - playerZoom.y) * ratio;
-    } else {
-      playerZoom.x *= ratio;
-      playerZoom.y *= ratio;
-    }
-    playerZoom.scale = next;
-    renderPlayerZoom();
-    return true;
-  }
-  function stepPlayerZoom(direction, anchorX, anchorY) {
-    return setPlayerZoom(playerZoom.scale + (direction < 0 ? -PLAYER_ZOOM_STEP : PLAYER_ZOOM_STEP), anchorX, anchorY);
-  }
-  function resetPlayerZoom() {
-    playerZoom.scale = PLAYER_ZOOM_MIN;
-    playerZoom.x = playerZoom.y = 0;
-    playerZoom.drag = null;
-    playerZoom.pointers.clear();
-    playerZoom.pinch = null;
-    if (el.player) el.player.classList.remove('is-panning');
-    renderPlayerZoom();
-  }
-  function zoomGestureTarget(target) {
-    return !!(target && target.closest && target.closest(
-      '.video-zoom-controls, .video-fullscreen, .vcenter, .player__overlay, .player__placeholder'));
-  }
-  function captureZoomPointer(id) {
-    try { if (el.player && el.player.setPointerCapture) el.player.setPointerCapture(id); } catch (_) { }
-  }
-  function distanceBetween(a, b) {
-    const dx = a.x - b.x, dy = a.y - b.y;
-    return Math.sqrt(dx * dx + dy * dy);
-  }
-  function startPlayerPan(id, point) {
-    playerZoom.drag = { id, x: point.x, y: point.y,
-      panX: playerZoom.x, panY: playerZoom.y, moved: false };
-  }
-
   /* ============================== المشغّل ============================== */
   const player = new window.WTPlayer.UnifiedPlayer(el.player, {
     onReady: () => {
       if (el.placeholder) { el.placeholder.remove(); el.placeholder = null; }
-      renderPlayerZoom();
       session.applyingRemote = true;
       applyState(st, { initial: true });
       setTimeout(() => { session.applyingRemote = false; }, 350);
@@ -1156,7 +1060,6 @@
     opts = opts || {};
     if (!parsed) { renderPlayerPlaceholder('الرابط غير مدعوم'); return; }
     const version = ++videoLoadVersion;
-    resetPlayerZoom();
     clearAutoplayPrompt();
     session.videoParsed = parsed;
     session.videoTitle = String(opts.title || '').replace(/\s+/g, ' ').trim().slice(0, 180);
@@ -1173,7 +1076,6 @@
       el.player.classList.toggle('is-embed', parsed.kind === 'embed');
       pokeVideoUI();
       const loading = player.load(parsed, { autoplay: !!opts.autoplay, controls: false });
-      renderPlayerZoom();
       await loading;
       if (version !== videoLoadVersion) return;
       if (el.placeholder) { el.placeholder.remove(); el.placeholder = null; }
@@ -2721,6 +2623,59 @@
     el.chatFab.style.height = size + 'px';
   }
 
+  function defaultChatPanelPosition(width, height, viewport) {
+    const prefs = session.chatPreferences;
+    const anchor = el.chatFab.getBoundingClientRect();
+    const anchorLeft = Number.isFinite(Number(anchor.left)) ? Number(anchor.left) : viewport.left;
+    const anchorTop = Number.isFinite(Number(anchor.top)) ? Number(anchor.top) : viewport.top;
+    const anchorWidth = Number.isFinite(Number(anchor.width)) ? Number(anchor.width) : Number(prefs.bubbleSize) || 64;
+    const anchorHeight = Number.isFinite(Number(anchor.height)) ? Number(anchor.height) : Number(prefs.bubbleSize) || 64;
+    const anchorRight = Number.isFinite(Number(anchor.right)) ? Number(anchor.right) : anchorLeft + anchorWidth;
+    const anchorBottom = Number.isFinite(Number(anchor.bottom)) ? Number(anchor.bottom) : anchorTop + anchorHeight;
+    const minLeft = viewport.left + 12;
+    const maxLeft = Math.max(minLeft, viewport.left + viewport.width - width - 12);
+    const minTop = viewport.top + 12;
+    const maxTop = Math.max(minTop, viewport.top + viewport.height - height - 12);
+    const viewportCenter = viewport.left + viewport.width / 2;
+    const proposedLeft = anchorLeft + anchorWidth / 2 > viewportCenter
+      ? anchorRight - width : anchorLeft;
+    const above = anchorTop - height - 12;
+    const below = anchorBottom + 12;
+    const proposedTop = above >= minTop ? above
+      : below + height <= viewport.top + viewport.height - 12 ? below : minTop;
+    return {
+      left: U.clamp(proposedLeft, minLeft, maxLeft),
+      top: U.clamp(proposedTop, minTop, maxTop)
+    };
+  }
+
+  function chatPanelIsAtDefaultPosition() {
+    const prefs = session.chatPreferences;
+    if (!Number.isFinite(prefs.panelLeft) || !Number.isFinite(prefs.panelTop)) return true;
+    const viewport = chatViewportBounds();
+    const maxWidth = Math.max(0, viewport.width - 24);
+    const maxHeight = Math.max(0, viewport.height - 24);
+    const width = U.clamp(Number(prefs.panelWidth) || 400, Math.min(280, maxWidth), maxWidth);
+    const height = U.clamp(Number(prefs.panelHeight) || 620, Math.min(180, maxHeight), maxHeight);
+    const original = defaultChatPanelPosition(width, height, viewport);
+    return Math.abs(Number(prefs.panelLeft) - original.left) < 2 &&
+      Math.abs(Number(prefs.panelTop) - original.top) < 2;
+  }
+
+  function updateChatPositionResetButton() {
+    const button = el.chatPositionResetBtn;
+    if (!button) return;
+    const moved = !chatPanelIsAtDefaultPosition();
+    const label = moved ? 'إعادة نافذة الرسائل إلى موضعها الأصلي' : 'نافذة الرسائل في موضعها الأصلي';
+    button.disabled = !moved;
+    button.classList.toggle('is-on', moved);
+    button.setAttribute('data-position', moved ? 'moved' : 'default');
+    button.setAttribute('aria-label', label);
+    button.setAttribute('title', label);
+    const icon = button.querySelector('.ic');
+    if (icon) icon.innerHTML = IC.html(moved ? 'rotate' : 'check', 16);
+  }
+
   function positionChatPanel() {
     if (!el.chat || el.chat.hidden || !el.chatFab) return;
     const viewport = chatViewportBounds();
@@ -2736,40 +2691,23 @@
     el.chat.style.maxWidth = maxWidth + 'px';
     el.chat.style.maxHeight = maxHeight + 'px';
 
-    const anchor = el.chatFab.getBoundingClientRect();
-    const anchorLeft = Number.isFinite(Number(anchor.left)) ? Number(anchor.left) : viewport.left;
-    const anchorTop = Number.isFinite(Number(anchor.top)) ? Number(anchor.top) : viewport.top;
-    const anchorWidth = Number.isFinite(Number(anchor.width)) ? Number(anchor.width) : Number(prefs.bubbleSize) || 64;
-    const anchorHeight = Number.isFinite(Number(anchor.height)) ? Number(anchor.height) : Number(prefs.bubbleSize) || 64;
-    const anchorRight = Number.isFinite(Number(anchor.right)) ? Number(anchor.right) : anchorLeft + anchorWidth;
-    const anchorBottom = Number.isFinite(Number(anchor.bottom)) ? Number(anchor.bottom) : anchorTop + anchorHeight;
     const minLeft = viewport.left + 12;
     const maxLeft = Math.max(minLeft, viewport.left + viewport.width - width - 12);
     const minTop = viewport.top + 12;
     const maxTop = Math.max(minTop, viewport.top + viewport.height - height - 12);
-    let proposedLeft, proposedTop;
-    if (Number.isFinite(prefs.panelLeft) && Number.isFinite(prefs.panelTop)) {
-      proposedLeft = prefs.panelLeft;
-      proposedTop = prefs.panelTop;
-    } else {
-      const viewportCenter = viewport.left + viewport.width / 2;
-      proposedLeft = anchorLeft + anchorWidth / 2 > viewportCenter
-        ? anchorRight - width : anchorLeft;
-      const above = anchorTop - height - 12;
-      const below = anchorBottom + 12;
-      proposedTop = above >= minTop ? above
-        : below + height <= viewport.top + viewport.height - 12 ? below : minTop;
-    }
-    const left = U.clamp(proposedLeft, minLeft, maxLeft);
-    const top = U.clamp(proposedTop, minTop, maxTop);
+    const custom = Number.isFinite(prefs.panelLeft) && Number.isFinite(prefs.panelTop);
+    const original = defaultChatPanelPosition(width, height, viewport);
+    const left = custom ? U.clamp(prefs.panelLeft, minLeft, maxLeft) : original.left;
+    const top = custom ? U.clamp(prefs.panelTop, minTop, maxTop) : original.top;
     el.chat.style.left = left + 'px';
     el.chat.style.top = top + 'px';
     el.chat.style.right = 'auto';
     el.chat.style.bottom = 'auto';
-    if (Number.isFinite(prefs.panelLeft) && Number.isFinite(prefs.panelTop)) {
+    if (custom) {
       prefs.panelLeft = left;
       prefs.panelTop = top;
     }
+    updateChatPositionResetButton();
   }
 
   function placeChatWidget(left, top, savePosition) {
@@ -2838,6 +2776,20 @@
     saveChatPreferences();
   }
 
+  function resetChatPosition() {
+    session.chatPreferences.panelLeft = null;
+    session.chatPreferences.panelTop = null;
+    if (el.chat) {
+      el.chat.style.left = '';
+      el.chat.style.top = '';
+      el.chat.style.right = '';
+      el.chat.style.bottom = '';
+    }
+    if (session.chatOpen) positionChatPanel();
+    updateChatPositionResetButton();
+    saveChatPreferences();
+  }
+
   function resetChatLayout() {
     session.chatPreferences = {
       bubbleSize: 64, bubbleLeft: null, bubbleTop: null,
@@ -2863,17 +2815,22 @@
     updateChatViewControls();
     saveChatPreferences();
     if (session.chatOpen) positionChatPanel();
+    updateChatPositionResetButton();
+  }
+
+  function currentFullscreenElement() {
+    return document.fullscreenElement || document.webkitFullscreenElement || null;
   }
 
   function isStageFullscreen() {
-    return !!(el.stage && (document.fullscreenElement === el.stage ||
+    return !!(el.stage && (currentFullscreenElement() === el.stage ||
       el.stage.classList.contains('is-app-fullscreen')));
   }
 
   function updateFullscreenButton() {
     if (!el.videoFullscreen) return;
     const active = isStageFullscreen();
-    const label = active ? 'إنهاء تكبير الفيديو' : 'تكبير الفيديو';
+    const label = active ? 'الخروج من ملء الشاشة' : 'ملء الشاشة';
     el.videoFullscreen.setAttribute('aria-label', label);
     el.videoFullscreen.setAttribute('title', label);
     el.videoFullscreen.classList.toggle('is-on', active);
@@ -2902,6 +2859,7 @@
     if (!el.chatFab || !el.chatWidget) return;
     applyBubbleSize();
     updateChatViewControls();
+    updateChatPositionResetButton();
     if (Number.isFinite(session.chatPreferences.bubbleLeft) && Number.isFinite(session.chatPreferences.bubbleTop)) {
       placeChatWidget(session.chatPreferences.bubbleLeft, session.chatPreferences.bubbleTop, false);
     }
@@ -2917,6 +2875,7 @@
       setChatOpen(!session.chatOpen);
     });
     if (el.chatCloseBtn) el.chatCloseBtn.addEventListener('click', () => setChatOpen(false));
+    if (el.chatPositionResetBtn) el.chatPositionResetBtn.addEventListener('click', resetChatPosition);
     if (el.chatViewBtn && el.chatViewControls) el.chatViewBtn.addEventListener('click', (event) => {
       event.preventDefault();
       event.stopPropagation();
@@ -3068,6 +3027,123 @@
       const url = new URL(String(raw || '').trim());
       return url.protocol === 'https:' && !url.username && !url.password ? url.href : '';
     } catch (_) { return ''; }
+  }
+
+  function setYoutubeSearchStatus(message, isError) {
+    if (!el.youtubeSearchStatus) return;
+    el.youtubeSearchStatus.textContent = message || '';
+    el.youtubeSearchStatus.hidden = !message;
+    el.youtubeSearchStatus.classList.toggle('is-error', !!isError);
+  }
+
+  function youtubeSearchItem(raw) {
+    if (!raw || typeof raw !== 'object') return null;
+    let id = String(raw.id || '').trim();
+    if (!/^[A-Za-z0-9_-]{11}$/.test(id)) id = U.parseYouTube(raw.url || '') || '';
+    if (!/^[A-Za-z0-9_-]{11}$/.test(id)) return null;
+    const title = String(raw.title || '').replace(/\s+/g, ' ').trim().slice(0, 240) || 'فيديو يوتيوب';
+    const author = String(raw.author || raw.channel || raw.uploader || '').replace(/\s+/g, ' ').trim().slice(0, 140);
+    let thumbnail = '';
+    try {
+      const image = new URL(String(raw.thumb || raw.thumbnail || '').trim());
+      const host = image.hostname.toLowerCase();
+      const trustedHost = host === 'i.ytimg.com' || host.endsWith('.ytimg.com') ||
+        host === 'yt3.ggpht.com' || host.endsWith('.ggpht.com');
+      if (image.protocol === 'https:' && trustedHost && !image.username && !image.password) thumbnail = image.href;
+    } catch (_) { }
+    if (!thumbnail) thumbnail = 'https://i.ytimg.com/vi/' + id + '/mqdefault.jpg';
+    const duration = Number(raw.duration);
+    return {
+      id,
+      url: 'https://www.youtube.com/watch?v=' + id,
+      title,
+      author,
+      thumbnail,
+      duration: Number.isFinite(duration) && duration > 0 ? duration : 0
+    };
+  }
+
+  function renderYoutubeSearchResults(items) {
+    if (!el.youtubeSearchResults) return;
+    youtubeSearchItems = items;
+    el.youtubeSearchResults.setAttribute('aria-busy', 'false');
+    if (!items.length) {
+      el.youtubeSearchResults.innerHTML = '<div class="yt-room-search__empty">لم يُعثر على فيديوهات. جرّب عبارة أخرى.</div>';
+      return;
+    }
+    el.youtubeSearchResults.innerHTML = items.map((item, index) =>
+      '<article class="yt-room-result" role="listitem">' +
+        '<img class="yt-room-result__thumb" src="' + U.esc(item.thumbnail) + '" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer">' +
+        '<div class="yt-room-result__body">' +
+          '<h3 class="yt-room-result__title">' + U.esc(item.title) + '</h3>' +
+          '<div class="yt-room-result__meta">' +
+            (item.author ? '<span>' + U.esc(item.author) + '</span>' : '') +
+            (item.duration ? '<span dir="ltr">' + U.fmtTime(item.duration) + '</span>' : '') +
+          '</div>' +
+          '<button class="btn btn--ghost yt-room-result__add" type="button" data-index="' + index + '">' +
+            '<span class="ic" data-icon="plus" data-size="15"></span> أضف إلى قائمة الغرفة' +
+          '</button>' +
+        '</div>' +
+      '</article>'
+    ).join('');
+    if (IC && IC.apply) IC.apply(el.youtubeSearchResults);
+  }
+
+  async function searchYoutubeInRoom(rawQuery) {
+    const query = String(rawQuery || '').replace(/\s+/g, ' ').trim().slice(0, 80);
+    if (query.length < 2) {
+      setYoutubeSearchStatus('اكتب حرفين على الأقل للبحث.', true);
+      if (el.youtubeSearchInput) el.youtubeSearchInput.focus();
+      return;
+    }
+    if (!el.youtubeSearchResults || !el.youtubeSearchSubmit) return;
+    const version = ++youtubeSearchVersion;
+    const endpoint = window.WTServer && typeof window.WTServer.api === 'function'
+      ? window.WTServer.api('api/search') : 'api/search';
+    const params = new URLSearchParams({ q: query, limit: '12', site: 'youtube', type: 'video' });
+    el.youtubeSearchSubmit.disabled = true;
+    el.youtubeSearchResults.setAttribute('aria-busy', 'true');
+    el.youtubeSearchResults.innerHTML = '<div class="yt-room-search__empty">جارٍ البحث في يوتيوب…</div>';
+    setYoutubeSearchStatus('جارٍ البحث عن «' + query + '»…');
+    try {
+      const response = await fetch(endpoint + '?' + params.toString(), {
+        headers: { Accept: 'application/json' }, cache: 'no-store'
+      });
+      let data = null;
+      try { data = await response.json(); } catch (_) { data = null; }
+      if (version !== youtubeSearchVersion) return;
+      if (!response.ok) {
+        const message = data && typeof data.error === 'string' ? data.error : 'استجابة غير متوقعة (' + response.status + ')';
+        throw new Error(message);
+      }
+      if (!data || !Array.isArray(data.items)) throw new Error('استجابة غير مفهومة من خدمة البحث.');
+      const items = data.items.map(youtubeSearchItem).filter(Boolean);
+      renderYoutubeSearchResults(items);
+      setYoutubeSearchStatus(items.length
+        ? 'عُثر على ' + items.length + ' فيديو. أضف ما تريد إلى قائمة الغرفة المشتركة.'
+        : 'لا توجد نتائج لـ «' + query + '».');
+    } catch (error) {
+      if (version !== youtubeSearchVersion) return;
+      el.youtubeSearchResults.setAttribute('aria-busy', 'false');
+      el.youtubeSearchResults.innerHTML = '<div class="yt-room-search__empty">تعذّر إكمال البحث. تحقق من اتصال خادم البحث ثم أعد المحاولة.</div>';
+      setYoutubeSearchStatus(error && error.message ? error.message : 'تعذّر البحث في يوتيوب.', true);
+    } finally {
+      if (version === youtubeSearchVersion) el.youtubeSearchSubmit.disabled = false;
+    }
+  }
+
+  function openYoutubeSearch() {
+    if (!el.youtubeSearchModal) return;
+    el.youtubeSearchModal.hidden = false;
+    el.youtubeSearchModal.setAttribute('aria-hidden', 'false');
+    if (el.youtubeSearchInput) el.youtubeSearchInput.focus();
+  }
+
+  function closeYoutubeSearch() {
+    if (!el.youtubeSearchModal) return;
+    el.youtubeSearchModal.hidden = true;
+    el.youtubeSearchModal.setAttribute('aria-hidden', 'true');
+    if (el.youtubeSearchBtn) el.youtubeSearchBtn.focus();
   }
 
   function previewThumbFor(url, meta) {
@@ -3388,6 +3464,7 @@
   /* ============================== ربط الواجهة ============================== */
   function wireUI() {
     restoreChatDraft();
+    updateFullscreenButton();
     /* ---- تشغيل/إيقاف (من زر التحكم أسفل الفيديو، أو الزر الكبير، أو النقر على الفيديو) ---- */
     const togglePlay = () => {
       if (!requireControl()) return;
@@ -3409,111 +3486,11 @@
     el.player.addEventListener('click', (e) => {
       const t = e.target;
       if (t && t.closest && (t.closest('.vcontrols') || t.closest('.vcenter') || t.closest('.video-fullscreen') ||
-        t.closest('.video-zoom-controls') || t.closest('.player__overlay') || t.closest('.player__placeholder'))) return;
-      if (Date.now() < playerZoom.suppressClickUntil) return;
+        t.closest('.player__overlay') || t.closest('.player__placeholder'))) return;
       const now = Date.now();
       if (now - lastPlayerClick < 320) return;   /* تفادي النقر المزدوج */
       lastPlayerClick = now;
       togglePlay();
-    });
-
-    if (el.videoZoomIn) el.videoZoomIn.addEventListener('click', (event) => {
-      event.preventDefault(); event.stopPropagation(); stepPlayerZoom(1);
-    });
-    if (el.videoZoomOut) el.videoZoomOut.addEventListener('click', (event) => {
-      event.preventDefault(); event.stopPropagation(); stepPlayerZoom(-1);
-    });
-    if (el.videoZoomLevel) el.videoZoomLevel.addEventListener('click', (event) => {
-      event.preventDefault(); event.stopPropagation(); resetPlayerZoom();
-    });
-
-    el.player.addEventListener('wheel', (event) => {
-      if (!event.ctrlKey && !event.metaKey) return;
-      event.preventDefault();
-      stepPlayerZoom(event.deltaY < 0 ? 1 : -1, event.clientX, event.clientY);
-    }, { passive: false });
-
-    /* السحب لتحريك الصورة بعد تكبيرها، والقرص بإصبعين يغيّر مستوى التكبير على الهاتف. */
-    el.player.addEventListener('pointerdown', (event) => {
-      if (!player.isReady() || zoomGestureTarget(event.target)) return;
-      if (event.pointerType !== 'touch' && event.button !== undefined && event.button !== 0) return;
-      const point = { x: Number(event.clientX) || 0, y: Number(event.clientY) || 0 };
-      if (event.pointerType === 'touch') {
-        playerZoom.pointers.set(event.pointerId, point);
-        const touches = Array.from(playerZoom.pointers.entries());
-        if (touches.length >= 2) {
-          const first = touches[0], second = touches[1];
-          const p1 = first[1], p2 = second[1];
-          const distance = Math.max(1, distanceBetween(p1, p2));
-          playerZoom.pinch = {
-            ids: [first[0], second[0]], distance, scale: playerZoom.scale
-          };
-          playerZoom.drag = null;
-          el.player.classList.add('is-panning');
-          captureZoomPointer(first[0]); captureZoomPointer(second[0]);
-          playerZoom.suppressClickUntil = Date.now() + 500;
-          if (event.preventDefault) event.preventDefault();
-          return;
-        }
-      }
-      if (playerZoom.scale > PLAYER_ZOOM_MIN) startPlayerPan(event.pointerId, point);
-    });
-    el.player.addEventListener('pointermove', (event) => {
-      if (event.pointerType === 'touch' && playerZoom.pointers.has(event.pointerId)) {
-        playerZoom.pointers.set(event.pointerId, { x: Number(event.clientX) || 0, y: Number(event.clientY) || 0 });
-      }
-      if (playerZoom.pinch) {
-        const first = playerZoom.pointers.get(playerZoom.pinch.ids[0]);
-        const second = playerZoom.pointers.get(playerZoom.pinch.ids[1]);
-        if (!first || !second) return;
-        const distance = Math.max(1, distanceBetween(first, second));
-        const anchorX = (first.x + second.x) / 2;
-        const anchorY = (first.y + second.y) / 2;
-        setPlayerZoom(playerZoom.pinch.scale * distance / playerZoom.pinch.distance, anchorX, anchorY);
-        playerZoom.suppressClickUntil = Date.now() + 500;
-        if (event.preventDefault) event.preventDefault();
-        return;
-      }
-      const drag = playerZoom.drag;
-      if (!drag || drag.id !== event.pointerId) return;
-      const dx = (Number(event.clientX) || 0) - drag.x;
-      const dy = (Number(event.clientY) || 0) - drag.y;
-      if (!drag.moved && (Math.abs(dx) > 3 || Math.abs(dy) > 3)) {
-        drag.moved = true;
-        el.player.classList.add('is-panning');
-        captureZoomPointer(event.pointerId);
-      }
-      if (!drag.moved) return;
-      playerZoom.x = drag.panX + dx;
-      playerZoom.y = drag.panY + dy;
-      renderPlayerZoom();
-      playerZoom.suppressClickUntil = Date.now() + 450;
-      if (event.preventDefault) event.preventDefault();
-    });
-    const endPlayerZoomGesture = (event) => {
-      const drag = playerZoom.drag;
-      if (drag && drag.id === event.pointerId) {
-        if (drag.moved) playerZoom.suppressClickUntil = Date.now() + 450;
-        playerZoom.drag = null;
-      }
-      playerZoom.pointers.delete(event.pointerId);
-      if (playerZoom.pinch && playerZoom.pinch.ids.includes(event.pointerId)) {
-        playerZoom.pinch = null;
-        playerZoom.suppressClickUntil = Date.now() + 450;
-        const remaining = Array.from(playerZoom.pointers.entries());
-        if (remaining.length === 1 && playerZoom.scale > PLAYER_ZOOM_MIN) {
-          startPlayerPan(remaining[0][0], remaining[0][1]);
-          return;
-        }
-      }
-      if (!playerZoom.drag && !playerZoom.pinch) el.player.classList.remove('is-panning');
-    };
-    el.player.addEventListener('pointerup', endPlayerZoomGesture);
-    el.player.addEventListener('pointercancel', endPlayerZoomGesture);
-    el.player.addEventListener('lostpointercapture', endPlayerZoomGesture);
-    window.addEventListener('resize', () => {
-      clampPlayerPan();
-      renderPlayerZoom();
     });
 
     /* ---- تقديم/ترجيع بمفاتيح الأسهم فقط (لا أزرار في الواجهة) ---- */
@@ -3529,26 +3506,39 @@
     };
 
     if (el.videoFullscreen) el.videoFullscreen.addEventListener('click', async () => {
-      try {
-        if (document.fullscreenElement === el.stage) {
-          await document.exitFullscreen();
-          return;
-        }
-        if (el.stage.classList.contains('is-app-fullscreen')) {
-          setAppFullscreen(false);
-          return;
-        }
-        if (document.fullscreenElement && document.exitFullscreen) await document.exitFullscreen();
-        if (el.stage.requestFullscreen) {
-          await el.stage.requestFullscreen();
-          syncChatWidgetFullscreen();
-        } else {
-          /* CSS full-screen keeps the page controls and chat available on iOS/Safari too. */
-          setAppFullscreen(true);
-        }
-      } catch (e) {
-        /* A rejected Fullscreen API request still degrades to the in-page fullscreen view. */
+      const fullscreen = currentFullscreenElement();
+      const exit = document.exitFullscreen || document.webkitExitFullscreen;
+      if (fullscreen === el.stage) {
+        if (!exit) { U.toast('تعذّر الخروج من وضع ملء الشاشة في هذا المتصفح.', 'warn'); return; }
+        try { await exit.call(document); }
+        catch (error) { U.toast('تعذّر الخروج من وضع ملء الشاشة.', 'warn'); }
+        return;
+      }
+      if (el.stage.classList.contains('is-app-fullscreen')) {
+        setAppFullscreen(false);
+        return;
+      }
+      if (fullscreen && exit) {
+        try { await exit.call(document); }
+        catch (error) { U.toast('أغلق وضع ملء الشاشة الحالي أولاً', 'warn'); return; }
+      }
+
+      const request = el.stage.requestFullscreen || el.stage.webkitRequestFullscreen;
+      if (!request) {
+        /* آخر بديل للمتصفحات التي لا تتيح Fullscreen API للعناصر. */
         setAppFullscreen(true);
+        return;
+      }
+      try {
+        const result = el.stage.requestFullscreen
+          ? request.call(el.stage, { navigationUI: 'hide' })
+          : request.call(el.stage);
+        if (result && typeof result.then === 'function') await result;
+        syncChatWidgetFullscreen();
+      } catch (error) {
+        /* لا نعرض CSS كأنه ملء شاشة حقيقي بعد رفض طلب المتصفح. */
+        syncChatWidgetFullscreen();
+        U.toast('لم يسمح المتصفح بملء الشاشة. اضغط الزر مجدداً أو استخدم وضع ملء الشاشة في المتصفح.', 'warn', 5000);
       }
     });
 
@@ -3606,6 +3596,35 @@
 
     /* ---- أدوات المشاهدة ---- */
     el.addVideoBtn.addEventListener('click', openChangeBar);
+    if (el.youtubeSearchBtn) el.youtubeSearchBtn.addEventListener('click', openYoutubeSearch);
+    if (el.youtubeSearchClose) el.youtubeSearchClose.addEventListener('click', closeYoutubeSearch);
+    if (el.youtubeSearchForm) el.youtubeSearchForm.addEventListener('submit', (event) => {
+      event.preventDefault();
+      searchYoutubeInRoom(el.youtubeSearchInput && el.youtubeSearchInput.value);
+    });
+    if (el.youtubeSearchModal) el.youtubeSearchModal.addEventListener('click', (event) => {
+      if (event.target === el.youtubeSearchModal) closeYoutubeSearch();
+    });
+    if (el.youtubeSearchResults) el.youtubeSearchResults.addEventListener('click', async (event) => {
+      const button = event.target && event.target.closest ? event.target.closest('[data-index]') : null;
+      if (!button || button.tagName !== 'BUTTON' || button.disabled) return;
+      const index = Number(button.getAttribute('data-index'));
+      const item = youtubeSearchItems[index];
+      if (!item) return;
+      button.disabled = true;
+      button.textContent = 'جارٍ الإضافة…';
+      const added = await addQueueItems([{ url: item.url, title: item.title }]);
+      if (added) {
+        button.textContent = 'أُضيفت إلى القائمة ✓';
+        button.classList.add('is-added');
+        button.setAttribute('aria-label', 'أُضيف الفيديو إلى قائمة الغرفة');
+        U.toast('أُضيف الفيديو إلى قائمة الغرفة المشتركة', 'success', 2400);
+      } else {
+        button.disabled = false;
+        button.textContent = 'تعذّرت الإضافة — أعد المحاولة';
+        setYoutubeSearchStatus('تعذّرت الإضافة إلى قائمة الغرفة. تحقق من الاتصال ثم أعد المحاولة.', true);
+      }
+    });
     el.messagesBtn.addEventListener('click', () => setChatOpen(!session.chatOpen));
     bindChatWidget();
     el.playlistBtn.addEventListener('click', () => { el.playlistModal.hidden = false; renderQueue(true); });
@@ -3879,6 +3898,11 @@
     /* ---- اختصارات ---- */
     document.addEventListener('keydown', (e) => {
       if (e.defaultPrevented) return;
+      if (e.key === 'Escape' && el.youtubeSearchModal && !el.youtubeSearchModal.hidden) {
+        e.preventDefault();
+        closeYoutubeSearch();
+        return;
+      }
       if (e.key === 'Escape' && session.msgMenu && !session.msgMenu.hidden) {
         e.preventDefault();
         hideMsgMenu(true);
@@ -3927,9 +3951,6 @@
       const tag = (e.target.tagName || '').toLowerCase();
       const interactive = ['input', 'textarea', 'select', 'button', 'a', 'summary'].includes(tag) || e.target.isContentEditable;
       if (interactive && e.key !== 'Escape') return;
-      if (e.key === '+' || e.key === '=') { e.preventDefault(); stepPlayerZoom(1); return; }
-      if (e.key === '-' || e.key === '_') { e.preventDefault(); stepPlayerZoom(-1); return; }
-      if (e.key === '0') { e.preventDefault(); resetPlayerZoom(); return; }
       if (e.key === ' ' || e.code === 'Space') { e.preventDefault(); togglePlay(); }
       else if (e.key === 'ArrowLeft') { e.preventDefault(); skip(+10); }
       else if (e.key === 'ArrowRight') { e.preventDefault(); skip(-10); }
