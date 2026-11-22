@@ -32,7 +32,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800;900&family=Grand+Hotel&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="assets/css/app.css?v=4.7.0">
+  <link rel="stylesheet" href="assets/css/app.css?v=4.8.0">
   <link rel="stylesheet" href="assets/css/media.css?v=3.2.0">
   <link rel="stylesheet" href="assets/css/suggest.css?v=1.1.0">
   <link rel="stylesheet" href="assets/css/site.css?v=1.0.0">
@@ -204,7 +204,7 @@
       </div>
 
 
-      <!-- فقاعة دردشة عائمة؛ تبقى مستقلة عن تخطيط المشغّل وتُنقل إلى المسرح عند ملء الشاشة -->
+      <!-- فقاعة دردشة عائمة افتراضياً؛ يمكن إرساء نافذتها بكامل المساحة تحت المشغّل، وتُنقل إلى المسرح عند ملء الشاشة -->
       <div class="chat-widget" id="chatWidget">
         <button class="chat-fab" id="chatFab" type="button" aria-label="فتح المحادثة" title="افتح المحادثة أو اسحب الفقاعة لتحريكها"
                 aria-controls="chat" aria-expanded="false" aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown Alt+ArrowLeft Alt+ArrowRight">
@@ -219,8 +219,8 @@
             <button class="btn btn--sm btn--ghost btn--icon-sm" id="chatViewBtn" type="button" title="تخصيص حجم الدردشة" aria-label="تخصيص حجم الدردشة" aria-controls="chatViewControls" aria-expanded="false">
               <span class="ic" data-icon="sliders" data-size="16"></span>
             </button>
-            <button class="btn btn--sm btn--ghost btn--icon-sm chat__position-reset" id="chatPositionResetBtn" type="button" title="النافذة في موضعها الأصلي" aria-label="النافذة في موضعها الأصلي" disabled>
-              <span class="ic" data-icon="check" data-size="16"></span>
+            <button class="btn btn--sm btn--ghost btn--icon-sm chat__position-reset" id="chatPositionResetBtn" type="button" title="إرجاع الدردشة إلى مكانها الأصلي أسفل المشغل" aria-label="إرجاع الدردشة إلى مكانها الأصلي أسفل المشغل">
+              <span class="ic" data-icon="rotate" data-size="16"></span>
             </button>
             <button class="btn btn--sm btn--ghost btn--icon-sm" id="refreshChatBtn" type="button" title="تحديث الرسائل" aria-label="تحديث الرسائل">
               <span class="ic" data-icon="sync" data-size="16"></span>
@@ -449,7 +449,7 @@
   <script src="assets/js/media-preview.js?v=1.0.0"></script>
   <script src="assets/js/upnext.js?v=1.3.0"></script>
   <script src="assets/js/media.js?v=3.1.5"></script>
-  <script src="assets/js/room.js?v=3.8.3"></script>
+  <script src="assets/js/room.js?v=3.8.4"></script>
   <script src="assets/js/site.js?v=1.0.2"></script>
 </body>
 </html>

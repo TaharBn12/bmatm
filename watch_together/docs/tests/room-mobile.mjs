@@ -507,6 +507,17 @@ for (const v of VIEWPORTS) {
   const widgetPosition = val(chatWidgetEl, 'position', ctx);
   t('فقاعة الدردشة مثبتة فوق المشغّل ولا تحجز مكاناً في تخطيط الغرفة',
     widgetPosition === 'fixed' && val(chatEl, 'position', ctx) === 'fixed', `${widgetPosition} / ${val(chatEl, 'position', ctx)}`);
+  const dockedWidgetProbe = { ...chatWidgetEl, classes: chatWidgetEl.classes.concat('is-docked') };
+  const dockedChatProbe = { ...chatEl, parent: dockedWidgetProbe };
+  t('إرجاع الدردشة يضع حاويتها في التدفق أسفل المشغّل لتأخذ المساحة المتبقية',
+    val(dockedWidgetProbe, 'position', ctx) === 'static' && val(dockedWidgetProbe, 'display', ctx) === 'flex' &&
+    val(dockedWidgetProbe, 'flex', ctx) === '1 1 0%' && /min\(1060px/.test(val(dockedWidgetProbe, 'width', ctx)),
+    `${val(dockedWidgetProbe, 'position', ctx)} / ${val(dockedWidgetProbe, 'flex', ctx)} / ${val(dockedWidgetProbe, 'width', ctx)}`);
+  t('لوحة الدردشة المثبتة تملأ المساحة المتبقية بعرض الحاوية',
+    val(dockedChatProbe, 'position', ctx) === 'relative' && val(dockedChatProbe, 'flex', ctx) === '1 1 0%' &&
+    val(dockedChatProbe, 'width', ctx) === '100%' && val(dockedChatProbe, 'height', ctx) === 'auto' &&
+    val(dockedChatProbe, 'min-height', ctx) === '0',
+    `${val(dockedChatProbe, 'position', ctx)} / ${val(dockedChatProbe, 'flex', ctx)} / ${val(dockedChatProbe, 'width', ctx)} × ${val(dockedChatProbe, 'height', ctx)}`);
   const panelWidth = val(chatEl, 'width', ctx), panelHeight = val(chatEl, 'height', ctx);
   t('لوحة Messenger محدودة بعرض الشاشة وارتفاع النافذة',
     /400px/.test(panelWidth) && /100vw/.test(panelWidth) && /72dvh/.test(panelHeight) && /100dvh/.test(panelHeight),

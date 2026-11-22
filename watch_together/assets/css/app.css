@@ -2960,3 +2960,45 @@ body.app-fullscreen-active { overflow: hidden; }
 @media (prefers-reduced-motion: reduce) {
   .room-body #chat .chat__head .chat__position-reset { transition: none; }
 }
+
+/* إرجاع نافذة الدردشة إلى مساحتها الأصلية أسفل المشغّل، بدلاً من موضعها العائم. */
+.room-body #chatWidget.is-docked {
+  position: static;
+  inset: auto;
+  z-index: auto;
+  display: flex;
+  flex: 1 1 0%;
+  flex-direction: column;
+  width: min(1060px, calc(100% - 2 * var(--gutter)));
+  height: auto;
+  min-height: 0;
+  margin: 0 auto;
+  pointer-events: auto;
+  touch-action: auto;
+}
+.room-body #chatWidget.is-docked #chatFab { display: none !important; }
+.room-body #chatWidget.is-docked #chat {
+  position: relative;
+  inset: auto;
+  z-index: auto;
+  flex: 1 1 0%;
+  width: 100%;
+  height: auto;
+  min-height: 0;
+  max-width: none;
+  max-height: none;
+  margin: 0;
+  border-radius: 14px;
+}
+.room-body #chatWidget.is-docked #chatDragHandle { cursor: default; touch-action: auto; }
+.room-body #chatWidget.is-docked #chatResizeHandle { display: none !important; }
+.room-body #stage:fullscreen > #chatWidget.is-docked,
+.room-body #stage.is-app-fullscreen > #chatWidget.is-docked {
+  position: static;
+  inset: auto;
+  z-index: auto;
+  width: min(1060px, calc(100% - 2 * var(--gutter)));
+  height: auto;
+  flex: 1 1 0%;
+  margin: 0 auto;
+}
