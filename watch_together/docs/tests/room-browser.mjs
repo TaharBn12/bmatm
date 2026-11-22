@@ -364,6 +364,35 @@ try {
     assert.ok(Number.isFinite(layoutPrefs.panelLeft) && Number.isFinite(layoutPrefs.panelTop) &&
       layoutPrefs.panelWidth >= 330 && layoutPrefs.panelHeight >= 490, 'panel size and position are saved per room');
 
+    await page.click('#chatPositionResetBtn');
+    const docked = await page.evaluate(() => {
+      const widget = document.getElementById('chatWidget');
+      const panel = document.getElementById('chat');
+      const panelRect = panel.getBoundingClientRect();
+      const stageRect = document.getElementById('stage').getBoundingClientRect();
+      const mainRect = document.getElementById('roomMain').getBoundingClientRect();
+      return {
+        active: WTRoom.session.chatDocked && widget.classList.contains('is-docked'),
+        widgetPosition: getComputedStyle(widget).position,
+        panelPosition: getComputedStyle(panel).position,
+        panelTop: panelRect.top,
+        panelWidth: panelRect.width,
+        panelHeight: panelRect.height,
+        stageBottom: stageRect.bottom,
+        mainWidth: mainRect.width,
+        bubbleHidden: getComputedStyle(document.getElementById('chatFab')).display === 'none'
+      };
+    });
+    assert.ok(docked.active && docked.widgetPosition === 'static' && docked.panelPosition === 'relative',
+      `reset docks the panel into normal layout: ${JSON.stringify(docked)}`);
+    assert.ok(docked.panelTop >= docked.stageBottom - 1 && docked.panelWidth >= docked.mainWidth * 0.8 && docked.panelHeight > 180 &&
+      docked.bubbleHidden, `docked chat fills the space below the player: ${JSON.stringify(docked)}`);
+    await page.click('#chatCloseBtn');
+    assert.equal(await page.locator('#chat').isVisible(), false, 'closing a docked chat returns to the compact bubble');
+    await page.click('#chatFab');
+    assert.equal(await page.locator('#chat').evaluate(el => getComputedStyle(el).position), 'fixed',
+      'reopening uses the floating chat mode until reset is requested again');
+
     const draft = 'مسودة محفوظة ما دمت أكتب';
     await page.fill('#chatInput', draft);
     assert.equal(await page.evaluate(() => sessionStorage.getItem('wt:chat-draft:' + WTRoom.roomId)), draft,

@@ -78,7 +78,7 @@ const run = async () => {
   t('الترتيب: رأس الغرفة ← إضافة الرابط ← المشغّل ← شريط التحكم ← الرسائل',
     order.every((n, i) => n >= 0 && (!i || n > order[i - 1])), order.join(','));
 
-  /* الفقاعة خارج تدفّق المشغّل، واللوحة داخلها ولا تحجز مساحة أسفل الفيديو. */
+  /* افتراضياً تبقى الدردشة عائمة؛ زر الإرجاع يرسو اللوحة لاحقاً في تدفّق أسفل المشغّل. */
   const mainSlice = html.slice(html.indexOf('id="roomMain"'), html.indexOf('<!-- ===== سكربتات'));
   const widgetTag = mainSlice.indexOf('id="chatWidget"');
   const chatTag = mainSlice.indexOf('<section class="chat');
@@ -219,12 +219,24 @@ const run = async () => {
     byId.get('chat').style.left === '28px' && byId.get('chat').style.top === '32px' &&
     !byId.get('chatPositionResetBtn').disabled && byId.get('chatPositionResetBtn').getAttribute('data-position') === 'moved');
   byId.get('chatPositionResetBtn').dispatch('click', {});
-  t('زر الإرجاع يعيد لوحة الرسائل إلى موضعها الأصلي ويعطل نفسه',
-    byId.get('chat').style.left === '12px' && byId.get('chat').style.top === '34px' &&
+  t('زر الإرجاع يرسو نافذة الرسائل أسفل المشغّل بكامل مساحة الغرفة',
+    sandbox.WTRoom.session.chatDocked && byId.get('chatWidget').classList.contains('is-docked') &&
+    byId.get('chat').style.position === '' && byId.get('chat').style.left === '' &&
+    byId.get('chat').style.width === '' && byId.get('chat').style.height === '' &&
+    byId.get('chatWidget').style.position === '' && byId.get('chatWidget').style.width === '' &&
     byId.get('chatPositionResetBtn').disabled && byId.get('chatPositionResetBtn').getAttribute('data-position') === 'default');
   byId.get('chatDragHandle').dispatch('pointerdown', { clientX: 10, clientY: 10, pointerId: 11, button: 0 });
   byId.get('chatDragHandle').dispatch('pointermove', { clientX: 38, clientY: 42, pointerId: 11 });
   byId.get('chatDragHandle').dispatch('pointerup', { clientX: 38, clientY: 42, pointerId: 11 });
+  t('نافذة الدردشة في موضعها الأصلي لا تُسحب خارج التخطيط',
+    sandbox.WTRoom.session.chatDocked && byId.get('chat').style.left === '');
+  byId.get('chatCloseBtn').dispatch('click', {});
+  t('تصغير الدردشة يعيد الفقاعة العائمة ويفكّ تثبيت النافذة أسفل المشغّل',
+    !sandbox.WTRoom.session.chatDocked && !byId.get('chatWidget').classList.contains('is-docked') && byId.get('chat').hidden);
+  byId.get('chatFab').dispatch('click', {});
+  t('إعادة فتح الدردشة تفتح اللوحة العائمة وتتيح إرجاعها أسفل المشغّل',
+    sandbox.WTRoom.session.chatOpen && !byId.get('chatWidget').classList.contains('is-docked') &&
+    !byId.get('chatPositionResetBtn').disabled);
   const panel = byId.get('chat');
   panel.getBoundingClientRect = () => {
     const left = parseFloat(panel.style.left) || 0, top = parseFloat(panel.style.top) || 0;

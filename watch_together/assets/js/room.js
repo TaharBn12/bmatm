@@ -98,6 +98,7 @@
     typingNames: {},
     unread: 0,
     chatOpen: false,
+    chatDocked: false,
     chatPreferences: null,
     leaving: false,
     replyTo: null,        /* الرسالة المُختارة للرد عليها {cid, name, text, row} */
@@ -2563,6 +2564,7 @@
   function setChatOpen(on) {
     session.chatOpen = !!on;
     const open = session.chatOpen;
+    setChatDocked(open && session.chatDocked);
     if (el.chat) {
       el.chat.hidden = !open;
       el.chat.setAttribute('aria-hidden', String(!open));
@@ -2617,10 +2619,37 @@
   function applyBubbleSize() {
     if (!el.chatWidget || !el.chatFab) return;
     const size = U.clamp(Number(session.chatPreferences.bubbleSize) || 64, 48, 96);
-    el.chatWidget.style.width = size + 'px';
-    el.chatWidget.style.height = size + 'px';
+    const docked = session.chatOpen && session.chatDocked;
+    el.chatWidget.style.width = docked ? '' : size + 'px';
+    el.chatWidget.style.height = docked ? '' : size + 'px';
     el.chatFab.style.width = size + 'px';
     el.chatFab.style.height = size + 'px';
+  }
+
+  function clearChatPanelInlineGeometry() {
+    if (!el.chat) return;
+    ['left', 'top', 'right', 'bottom', 'width', 'height', 'maxWidth', 'maxHeight'].forEach((key) => {
+      el.chat.style[key] = '';
+    });
+  }
+
+  function setChatDocked(docked) {
+    session.chatDocked = !!docked;
+    const active = session.chatOpen && session.chatDocked;
+    if (el.chatWidget) {
+      el.chatWidget.classList.toggle('is-docked', active);
+      if (active) {
+        ['left', 'top', 'right', 'bottom', 'width', 'height'].forEach((key) => {
+          el.chatWidget.style[key] = '';
+        });
+      }
+    }
+    if (active) clearChatPanelInlineGeometry();
+    applyBubbleSize();
+    if (!active && Number.isFinite(session.chatPreferences.bubbleLeft) && Number.isFinite(session.chatPreferences.bubbleTop)) {
+      placeChatWidget(session.chatPreferences.bubbleLeft, session.chatPreferences.bubbleTop, false);
+    }
+    updateChatPositionResetButton();
   }
 
   function defaultChatPanelPosition(width, height, viewport) {
@@ -2650,23 +2679,14 @@
   }
 
   function chatPanelIsAtDefaultPosition() {
-    const prefs = session.chatPreferences;
-    if (!Number.isFinite(prefs.panelLeft) || !Number.isFinite(prefs.panelTop)) return true;
-    const viewport = chatViewportBounds();
-    const maxWidth = Math.max(0, viewport.width - 24);
-    const maxHeight = Math.max(0, viewport.height - 24);
-    const width = U.clamp(Number(prefs.panelWidth) || 400, Math.min(280, maxWidth), maxWidth);
-    const height = U.clamp(Number(prefs.panelHeight) || 620, Math.min(180, maxHeight), maxHeight);
-    const original = defaultChatPanelPosition(width, height, viewport);
-    return Math.abs(Number(prefs.panelLeft) - original.left) < 2 &&
-      Math.abs(Number(prefs.panelTop) - original.top) < 2;
+    return !!(session.chatDocked && el.chatWidget && el.chatWidget.classList.contains('is-docked'));
   }
 
   function updateChatPositionResetButton() {
     const button = el.chatPositionResetBtn;
     if (!button) return;
     const moved = !chatPanelIsAtDefaultPosition();
-    const label = moved ? 'إعادة نافذة الرسائل إلى موضعها الأصلي' : 'نافذة الرسائل في موضعها الأصلي';
+    const label = moved ? 'إرجاع الدردشة إلى مكانها الأصلي أسفل المشغل' : 'الدردشة في مكانها الأصلي أسفل المشغل';
     button.disabled = !moved;
     button.classList.toggle('is-on', moved);
     button.setAttribute('data-position', moved ? 'moved' : 'default');
@@ -2678,6 +2698,11 @@
 
   function positionChatPanel() {
     if (!el.chat || el.chat.hidden || !el.chatFab) return;
+    if (session.chatDocked) {
+      clearChatPanelInlineGeometry();
+      updateChatPositionResetButton();
+      return;
+    }
     const viewport = chatViewportBounds();
     const maxWidth = Math.max(0, viewport.width - 24);
     const maxHeight = Math.max(0, viewport.height - 24);
@@ -2711,7 +2736,7 @@
   }
 
   function placeChatWidget(left, top, savePosition) {
-    if (!el.chatWidget) return;
+    if (!el.chatWidget || (session.chatOpen && session.chatDocked)) return;
     const viewport = chatViewportBounds();
     const size = U.clamp(Number(session.chatPreferences.bubbleSize) || 64, 48, 96);
     const minLeft = viewport.left + 8;
@@ -2733,7 +2758,7 @@
   }
 
   function placeChatPanel(left, top, savePosition) {
-    if (!el.chat) return;
+    if (!el.chat || (session.chatOpen && session.chatDocked)) return;
     const viewport = chatViewportBounds();
     const width = Math.min(Number(session.chatPreferences.panelWidth) || 400, Math.max(0, viewport.width - 24));
     const height = Math.min(Number(session.chatPreferences.panelHeight) || 620, Math.max(0, viewport.height - 24));
@@ -2779,14 +2804,10 @@
   function resetChatPosition() {
     session.chatPreferences.panelLeft = null;
     session.chatPreferences.panelTop = null;
-    if (el.chat) {
-      el.chat.style.left = '';
-      el.chat.style.top = '';
-      el.chat.style.right = '';
-      el.chat.style.bottom = '';
-    }
-    if (session.chatOpen) positionChatPanel();
-    updateChatPositionResetButton();
+    setChatDocked(true);
+    if (el.chatViewControls) el.chatViewControls.hidden = true;
+    if (el.chatViewBtn) el.chatViewBtn.setAttribute('aria-expanded', 'false');
+    if (session.chatOpen) requestAnimationFrame(() => scrollChat(true));
     saveChatPreferences();
   }
 
@@ -2795,6 +2816,7 @@
       bubbleSize: 64, bubbleLeft: null, bubbleTop: null,
       panelWidth: 400, panelHeight: 620, panelLeft: null, panelTop: null
     };
+    setChatDocked(false);
     if (el.chatWidget) {
       el.chatWidget.style.left = '';
       el.chatWidget.style.top = '';
@@ -2937,7 +2959,7 @@
       let panelDrag = null;
       el.chatDragHandle.addEventListener('pointerdown', (event) => {
         const target = event.target;
-        if ((target && target.closest && target.closest('button,input,a,textarea,select')) ||
+        if (session.chatDocked || (target && target.closest && target.closest('button,input,a,textarea,select')) ||
             event.isPrimary === false || (event.button !== undefined && event.button !== 0)) return;
         const bounds = el.chat.getBoundingClientRect();
         panelDrag = { id: event.pointerId, x: event.clientX, y: event.clientY, left: bounds.left, top: bounds.top, moved: false };
@@ -2970,6 +2992,7 @@
         return !!(root && (root.dir === 'rtl' || (root.getAttribute && root.getAttribute('dir') === 'rtl')));
       };
       el.chatResizeHandle.addEventListener('pointerdown', (event) => {
+        if (session.chatDocked) return;
         const bounds = el.chat.getBoundingClientRect();
         resizeDrag = {
           id: event.pointerId, x: event.clientX, y: event.clientY,
