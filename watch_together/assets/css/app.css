@@ -577,6 +577,8 @@ footer a:hover { color: var(--brand-2); }
 }
 .player__overlay.is-hidden { opacity: 0; pointer-events: none; }
 .player__overlay-box { display: grid; justify-items: center; gap: 14px; }
+.player__overlay-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; }
+.player__overlay-actions .btn { min-height: 42px; }
 .player__overlay-text { margin: 0; color: var(--muted); font-size: 14px; font-weight: 700; max-width: 420px; line-height: 1.8; }
 
 .player__placeholder {
