@@ -56,7 +56,7 @@ const pageOne = { ...video, title: 'فيديو القناة الأول' };
 const pageTwo = { ...video, id: '9bZkp7q19f0', title: 'فيديو القناة الثاني', url: 'https://www.youtube.com/watch?v=9bZkp7q19f0' };
 const adultVideo = {
   type: 'video', site: 'pornflip', id: 'adult-test-123', title: 'نتيجة اختبار للبالغين',
-  url: 'https://www.pornflip.com/video/adult-test-123', thumb: 'https://www.pornflip.com/thumbs/adult-test-123.jpg', duration: 91
+  url: 'https://www.pornflip.com/v/adult-test-123', thumb: 'https://www.pornflip.com/thumbs/adult-test-123.jpg', duration: 91
 };
 const jsonResponse = value => ({ ok: true, status: 200, text: async () => JSON.stringify(value) });
 const fetch = async input => {
@@ -70,7 +70,7 @@ const fetch = async input => {
   }
   if (url.pathname.endsWith('/api/search')) {
     const site = url.searchParams.get('site');
-    if (site === 'pornflip') return jsonResponse({ items: [adultVideo], source: 'yt-dlp', count: 1 });
+    if (site === 'pornflip') return jsonResponse({ items: [adultVideo], source: 'pornflip-html', count: 1 });
     const type = url.searchParams.get('type') || 'all';
     const items = type === 'playlist' ? [playlist] : type === 'channel' ? [channel] : [video, channel, playlist];
     return jsonResponse({ items, source: 'yt-dlp', count: items.length });
@@ -168,6 +168,8 @@ try {
   assert.equal(adultCall.searchParams.get('adult_confirmed'), '1', 'client marks its explicit self-attestation for the server');
   assert.match(byId.get('results').innerHTML, /result-card--video/);
   assert.match(byId.get('results').innerHTML, /pornflip\.com\/thumbs\//, 'adult results load only after confirmation');
+  assert.match(byId.get('searchStatus').textContent, /PornFlip \(صفحة النتائج\)/,
+    'the interface labels PornFlip HTML-page search accurately');
   assert.doesNotMatch(byId.get('results').innerHTML, /data-favorite-index/, 'PornFlip results are not added to favorites');
 
   const adultQuery = 'private-adult-query';
@@ -186,7 +188,7 @@ try {
   guardedEnv.sandbox.WTFavorites = {
     identity: item => String(item.site || 'external') + ':video:' + String(item.id || item.url),
     list: async () => [{ type: 'video', site: 'external', id: 'legacy-pf', title: 'مفضّلة قديمة',
-      url: 'https://www.pornflip.com/video/legacy-pf', thumb: 'https://www.pornflip.com/thumbs/legacy-pf.jpg' }],
+      url: 'https://www.pornflip.com/v/legacy-pf', thumb: 'https://www.pornflip.com/thumbs/legacy-pf.jpg' }],
     toggle: async item => ({ saved: true, item })
   };
   prepareSearchDom(guardedEnv);
@@ -210,8 +212,29 @@ try {
 
   const javaSearch = fs.readFileSync(new URL('../../java-server/src/com/watchtogether/SearchResolver.java', import.meta.url), 'utf8');
   assert.match(javaSearch, /pornflip && !"1"\.equals\(query\.get\("adult_confirmed"\)\)/,
-    'Java API also requires explicit adult confirmation before invoking yt-dlp');
-  console.log('Search features passed (YouTube browsing/favorites and PornFlip 18+ gating, confirmation, privacy and server contract)');
+    'Java API also requires explicit adult confirmation before fetching results');
+  assert.ok(javaSearch.includes('items = viaPornFlipSearch(term, limit);'),
+    'PornFlip search uses its HTML listing parser instead of treating a search page as a video');
+  assert.ok(javaSearch.includes('item.put("url", PF_BASE + "/v/" + id);'),
+    'PornFlip results use a video URL path supported by yt-dlp');
+  assert.match(javaSearch, /PF_VIDEO_CARD = Pattern\.compile/,
+    'the Java server parses result cards from the PornFlip search page');
+  const cardDeclaration = javaSearch.match(/PF_VIDEO_CARD\s*=\s*Pattern\.compile\(\s*([\s\S]*?),\s*Pattern\.CASE_INSENSITIVE/);
+  assert.ok(cardDeclaration, 'PornFlip result-card pattern is declared');
+  const cardPattern = new RegExp([...cardDeclaration[1].matchAll(/"((?:\\.|[^"\\])*)"/g)]
+    .map(([, value]) => JSON.parse('"' + value + '"')).join(''), 'is');
+  const sampleCard = '<div class="card thumbs_rotate itemVideo"><a href="/dzv9Mtw1qj2/sv/sample-title">' +
+    '<img class="card-img-top" src="/thumbs/sample.jpg" alt="Fallback"></a><span class="duration">7:56</span>' +
+    '<h5 class="card-title"><a href="/dzv9Mtw1qj2/sv/sample-title">Title &amp; More</a></h5></div>';
+  const parsedCard = cardPattern.exec(sampleCard);
+  assert.ok(parsedCard, 'PornFlip result-card parser recognizes the current card markup');
+  assert.equal(parsedCard[1], '/dzv9Mtw1qj2/sv/sample-title');
+  assert.equal(parsedCard[2], '/thumbs/sample.jpg');
+  assert.equal(parsedCard[4], '7:56');
+  assert.equal(parsedCard[5], 'Title &amp; More');
+  assert.doesNotMatch(javaSearch, /PF_WATCH/,
+    'search results do not construct the invalid /video/ID URL');
+  console.log('Search features passed (YouTube browsing/favorites, PornFlip search parsing, 18+ gating, confirmation, privacy and server contract)');
 } finally {
   env.dispose();
 }

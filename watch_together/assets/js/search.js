@@ -399,7 +399,7 @@
             : 'لم يُرجع يوتيوب ' + requestedType + ' عن «' + query + '» — حدّث yt-dlp ثم أعد المحاولة: py -m pip install -U yt-dlp';
         } else if (state.site === 'pornflip') {
           el.emptyText.textContent = state.server === false
-            ? 'بحث PornFlip يحتاج خادم Java مع yt-dlp.' + (state.reason ? ' — ' + state.reason : ' شغّل الخادم أو اضبط javaServer.apiBase ثم أعد المحاولة.')
+            ? 'بحث PornFlip يحتاج خادم Java.' + (state.reason ? ' — ' + state.reason : ' شغّل الخادم أو اضبط javaServer.apiBase ثم أعد المحاولة.')
             : 'لم يُرجع PornFlip نتائج عن «' + query + '» — جرّب عبارة أخرى.';
         } else {
           el.emptyText.textContent = 'لا نتائج لـ «' + query + '» في ديليموشن — جرّب كلمة أخرى.';
@@ -416,7 +416,8 @@
         render(state.items);
         if (state.site !== 'pornflip') pushRecent(query);
         status(state.items.length + ' نتيجة — المصدر: ' + (
-          result.source === 'yt-dlp' ? (state.site === 'pornflip' ? 'PornFlip عبر yt-dlp' : 'yt-dlp على السيرفر') :
+          result.source === 'pornflip-html' ? 'PornFlip (صفحة النتائج)' :
+          result.source === 'yt-dlp' ? 'yt-dlp على السيرفر' :
           result.source === 'dailymotion-api' ? 'واجهة ديليموشن' : 'ديليموشن مباشرة'
         ));
         loadFavoriteState(false).then(() => {
@@ -430,8 +431,10 @@
       el.results.setAttribute('aria-busy', 'false');
       el.empty.hidden = false;
       el.emptyText.textContent = error && error.serverDown
-        ? 'خدمة البحث على السيرفر معطّلة (' + (error.status || '5xx') + '): ' + (error.message || '') +
-          ' — حدّث yt-dlp: py -m pip install -U yt-dlp'
+        ? state.site === 'pornflip'
+          ? 'تعذّر جلب نتائج PornFlip من الخادم (' + (error.status || '5xx') + '): ' + (error.message || '')
+          : 'خدمة البحث على السيرفر معطّلة (' + (error.status || '5xx') + '): ' + (error.message || '') +
+            ' — حدّث yt-dlp: py -m pip install -U yt-dlp'
         : 'تعذّر البحث — تحقّق من الاتصال ثم أعد المحاولة';
       status(error && error.message ? error.message : 'تعذّر البحث', true);
     } finally {
@@ -465,7 +468,7 @@
     const siteMsg = state.site === 'youtube'
       ? 'بحث يوتيوب يحتاج سيرفر Java مع yt-dlp. '
       : state.site === 'pornflip'
-        ? 'بحث PornFlip يحتاج سيرفر Java مع yt-dlp. '
+        ? 'بحث PornFlip يحتاج سيرفر Java؛ وتشغيل النتائج يتطلب yt-dlp. '
         : 'نتائج البحث تعمل، لكن استخراج رابط التشغيل المباشر يحتاج سيرفر Java مع yt-dlp. ';
     el.noteText.textContent = siteMsg + where;
   }
