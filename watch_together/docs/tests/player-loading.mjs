@@ -94,6 +94,25 @@ try {
   await loadedFile;
   checks++;
 
+  const blockedEmbed = make();
+  blockedEmbed.sandbox.YT = {
+    Player: function (_holder, config) {
+      config.events.onError({ data: 150 });
+      return { destroy() {} };
+    }
+  };
+  const blockedVideo = blockedEmbed.player.load({ kind: 'youtube', id: 'dQw4w9WgXcQ' });
+  await assert.rejects(blockedVideo, error => error.retryable === false && /يمنع تضمين هذا الفيديو/.test(error.message));
+  const blockedLink = blockedEmbed.container.querySelector('.player__open-youtube');
+  assert.equal(blockedLink.hidden, false, 'embedding-blocked videos offer an official YouTube link');
+  assert.equal(blockedLink.getAttribute('href'), 'https://www.youtube.com/watch?v=dQw4w9WgXcQ');
+  assert.match(blockedEmbed.container.querySelector('.player__overlay--loading').innerHTML,
+    /target="_blank" rel="noopener noreferrer"/, 'the fallback link opens safely in a new tab');
+  assert.equal(blockedEmbed.container.querySelector('.player__retry').hidden, true,
+    'retry is hidden for an embedding restriction that cannot be fixed by reloading');
+  assert.match(blockedEmbed.container.querySelector('.player__overlay-text').textContent, /رمز 150/);
+  checks++;
+
   const hls = make();
   const callbacks = {};
   hls.sandbox.Hls = class {

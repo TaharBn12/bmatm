@@ -71,7 +71,7 @@
     if (fn) { try { fn(data); } catch (e) { console.error(e); } }
   };
 
-  UnifiedPlayer.prototype._setLoading = function (show, text, error) {
+  UnifiedPlayer.prototype._setLoading = function (show, text, error, details) {
     /* منفصلة عن طبقة السماح بالتشغيل التلقائي التي تنشئها صفحة الغرفة. */
     let ov = this.el.querySelector('.player__overlay--loading');
     if (!ov) {
@@ -79,16 +79,28 @@
       ov.className = 'player__overlay player__overlay--loading';
       ov.innerHTML = '<div class="player__overlay-box"><span class="spinner"></span>' +
         '<p class="player__overlay-text" role="status"></p>' +
-        '<button type="button" class="btn btn--primary player__retry" hidden>إعادة المحاولة</button></div>';
+        '<div class="player__overlay-actions">' +
+          '<button type="button" class="btn btn--primary player__retry" hidden>إعادة المحاولة</button>' +
+          '<a class="btn btn--ghost player__open-youtube" target="_blank" rel="noopener noreferrer" hidden>فتح على يوتيوب</a>' +
+        '</div></div>';
       ov.querySelector('.player__retry').addEventListener('click', (e) => {
         e.stopPropagation();
         this._fire('onEvent', { type: 'retry', source: 'player' });
       });
       this.el.appendChild(ov);
     }
+    const retry = ov.querySelector('.player__retry');
+    const openYouTube = ov.querySelector('.player__open-youtube');
+    const retryable = !details || details.retryable !== false;
+    const youtubeUrl = details && typeof details.youtubeUrl === 'string' &&
+      /^https:\/\/www\.youtube\.com\/watch\?v=[A-Za-z0-9_-]{11}$/.test(details.youtubeUrl)
+      ? details.youtubeUrl : '';
     ov.querySelector('.player__overlay-text').textContent = text || '';
     ov.querySelector('.spinner').hidden = !!error;
-    ov.querySelector('.player__retry').hidden = !error;
+    retry.hidden = !error || !retryable;
+    openYouTube.hidden = !error || !youtubeUrl;
+    if (youtubeUrl) openYouTube.setAttribute('href', youtubeUrl);
+    else openYouTube.removeAttribute('href');
     ov.classList.toggle('is-hidden', !show);
   };
 
@@ -152,7 +164,7 @@
       const fail = (err) => {
         if (!current() || this.state === S.ERROR) return;
         this.state = S.ERROR;
-        this._setLoading(true, err.message || 'تعذّر تحميل الفيديو', true);
+        this._setLoading(true, err.message || 'تعذّر تحميل الفيديو', true, err);
         this._fire('onEvent', { type: 'error', source: 'player', message: err.message });
         if (!settled) { settled = true; cleanup(); reject(err); }
       };
@@ -207,7 +219,24 @@
           onAutoplayBlocked: () => {
             if (load.current()) this._fire('onEvent', { type: 'autoplay-blocked', source: 'player' });
           },
-          onError: (e) => load.fail(new Error('تعذّر تشغيل فيديو يوتيوب (رمز ' + e.data + ') — قد يكون خاصاً أو يمنع التضمين'))
+          onError: (e) => {
+            const code = Number(e && e.data);
+            const blocked = code === 101 || code === 150;
+            const unavailable = code === 100;
+            const message = blocked
+              ? 'يوتيوب يمنع تضمين هذا الفيديو في مواقع أخرى (رمز ' + code + '). افتحه على يوتيوب أو اختر فيديو يسمح مالكه بالتضمين.'
+              : unavailable
+                ? 'فيديو يوتيوب غير متاح أو خاص أو محذوف (رمز 100).'
+                : code === 2
+                  ? 'معرّف فيديو يوتيوب غير صالح (رمز 2).'
+                  : 'تعذّر تشغيل فيديو يوتيوب (رمز ' + (Number.isFinite(code) ? code : 'غير معروف') + '). تحقق من الاتصال ثم أعد المحاولة.';
+            const error = new Error(message);
+            error.code = 'youtube-' + (Number.isFinite(code) ? code : 'unknown');
+            error.youtubeCode = Number.isFinite(code) ? code : null;
+            error.youtubeUrl = 'https://www.youtube.com/watch?v=' + encodeURIComponent(parsed.id);
+            error.retryable = !(blocked || unavailable || code === 2);
+            load.fail(error);
+          }
         }
       });
     }).catch(load.fail);
