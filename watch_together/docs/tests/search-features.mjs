@@ -1,11 +1,41 @@
-/* Search UI regressions: mixed YouTube results, favorites, channel links and paged browsing. */
+/* Search UI regressions: YouTube discovery/favorites plus adult-source confirmation and privacy. */
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
 import { createRoomEnv, wait } from './harness.mjs';
 
+function prepareSearchDom(env) {
+  const { documentStub, byId, El } = env;
+  const html = fs.readFileSync(new URL('../../search.html', import.meta.url), 'utf8');
+  for (const match of html.matchAll(/<([a-zA-Z][a-zA-Z0-9-]*)\b([^>]*)\bid="([A-Za-z0-9_-]+)"([^>]*)>/g)) {
+    const [, tag, before, id, after] = match;
+    if (byId.has(id)) continue;
+    const node = new El(tag);
+    node.id = id;
+    const attrs = before + ' ' + after;
+    const classMatch = attrs.match(/\bclass="([^"]*)"/);
+    if (classMatch) node.className = classMatch[1];
+    for (const attr of attrs.matchAll(/([a-zA-Z-]+)="([^"]*)"/g)) node.setAttribute(attr[1], attr[2]);
+    if (/\shidden(?:\s|$)/.test(attrs)) node.hidden = true;
+    byId.set(id, node);
+    documentStub.body.appendChild(node);
+  }
+  byId.get('searchSources').innerHTML = '<button data-site="dailymotion"></button><button data-site="youtube"></button><button data-site="pornflip"></button>';
+  byId.get('searchTypes').innerHTML = '<button data-search-type="all"></button><button data-search-type="video"></button>' +
+    '<button data-search-type="channel"></button><button data-search-type="playlist"></button><button data-search-view="favorites"></button>';
+  return html;
+}
+
+function loadSearchScripts(env) {
+  const { sandbox } = env;
+  for (const path of ['assets/js/config.js', 'assets/js/util.js', 'assets/js/icons.js']) {
+    vm.runInContext(fs.readFileSync(new URL('../../' + path, import.meta.url), 'utf8'), sandbox, { filename: path });
+  }
+  vm.runInContext(fs.readFileSync(new URL('../../assets/js/search.js', import.meta.url), 'utf8'), sandbox, { filename: 'search.js' });
+}
+
 const env = createRoomEnv({ search: '?site=youtube', scripts: [] });
-const { sandbox, documentStub, byId, El } = env;
+const { sandbox, byId, store } = env;
 const calls = [];
 const video = {
   type: 'video', site: 'youtube', id: 'dQw4w9WgXcQ', title: 'فيديو اختبار',
@@ -24,6 +54,10 @@ const playlist = {
 };
 const pageOne = { ...video, title: 'فيديو القناة الأول' };
 const pageTwo = { ...video, id: '9bZkp7q19f0', title: 'فيديو القناة الثاني', url: 'https://www.youtube.com/watch?v=9bZkp7q19f0' };
+const adultVideo = {
+  type: 'video', site: 'pornflip', id: 'adult-test-123', title: 'نتيجة اختبار للبالغين',
+  url: 'https://www.pornflip.com/video/adult-test-123', thumb: 'https://www.pornflip.com/thumbs/adult-test-123.jpg', duration: 91
+};
 const jsonResponse = value => ({ ok: true, status: 200, text: async () => JSON.stringify(value) });
 const fetch = async input => {
   const url = new URL(input, sandbox.location.origin);
@@ -35,6 +69,8 @@ const fetch = async input => {
       browseUrl: url.searchParams.get('url'), offset, nextOffset: offset ? 19 : 18, hasMore: offset === 0 });
   }
   if (url.pathname.endsWith('/api/search')) {
+    const site = url.searchParams.get('site');
+    if (site === 'pornflip') return jsonResponse({ items: [adultVideo], source: 'yt-dlp', count: 1 });
     const type = url.searchParams.get('type') || 'all';
     const items = type === 'playlist' ? [playlist] : type === 'channel' ? [channel] : [video, channel, playlist];
     return jsonResponse({ items, source: 'yt-dlp', count: items.length });
@@ -56,32 +92,9 @@ const favorites = {
   }
 };
 Object.assign(sandbox, { fetch, WTFavorites: favorites });
-
-// Add the search page's DOM IDs and the real source/type tab controls to the shared test DOM.
-const html = fs.readFileSync(new URL('../../search.html', import.meta.url), 'utf8');
-for (const match of html.matchAll(/<([a-zA-Z][a-zA-Z0-9-]*)\b([^>]*)\bid="([A-Za-z0-9_-]+)"([^>]*)>/g)) {
-  const [, tag, before, id, after] = match;
-  if (byId.has(id)) continue;
-  const node = new El(tag);
-  node.id = id;
-  const attrs = before + ' ' + after;
-  const classMatch = attrs.match(/\bclass="([^"]*)"/);
-  if (classMatch) node.className = classMatch[1];
-  for (const attr of attrs.matchAll(/([a-zA-Z-]+)="([^"]*)"/g)) node.setAttribute(attr[1], attr[2]);
-  if (/\shidden(?:\s|$)/.test(attrs)) node.hidden = true;
-  byId.set(id, node);
-  documentStub.body.appendChild(node);
-}
-const sourceTabs = byId.get('searchSources');
-sourceTabs.innerHTML = '<button data-site="dailymotion"></button><button data-site="youtube"></button>';
+prepareSearchDom(env);
+loadSearchScripts(env);
 const typeTabs = byId.get('searchTypes');
-typeTabs.innerHTML = '<button data-search-type="all"></button><button data-search-type="video"></button>' +
-  '<button data-search-type="channel"></button><button data-search-type="playlist"></button><button data-search-view="favorites"></button>';
-
-for (const path of ['assets/js/config.js', 'assets/js/util.js', 'assets/js/icons.js']) {
-  vm.runInContext(fs.readFileSync(new URL('../../' + path, import.meta.url), 'utf8'), sandbox, { filename: path });
-}
-vm.runInContext(fs.readFileSync(new URL('../../assets/js/search.js', import.meta.url), 'utf8'), sandbox, { filename: 'search.js' });
 
 const click = (parent, selector) => {
   const target = parent.querySelector(selector);
@@ -142,7 +155,63 @@ try {
   assert.ok(calls.some(url => url.searchParams.get('browse') === 'playlist' &&
     url.searchParams.get('url') === playlist.url), 'playlist result opens its contents');
   assert.equal(byId.get('browseBar').hidden, false);
-  console.log('Search features passed (mixed results, channel links, pagination, favorites, player channel action and playlist browsing)');
+
+  // PornFlip must not make a request or load thumbnails until the user explicitly confirms 18+.
+  click(byId.get('searchSources'), '[data-site="pornflip"]');
+  assert.notEqual(byId.get('adultGate').getAttribute('open'), null, 'selecting PornFlip opens the age gate');
+  assert.equal(calls.some(url => url.searchParams.get('site') === 'pornflip'), false,
+    'selecting the adult source does not query the server before confirmation');
+  byId.get('adultGateAccept').dispatch('click', {});
+  await wait(25);
+  const adultCall = calls.find(url => url.searchParams.get('site') === 'pornflip');
+  assert.ok(adultCall, 'confirmation resumes the pending PornFlip search');
+  assert.equal(adultCall.searchParams.get('adult_confirmed'), '1', 'client marks its explicit self-attestation for the server');
+  assert.match(byId.get('results').innerHTML, /result-card--video/);
+  assert.match(byId.get('results').innerHTML, /pornflip\.com\/thumbs\//, 'adult results load only after confirmation');
+  assert.doesNotMatch(byId.get('results').innerHTML, /data-favorite-index/, 'PornFlip results are not added to favorites');
+
+  const adultQuery = 'private-adult-query';
+  input.value = adultQuery;
+  byId.get('searchForm').dispatch('submit', { preventDefault() { } });
+  await wait(25);
+  assert.ok(calls.some(url => url.searchParams.get('site') === 'pornflip' && url.searchParams.get('q') === adultQuery),
+    'confirmed users can search PornFlip');
+  assert.equal((store['wt:search:recent'] || []).includes(adultQuery), false,
+    'adult search terms are not written to shared search history');
+
+  // A direct adult URL also remains gated; cancelling restores a safe source and hides old adult favorites.
+  const guardedEnv = createRoomEnv({ search: '?site=pornflip&q=must-not-send', scripts: [] });
+  const guardedCalls = [];
+  guardedEnv.sandbox.fetch = async input => { guardedCalls.push(input); throw new Error('adult request should remain blocked'); };
+  guardedEnv.sandbox.WTFavorites = {
+    identity: item => String(item.site || 'external') + ':video:' + String(item.id || item.url),
+    list: async () => [{ type: 'video', site: 'external', id: 'legacy-pf', title: 'مفضّلة قديمة',
+      url: 'https://www.pornflip.com/video/legacy-pf', thumb: 'https://www.pornflip.com/thumbs/legacy-pf.jpg' }],
+    toggle: async item => ({ saved: true, item })
+  };
+  prepareSearchDom(guardedEnv);
+  loadSearchScripts(guardedEnv);
+  await wait(10);
+  assert.notEqual(guardedEnv.byId.get('adultGate').getAttribute('open'), null,
+    'a PornFlip deep link asks for confirmation before sending its query');
+  assert.equal(guardedCalls.length, 0, 'deep-link query is not fetched before confirmation');
+  guardedEnv.byId.get('adultGateCancel').dispatch('click', {});
+  assert.equal(guardedCalls.length, 0, 'cancelling leaves the server untouched');
+  assert.equal(guardedEnv.byId.get('adultGate').getAttribute('open'), null, 'cancel closes the gate');
+  assert.equal(guardedEnv.byId.get('searchSources').querySelector('[data-site="dailymotion"]').classList.contains('is-active'), true,
+    'cancel restores the previous non-adult source');
+  click(guardedEnv.byId.get('searchTypes'), '[data-search-view="favorites"]');
+  await wait(15);
+  assert.match(guardedEnv.byId.get('emptyText').textContent, /مخفية حتى تأكيد 18\+/,
+    'saved PornFlip links stay hidden from favorites without confirmation');
+  assert.doesNotMatch(guardedEnv.byId.get('results').innerHTML, /pornflip|legacy-pf/i,
+    'unconfirmed adult favorites do not render links or thumbnails');
+  guardedEnv.dispose();
+
+  const javaSearch = fs.readFileSync(new URL('../../java-server/src/com/watchtogether/SearchResolver.java', import.meta.url), 'utf8');
+  assert.match(javaSearch, /pornflip && !"1"\.equals\(query\.get\("adult_confirmed"\)\)/,
+    'Java API also requires explicit adult confirmation before invoking yt-dlp');
+  console.log('Search features passed (YouTube browsing/favorites and PornFlip 18+ gating, confirmation, privacy and server contract)');
 } finally {
   env.dispose();
 }

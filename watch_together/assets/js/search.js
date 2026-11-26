@@ -1,11 +1,10 @@
 /* =========================================================
    WatchTogether — صفحة البحث (search.js)
    ---------------------------------------------------------
-   • مصدران: ديليموشن ويوتيوب، من سيرفر Java (/api/search).
-   • ديليموشن: عند الضغط يستخرج السيرفر رابط تشغيل مباشر
-     عبر yt-dlp (WTResolve → /api/resolve) ويُشغّل في <video>.
-   • يوتيوب: لا يحتاج استخراجاً — يُشغّل بمشغّله الرسمي
-     داخل iframe (بلا مفتاح API).
+   • المصادر: ديليموشن ويوتيوب وPornFlip (18+)، من سيرفر Java (/api/search).
+   • PornFlip يتطلب إقراراً صريحاً بالعمر في كل جلسة قبل أي طلب؛ لا يُخزّن البحث في السجل.
+   • ديليموشن وPornFlip: يستخرج السيرفر رابط التشغيل عبر yt-dlp.
+   • يوتيوب: يُشغّل بمشغّله الرسمي داخل iframe (بلا مفتاح API).
    • من أي نتيجة: افتح غرفة، أو أضفها إلى قائمة انتظار غرفة
      موجودة (تُسلَّم عبر sessionStorage وتُقرأ في room.js).
    التزام: بلا مكتبات خارجية · RTL · وصولية · Midnight Gold
@@ -33,13 +32,15 @@
     room: $('playRoom'), queue: $('playQueue'), favorite: $('playFavorite'), channel: $('playChannel'), copy: $('playCopy'),
     source: $('playSource'), hint: $('playHint'),
     picker: $('roomPicker'), pickerList: $('pickerList'), pickerEmpty: $('pickerEmpty'),
-    pickerClose: $('pickerClose')
+    pickerClose: $('pickerClose'), adultGate: $('adultGate'),
+    adultGateAccept: $('adultGateAccept'), adultGateCancel: $('adultGateCancel')
   };
 
   const QUICK_DM = ['وثائقيات', 'موسيقى', 'طبخ', 'رياضة', 'تقنية', 'أفلام قصيرة'];
   const QUICK_YT = ['محاضرات', 'قرآن', 'أغاني', 'برمجة', 'طبخ', 'رياضة'];
   const RECENT_KEY = 'search:recent';
   const SITE_KEY = 'search:site';
+  const ADULT_ACK_KEY = 'wt:search:adult-confirmed';
   const PENDING = 'pending-queue:';
   const LIMIT = 18;
 
@@ -57,6 +58,8 @@
   const state = {
     query: '', site: 'dailymotion', searchType: 'all', items: [], viewItems: [], view: 'search', loading: false,
     browse: null, favoriteKeys: new Set(), favoriteError: null,
+    adultConfirmed: false,    /* إقرار 18+ مؤقت للجلسة فقط */
+    previousSite: 'dailymotion', pendingAdultAction: '', pendingAdultQuery: '',
     server: null,            /* null = لم يُختبر · true = سيرفر Java · false = استضافة ثابتة */
     reason: '',              /* سبب تعذّر الوصول إلى /api/search (نص تشخيصي) */
     token: 0,                /* رقم مسلسل للبحث الجاري — يمنع نتائج قديمة من التغطية على جديدة */
@@ -128,11 +131,30 @@
     } catch (_) { return ''; }
   }
 
+  function safePornFlipUrl(raw) {
+    const safe = safeWebUrl(raw, true);
+    if (!safe) return '';
+    try {
+      const host = new URL(safe).hostname.toLowerCase().replace(/^www\./, '');
+      return host === 'pornflip.com' || host.endsWith('.pornflip.com') ? safe : '';
+    } catch (_) { return ''; }
+  }
+
+  function isAdultItem(item) {
+    if (!item) return false;
+    if (String(item.site || '').toLowerCase() === 'pornflip') return true;
+    try {
+      const host = new URL(String(item.url || '')).hostname.toLowerCase().replace(/^www\./, '');
+      return host === 'pornflip.com' || host.endsWith('.pornflip.com');
+    } catch (_) { return false; }
+  }
+
   function normalize(raw, site) {
     if (!raw || typeof raw !== 'object') return null;
     const source = String(raw.site || site || '').toLowerCase();
     const isYT = source === 'youtube' || source === 'yt';
     const isDM = source === 'dailymotion' || source === 'dm';
+    const isPF = source === 'pornflip';
     const type = ['video', 'channel', 'playlist'].includes(String(raw.type || '').toLowerCase())
       ? String(raw.type || '').toLowerCase() : 'video';
     let id = String(raw.id || '').trim();
@@ -149,6 +171,10 @@
         }
         if (!/^[A-Za-z0-9]{1,32}$/.test(id)) return null;
         if (!url) url = 'https://www.dailymotion.com/video/' + id;
+      } else if (isPF) {
+        url = safePornFlipUrl(url);
+        if (!url) return null;
+        id = id || url;
       } else {
         if (!url) return null;
         id = id || url;
@@ -166,9 +192,10 @@
       id = playlist;
       url = 'https://www.youtube.com/playlist?list=' + id;
     }
-    url = safeWebUrl(url, false);
+    url = isPF ? safePornFlipUrl(url) : safeWebUrl(url, false);
     if (!url) return null;
-    let thumb = safeWebUrl(raw.thumb || raw.thumbnail || '', true);
+    let thumb = isPF ? safePornFlipUrl(raw.thumb || raw.thumbnail || '')
+      : safeWebUrl(raw.thumb || raw.thumbnail || '', true);
     if (!thumb && isYT && type === 'video') thumb = 'https://i.ytimg.com/vi/' + id + '/hqdefault.jpg';
     if (!thumb && isDM) thumb = 'https://www.dailymotion.com/thumbnail/video/' + id;
     const author = String(raw.author || raw.owner || raw.channel || '').replace(/\s+/g, ' ').trim().slice(0, 140);
@@ -177,14 +204,14 @@
       (channelId.match(/^UC[A-Za-z0-9_-]{20,30}$/) ? 'https://www.youtube.com/channel/' + channelId : '')) : '';
     const title = String(raw.title || '').replace(/\s+/g, ' ').trim().slice(0, 240) || 'بدون عنوان';
     return {
-      id, type, site: isYT ? 'youtube' : isDM ? 'dailymotion' : (source || 'external'),
+      id, type, site: isYT ? 'youtube' : isDM ? 'dailymotion' : isPF ? 'pornflip' : (source || 'external'),
       title, url, thumb, duration: Number(raw.duration) || 0, author,
       channelId, channelUrl, count: Number(raw.count || raw.channel_follower_count || 0) || 0
     };
   }
 
   /**
-   * المحاولة الأولى: سيرفر Java (yt-dlp، أو واجهة ديليموشن عبر السيرفر).
+   * المحاولة الأولى: سيرفر Java (yt-dlp لكل المصادر، مع واجهة ديليموشن كخيار احتياطي).
    * نفرّق بدقّة بين ثلاث حالات كانت تُظهر كلها رسالة واحدة مبهمة:
    *   1) لا سيرفر أصلاً (ملف file://، منفذ خاطئ، سيرفر قديم) → null
    *   2) السيرفر موجود لكن خدمة البحث معطّلة (5xx) → خطأ serverDown
@@ -193,6 +220,10 @@
   async function fromServer(term, limit, site, type, browse) {
     const api = (window.WTServer && window.WTServer.api) ? window.WTServer.api('api/search') : 'api/search';
     const params = new URLSearchParams({ q: term || '', limit: String(limit), site: String(site || '') });
+    if (site === 'pornflip') {
+      if (!state.adultConfirmed) throw new Error('تأكيد 18+ مطلوب قبل البحث في PornFlip');
+      params.set('adult_confirmed', '1');
+    }
     if (browse) {
       params.set('browse', browse.type);
       params.set('url', browse.url);
@@ -305,6 +336,10 @@
 
   async function runSearch(term) {
     const query = String(term || '').trim();
+    if (state.site === 'pornflip' && !state.adultConfirmed) {
+      requestAdultConfirmation('search', query);
+      return;
+    }
     if (query.length < 2) { status('اكتب كلمتين على الأقل للبحث', true); el.input.focus(); return; }
     const token = ++state.token;
     state.view = 'search';
@@ -339,10 +374,13 @@
       }
       if (!result) {
         state.server = false;
-        result = state.site === 'youtube' ? { items: [], source: 'none' } : await fromDailymotion(query, LIMIT);
+        result = ['youtube', 'pornflip'].includes(state.site)
+          ? { items: [], source: 'none' }
+          : await fromDailymotion(query, LIMIT);
         if (token !== state.token) return;
       }
-      state.items = result.items.map(item => normalize(item, state.site)).filter(Boolean);
+      state.items = result.items.map(item => normalize(item, state.site)).filter(item =>
+        item && (!isAdultItem(item) || (state.site === 'pornflip' && state.adultConfirmed)));
       state.viewItems = state.items;
       updateNote();
       if (!state.items.length) {
@@ -359,6 +397,10 @@
                 : ' — على استضافة ثابتة: اضبط javaServer.apiBase بعنوان سيرفر Render في assets/js/config.js') +
               ' — حدّث yt-dlp ثم أعد المحاولة: py -m pip install -U yt-dlp'
             : 'لم يُرجع يوتيوب ' + requestedType + ' عن «' + query + '» — حدّث yt-dlp ثم أعد المحاولة: py -m pip install -U yt-dlp';
+        } else if (state.site === 'pornflip') {
+          el.emptyText.textContent = state.server === false
+            ? 'بحث PornFlip يحتاج خادم Java مع yt-dlp.' + (state.reason ? ' — ' + state.reason : ' شغّل الخادم أو اضبط javaServer.apiBase ثم أعد المحاولة.')
+            : 'لم يُرجع PornFlip نتائج عن «' + query + '» — جرّب عبارة أخرى.';
         } else {
           el.emptyText.textContent = 'لا نتائج لـ «' + query + '» في ديليموشن — جرّب كلمة أخرى.';
         }
@@ -372,9 +414,9 @@
         const existing = el.results.parentNode.querySelector('.search-status--suggested');
         if (existing) existing.remove();
         render(state.items);
-        pushRecent(query);
+        if (state.site !== 'pornflip') pushRecent(query);
         status(state.items.length + ' نتيجة — المصدر: ' + (
-          result.source === 'yt-dlp' ? 'yt-dlp على السيرفر' :
+          result.source === 'yt-dlp' ? (state.site === 'pornflip' ? 'PornFlip عبر yt-dlp' : 'yt-dlp على السيرفر') :
           result.source === 'dailymotion-api' ? 'واجهة ديليموشن' : 'ديليموشن مباشرة'
         ));
         loadFavoriteState(false).then(() => {
@@ -422,7 +464,9 @@
     }
     const siteMsg = state.site === 'youtube'
       ? 'بحث يوتيوب يحتاج سيرفر Java مع yt-dlp. '
-      : 'نتائج البحث تعمل، لكن استخراج رابط التشغيل المباشر يحتاج سيرفر Java مع yt-dlp. ';
+      : state.site === 'pornflip'
+        ? 'بحث PornFlip يحتاج سيرفر Java مع yt-dlp. '
+        : 'نتائج البحث تعمل، لكن استخراج رابط التشغيل المباشر يحتاج سيرفر Java مع yt-dlp. ';
     el.noteText.textContent = siteMsg + where;
   }
 
@@ -463,6 +507,7 @@
   }
 
   async function toggleFavorite(item) {
+    if (isAdultItem(item)) throw new Error('حفظ نتائج PornFlip في المفضّلة غير متاح');
     if (!Favorites || typeof Favorites.toggle !== 'function') throw new Error('خدمة المفضّلة غير متاحة');
     const result = await Favorites.toggle(item);
     const key = favoriteKey(item);
@@ -507,7 +552,7 @@
         : '';
       const author = item.author && !channel ? '<span class="result-card__author">' + U.esc(item.author) + '</span>' : '';
       const count = item.count > 0 ? '<span>' + U.esc(U.fmtCount ? U.fmtCount(item.count) : item.count) + '</span>' : '';
-      const heart = isVideo
+      const heart = isVideo && !isAdultItem(item)
         ? '<button class="result-card__favorite' + (isFavorite(item) ? ' is-on' : '') + '" type="button" data-favorite-index="' + index + '" aria-pressed="' + String(isFavorite(item)) + '" aria-label="' + (isFavorite(item) ? 'إزالة من المفضّلة' : 'إضافة إلى المفضّلة') + '" title="' + (isFavorite(item) ? 'إزالة من المفضّلة' : 'إضافة إلى المفضّلة') + '">' + IC.html('heart', 18) + '</button>'
         : '';
       const action = isVideo ? 'تشغيل' : 'تصفّح';
@@ -558,9 +603,9 @@
   }
 
   function renderChips() {
-    const list = recent();
+    const list = state.site === 'pornflip' ? [] : recent();
     const quick = state.site === 'youtube' ? QUICK_YT
-      : QUICK_DM;
+      : state.site === 'pornflip' ? [] : QUICK_DM;
     const terms = list.concat(quick.filter(v => list.indexOf(v) < 0)).slice(0, 8);
     el.chips.innerHTML = terms.map(term => {
       const isRecent = list.indexOf(term) >= 0;
@@ -591,17 +636,133 @@
     });
   }
 
-  const SITE_LABEL_AR = { youtube: 'يوتيوب', dailymotion: 'ديليموشن' };
+  const SITE_LABEL_AR = { youtube: 'يوتيوب', dailymotion: 'ديليموشن', pornflip: 'PornFlip · 18+' };
   const TYPE_LABEL_AR = { all: 'الكل', video: 'فيديوهات', channel: 'قنوات', playlist: 'قوائم التشغيل' };
 
+  function updateSourceBadge() {
+    const badge = $('searchSourceBadge');
+    if (badge) badge.textContent = SITE_LABEL_AR[state.site] || SITE_LABEL_AR.dailymotion;
+  }
+
+  function adultGateIsOpen() {
+    return !!(el.adultGate && el.adultGate.getAttribute('open') !== null);
+  }
+
+  function closeAdultGate() {
+    if (!el.adultGate) return;
+    if (typeof el.adultGate.close === 'function') el.adultGate.close();
+    else el.adultGate.removeAttribute('open');
+  }
+
+  function clearSearchResults(message) {
+    state.items = [];
+    state.viewItems = [];
+    el.results.innerHTML = '';
+    el.results.setAttribute('aria-busy', 'false');
+    el.empty.hidden = false;
+    el.emptyText.textContent = message || 'ابحث عن فيديو لتبدأ';
+    el.browseBar.hidden = true;
+    el.browseMore.hidden = true;
+    status('');
+  }
+
+  function requestAdultConfirmation(action, query) {
+    if (state.adultConfirmed) return false;
+    if (action) {
+      state.pendingAdultAction = action;
+      state.pendingAdultQuery = String(query || '').trim();
+    } else if (!adultGateIsOpen()) {
+      state.pendingAdultAction = '';
+      state.pendingAdultQuery = '';
+    }
+    status('يتطلب PornFlip تأكيدًا صريحًا بأن عمرك 18 عامًا أو أكثر.');
+    if (!el.adultGate) return true;
+    if (!adultGateIsOpen()) {
+      if (typeof el.adultGate.showModal === 'function') el.adultGate.showModal();
+      else el.adultGate.setAttribute('open', '');
+      if (el.adultGateAccept && typeof el.adultGateAccept.focus === 'function') el.adultGateAccept.focus();
+    }
+    return true;
+  }
+
+  function acceptAdultConfirmation() {
+    state.adultConfirmed = true;
+    try { window.sessionStorage.setItem(ADULT_ACK_KEY, 'yes'); } catch (_) { /* يبقى التأكيد في ذاكرة الصفحة */ }
+    if (state.site === 'pornflip') store(SITE_KEY, state.site);
+    const action = state.pendingAdultAction;
+    const query = state.pendingAdultQuery;
+    state.pendingAdultAction = '';
+    state.pendingAdultQuery = '';
+    closeAdultGate();
+    status('');
+    if (action === 'search') runSearch(query);
+    else if (action === 'favorites') showFavorites();
+    else {
+      el.empty.hidden = false;
+      el.emptyText.textContent = 'اكتب عبارة للبحث في PornFlip بعد تأكيد العمر.';
+    }
+  }
+
+  function cancelAdultConfirmation() {
+    closeAdultGate();
+    state.pendingAdultAction = '';
+    state.pendingAdultQuery = '';
+    const fallback = ['youtube', 'dailymotion'].includes(state.previousSite) ? state.previousSite : 'dailymotion';
+    state.site = fallback;
+    state.previousSite = fallback;
+    state.view = 'search';
+    state.browse = null;
+    state.loading = false;
+    state.token++;
+    state.query = '';
+    el.input.value = '';
+    el.clear.hidden = true;
+    el.go.disabled = false;
+    store(SITE_KEY, state.site);
+    updateSourceBadge();
+    renderTabs();
+    renderChips();
+    updateNote();
+    clearSearchResults('لم يتم تأكيد العمر؛ لم يُرسل أي طلب إلى PornFlip.');
+    status('لم يتم تأكيد 18+؛ لم يُرسل أي طلب إلى PornFlip.');
+  }
+
   function setSite(site, run) {
-    state.site = ['youtube','dailymotion'].includes(site) ? site : 'dailymotion';
+    const nextSite = ['youtube', 'dailymotion', 'pornflip'].includes(site) ? site : 'dailymotion';
+    if (nextSite === state.site && !(nextSite === 'pornflip' && !state.adultConfirmed)) return;
+    if (nextSite === 'pornflip' && !state.adultConfirmed) {
+      if (state.site !== 'pornflip') state.previousSite = state.site;
+      state.site = 'pornflip';
+      if (['channel', 'playlist'].includes(state.searchType)) state.searchType = 'video';
+      state.view = 'search';
+      state.browse = null;
+      state.loading = false;
+      state.token++;
+      el.go.disabled = false;
+      updateSourceBadge();
+      renderTabs();
+      renderChips();
+      clearSearchResults('تأكيد 18+ مطلوب قبل تحميل نتائج PornFlip.');
+      requestAdultConfirmation(run && state.query.length >= 2 ? 'search' : '', run ? state.query : '');
+      return;
+    }
+    const leavingAdult = state.site === 'pornflip' && nextSite !== 'pornflip';
+    if (leavingAdult) {
+      state.loading = false;
+      state.token++;
+      state.query = '';
+      el.input.value = '';
+      el.clear.hidden = true;
+      el.go.disabled = false;
+      run = false; /* لا ترسل عبارة بحث للبالغين إلى منصة أخرى */
+      clearSearchResults('ابحث عن فيديو لتبدأ');
+    }
+    state.site = nextSite;
     if (state.site !== 'youtube' && ['channel', 'playlist'].includes(state.searchType)) state.searchType = 'video';
     state.view = 'search';
     state.browse = null;
     store(SITE_KEY, state.site);
-    const badge = $('searchSourceBadge');
-    if (badge) badge.textContent = SITE_LABEL_AR[state.site];
+    updateSourceBadge();
     renderTabs();
     renderChips();
     updateNote();
@@ -643,7 +804,9 @@
       if (token !== state.token) return;
       state.favoriteKeys = new Set(saved.map(favoriteKey).filter(Boolean));
       state.favoriteError = null;
-      state.items = saved.map(item => normalize(item, item.site)).filter(Boolean);
+      const hiddenAdultFavorites = !state.adultConfirmed && saved.some(isAdultItem);
+      state.items = saved.filter(item => state.adultConfirmed || !isAdultItem(item))
+        .map(item => normalize(item, item.site)).filter(Boolean);
       state.viewItems = state.items;
       if (state.items.length) {
         render(state.items);
@@ -652,7 +815,9 @@
         el.results.innerHTML = '';
         el.results.setAttribute('aria-busy', 'false');
         el.empty.hidden = false;
-        el.emptyText.textContent = 'لم تحفظ فيديوهات بعد — اضغط القلب على فيديو لإضافته إلى مفضّلتك';
+        el.emptyText.textContent = hiddenAdultFavorites
+          ? 'بعض المفضّلات مخفية حتى تأكيد 18+ في تبويب PornFlip.'
+          : 'لم تحفظ فيديوهات بعد — اضغط القلب على فيديو لإضافته إلى مفضّلتك';
         status('');
       }
     } catch (error) {
@@ -794,7 +959,8 @@
     el.room.disabled = true;
     el.queue.disabled = true;
     el.copy.disabled = true;
-    el.favorite.disabled = false;
+    el.favorite.hidden = isAdultItem(item);
+    el.favorite.disabled = isAdultItem(item);
     paintFavoriteButton(el.favorite, isFavorite(item));
     el.channel.hidden = !item.channelUrl;
     el.channel.disabled = !item.channelUrl;
@@ -879,7 +1045,7 @@
       el.source.href = item.url;
       el.source.hidden = false;
       el.source.textContent = 'افتح على ' + {
-        dailymotion: 'ديليموشن'
+        dailymotion: 'ديليموشن', pornflip: 'PornFlip'
       }[item.site] || 'الموقع الأصلي';
     }
   }
@@ -1005,11 +1171,18 @@
     el.input.focus();
   });
 
+  if (el.adultGateAccept) el.adultGateAccept.addEventListener('click', acceptAdultConfirmation);
+  if (el.adultGateCancel) el.adultGateCancel.addEventListener('click', cancelAdultConfirmation);
+  if (el.adultGate) el.adultGate.addEventListener('cancel', event => {
+    event.preventDefault();
+    cancelAdultConfirmation();
+  });
+
   el.sources.addEventListener('click', event => {
     const tab = event.target.closest('[data-site]');
     if (!tab) return;
     const site = tab.getAttribute('data-site');
-    if (site === state.site) return;
+    if (site === state.site && !(site === 'pornflip' && !state.adultConfirmed)) return;
     setSite(site, state.query.length >= 2);
   });
 
@@ -1095,7 +1268,7 @@
   el.room.addEventListener('click', createRoom);
   el.queue.addEventListener('click', openPicker);
   el.favorite.addEventListener('click', async () => {
-    if (!state.current || el.favorite.disabled) return;
+    if (!state.current || isAdultItem(state.current) || el.favorite.disabled) return;
     el.favorite.disabled = true;
     try { await toggleFavorite(state.current); }
     catch (error) { U.toast(error && error.message ? error.message : 'تعذّر حفظ المفضّلة', 'error', 3000); }
@@ -1133,23 +1306,30 @@
 
   /* ============================== 7) البداية ============================== */
 
+  try { state.adultConfirmed = window.sessionStorage.getItem(ADULT_ACK_KEY) === 'yes'; }
+  catch (_) { state.adultConfirmed = false; }
   const savedSite = store(SITE_KEY);
-  if (['youtube','dailymotion'].includes(savedSite)) state.site = savedSite;
-  const badge = $('searchSourceBadge');
-  if (badge) badge.textContent = SITE_LABEL_AR[state.site];
+  if (['youtube', 'dailymotion', 'pornflip'].includes(savedSite)) state.site = savedSite;
   renderTabs();
   renderChips();
 
   const params = new URLSearchParams(location.search);
-  if (params.get('site')) { const s = params.get('site'); if (['youtube','dailymotion'].includes(s)) state.site = s; }
+  const requestedSite = params.get('site');
+  if (['youtube', 'dailymotion', 'pornflip'].includes(requestedSite)) {
+    if (requestedSite === 'pornflip' && state.site !== 'pornflip') state.previousSite = state.site;
+    state.site = requestedSite;
+  }
   if (['all', 'video', 'channel', 'playlist'].includes(params.get('type'))) state.searchType = params.get('type');
   if (state.site !== 'youtube' && ['channel', 'playlist'].includes(state.searchType)) state.searchType = 'video';
-  if (badge) badge.textContent = SITE_LABEL_AR[state.site];
+  updateSourceBadge();
   renderTabs();
+  renderChips();
   const initial = params.get('q');
   if (initial) {
     el.input.value = initial;
     el.clear.hidden = false;
     runSearch(initial);
+  } else if (state.site === 'pornflip' && !state.adultConfirmed) {
+    requestAdultConfirmation('', '');
   }
 })();

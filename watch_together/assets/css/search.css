@@ -1,5 +1,5 @@
 /* =========================================================
-   WatchTogether — صفحة البحث في ديليموشن (search.css)
+   WatchTogether — صفحة البحث في مصادر الفيديو (search.css)
    نفس الهوية البصرية: Midnight Gold + Cairo + RTL
    ========================================================= */
 
@@ -89,6 +89,22 @@
   color: #141006;
   background: var(--grad);
   box-shadow: 0 8px 20px rgba(197, 165, 114, .28);
+}
+
+.source-tab__age {
+  padding: 2px 6px;
+  border: 1px solid rgba(232, 168, 176, .34);
+  border-radius: 999px;
+  background: rgba(120, 34, 49, .24);
+  color: #f0b7c0;
+  font-size: 10px;
+  line-height: 1.35;
+  direction: ltr;
+}
+.source-tab--adult.is-active .source-tab__age {
+  border-color: rgba(20, 16, 6, .18);
+  background: rgba(20, 16, 6, .1);
+  color: #141006;
 }
 
 /* ---------- نموذج البحث ---------- */
@@ -383,6 +399,41 @@
 .search-empty > .ic { opacity: .5; }
 .search-empty .ic svg { width: 32px; height: 32px; }
 
+/* ---------- بوابة تأكيد العمر لـ PornFlip ---------- */
+.adult-gate {
+  width: min(520px, calc(100% - 24px));
+  max-height: calc(100dvh - 32px);
+  padding: 0;
+  border: 1px solid rgba(232, 168, 176, .32);
+  border-radius: var(--radius);
+  background: linear-gradient(180deg, rgba(20, 22, 30, .99), rgba(10, 14, 20, .99));
+  color: var(--text);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, .68);
+  overflow: auto;
+}
+.adult-gate::backdrop { background: rgba(4, 6, 10, .82); -webkit-backdrop-filter: blur(5px); backdrop-filter: blur(5px); }
+.adult-gate__body { padding: clamp(20px, 5vw, 28px); }
+.adult-gate__badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 42px;
+  padding: 5px 9px;
+  border: 1px solid rgba(232, 168, 176, .42);
+  border-radius: 999px;
+  background: rgba(120, 34, 49, .24);
+  color: #f0b7c0;
+  direction: ltr;
+  font-size: 12px;
+  font-weight: 900;
+}
+.adult-gate__body h2 { margin: 12px 0 10px; font-size: 18px; font-weight: 900; }
+.adult-gate__body p { margin: 0 0 12px; color: var(--muted); font-size: 13px; font-weight: 600; line-height: 1.85; }
+.adult-gate__body .adult-gate__notice { color: #e5c8a0; font-size: 12px; }
+.adult-gate__actions { display: flex; flex-wrap: wrap; gap: 9px; margin-top: 18px; }
+.adult-gate__actions .btn { flex: 1 1 190px; white-space: normal; }
+.adult-gate__actions .btn:focus-visible { outline: 2px solid var(--brand); outline-offset: 3px; }
+
 /* ---------- نافذة التشغيل ---------- */
 .play-dialog {
   width: min(900px, calc(100% - 24px));
@@ -552,6 +603,8 @@
 
 /* ---------- تجاوب ---------- */
 @media (max-width: 560px) {
+  .search-sources { flex-wrap: wrap; max-width: 100%; }
+  .source-tab { padding-inline: clamp(8px, 2.6vw, 14px); }
   .search-form { flex-wrap: wrap; }
   .search-go { width: 100%; }
   .search-grid { grid-template-columns: repeat(auto-fill, minmax(155px, 1fr)); gap: 10px; }
