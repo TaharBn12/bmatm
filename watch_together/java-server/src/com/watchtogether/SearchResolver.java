@@ -18,12 +18,14 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * نقطة بحث في الفيديو: GET /api/search?q=كلمة&limit=18&site=dailymotion|youtube|pornflip
  * ----------------------------------------------------------------------------------
- *  • ديليموشن ويوتيوب وPornFlip: عبر yt-dlp؛ البحث في PornFlip يتطلب adult_confirmed=1
- *    بوصفه إقراراً ذاتياً من الواجهة، لا كتحقق مستقل من العمر.
+ *  • ديليموشن ويوتيوب: عبر yt-dlp. يُجلب بحث PornFlip من صفحة نتائج الموقع ويُحلّل
+ *    HTML؛ لا يُفترض وجود API رسمي. يتطلب adult_confirmed=1 كإقرار ذاتي، لا كتحقق مستقل.
  *  • المصدر الأول: yt-dlp بمستخرج البحث dailymotion:search
  *    (الرابط: https://www.dailymotion.com/search/<كلمة>/videos)
  *    مع --flat-playlist حتى تكون النتيجة سريعة (نداء بحث واحد).
@@ -57,9 +59,22 @@ public final class SearchResolver {
     private static final String TWITCH_WATCH = "https://www.twitch.tv/";
     private static final String TWITCH_SEARCH = "https://www.twitch.tv/search?term=";
     private static final String TWITCH_THUMB = "https://static-cdn.jtvnw.net/previews-ttv/live_user_";
-    private static final String PF_WATCH = "https://www.pornflip.com/video/";
-    private static final String PF_SEARCH = "https://www.pornflip.com/search?q=";
-    private static final String PF_THUMB = "https://www.pornflip.com/thumbs/";
+    private static final String PF_BASE = "https://www.pornflip.com";
+    private static final String PF_SEARCH = PF_BASE + "/search?q=";
+    private static final Pattern PF_VIDEO_CARD = Pattern.compile(
+            "<div class=\"card thumbs_rotate itemVideo[^\"]*\"[^>]*>.*?"
+            + "<a href=\"([^\"]+)\"[^>]*>\\s*"
+            + "<img class=\"card-img-top\" src=\"([^\"]+)\" alt=\"([^\"]*)\"[^>]*>.*?"
+            + "<span class=\"duration\">([^<]+)</span>.*?"
+            + "<h5 class=\"card-title\">\\s*<a href=\"[^\"]+\"[^>]*>(.*?)</a>",
+            Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
+    private static final Pattern HTML_ENTITY = Pattern.compile(
+            "&(#(?:x[0-9a-fA-F]+|[0-9]+)|amp|quot|apos|lt|gt|nbsp|rsquo|lsquo|mdash|ndash|hellip);",
+            Pattern.CASE_INSENSITIVE);
+
+    private static final class PornFlipSearchException extends IOException {
+        private PornFlipSearchException(String message) { super(message); }
+    }
 
     private static final Semaphore SLOTS = new Semaphore(2);
     private static long windowStart = System.currentTimeMillis();
@@ -115,8 +130,11 @@ public final class SearchResolver {
                 String source = "yt-dlp";
                 if (youtube) {
                     items = youtubeSearch(term, limit, searchType);
+                } else if (pornflip) {
+                    items = viaPornFlipSearch(term, limit);
+                    source = "pornflip-html";
                 } else {
-                    items = viaYtDlp(term, limit, false, tiktok, kick, twitch, pornflip);
+                    items = viaYtDlp(term, limit, false, tiktok, kick, twitch);
                 }
                 if (items.isEmpty() && !youtube && !tiktok && !kick && !twitch && !pornflip) {
                     items = viaApi(term, limit);
@@ -133,6 +151,11 @@ public final class SearchResolver {
             }
         } catch (IllegalArgumentException e) {
             if (status == 200) status = 400;
+            result.clear();
+            result.put("error", e.getMessage());
+            result.put("items", Collections.emptyList());
+        } catch (PornFlipSearchException e) {
+            status = 502;
             result.clear();
             result.put("error", e.getMessage());
             result.put("items", Collections.emptyList());
@@ -155,7 +178,7 @@ public final class SearchResolver {
     /* =========================================================
        1) البحث عبر yt-dlp (مستخرج dailymotion:search)
        ========================================================= */
-    private static List<Map<String, Object>> viaYtDlp(String term, int limit, boolean youtube, boolean tiktok, boolean kick, boolean twitch, boolean pornflip) {
+    private static List<Map<String, Object>> viaYtDlp(String term, int limit, boolean youtube, boolean tiktok, boolean kick, boolean twitch) {
         Path out = null;
         Process p = null;
         try {
@@ -164,7 +187,6 @@ public final class SearchResolver {
                تيك توك: صفحة الوسم tiktok.com/tag/كلمة
                كيك: kick.com/search?q=كلمة
                تويتش: twitch.tv/search?term=كلمة
-               PornFlip: pornflip.com/search?q=كلمة
                ديليموشن: dailymotion.com/search/كلمة/videos */
             String search;
             if (youtube) {
@@ -175,8 +197,6 @@ public final class SearchResolver {
                 search = KICK_SEARCH + URLEncoder.encode(term, "UTF-8");
             } else if (twitch) {
                 search = TWITCH_SEARCH + URLEncoder.encode(term, "UTF-8");
-            } else if (pornflip) {
-                search = PF_SEARCH + URLEncoder.encode(term, "UTF-8");
             } else {
                 search = SEARCH_HOST + URLEncoder.encode(term, "UTF-8") + "/videos";
             }
@@ -201,7 +221,7 @@ public final class SearchResolver {
             Files.deleteIfExists(err);
             List<Map<String, Object>> items = new ArrayList<>();
             for (String line : read(out).split("\\R")) {
-                Map<String, Object> item = fromRow(line, youtube, tiktok, kick, twitch, pornflip);
+                Map<String, Object> item = fromRow(line, youtube, tiktok, kick, twitch);
                 if (item != null) items.add(item);
                 if (items.size() >= limit) break;
             }
@@ -215,19 +235,47 @@ public final class SearchResolver {
     }
 
     /**
+     * PornFlip's yt-dlp extractor handles individual video URLs, not its search page.
+     * Fetch the public HTML listing directly; this is page parsing, not an official API.
+     */
+    private static List<Map<String, Object>> viaPornFlipSearch(String term, int limit) throws PornFlipSearchException {
+        String page = fetchPornFlipSearchPage(term);
+        Matcher cards = PF_VIDEO_CARD.matcher(page);
+        List<Map<String, Object>> items = new ArrayList<>();
+        while (cards.find() && items.size() < limit) {
+            String id = pornFlipVideoId(cards.group(1));
+            if (id.isEmpty()) continue;
+            String title = htmlText(cards.group(5));
+            if (title.isEmpty()) title = htmlText(cards.group(3));
+            if (title.isEmpty()) title = "بدون عنوان";
+
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("type", "video");
+            item.put("id", id);
+            item.put("title", title.length() > 240 ? title.substring(0, 240) : title);
+            item.put("url", PF_BASE + "/v/" + id);
+            item.put("thumb", safePornFlipUrl(cards.group(2)));
+            item.put("duration", parseClockDuration(cards.group(4)));
+            item.put("author", "");
+            items.add(item);
+        }
+        return dedupe(items);
+    }
+
+    /**
      * سطر من yt-dlp: id \t title \t url \t duration
      * العنوان والرابط يُبنيان من المعرّف نفسه، فلا نثق بروابط يكتبها الوسيط.
      */
     /** YouTube video search uses ytsearch; channel and playlist searches use YouTube's type filters. */
     private static List<Map<String, Object>> youtubeSearch(String term, int limit, String type) {
         if ("video".equals(type) || "videos".equals(type))
-            return viaYtDlp(term, limit, true, false, false, false, false);
+            return viaYtDlp(term, limit, true, false, false, false);
         if ("channel".equals(type) || "channels".equals(type)) return youtubeFilteredSearch(term, limit, "channel");
         if ("playlist".equals(type) || "playlists".equals(type)) return youtubeFilteredSearch(term, limit, "playlist");
         if (!"all".equals(type)) throw new IllegalArgumentException("نوع بحث يوتيوب غير مدعوم");
 
         List<List<Map<String, Object>>> groups = Arrays.asList(
-            viaYtDlp(term, limit, true, false, false, false, false),
+            viaYtDlp(term, limit, true, false, false, false),
             youtubeFilteredSearch(term, limit, "channel"),
             youtubeFilteredSearch(term, limit, "playlist"));
         List<Map<String, Object>> mixed = new ArrayList<>();
@@ -312,7 +360,7 @@ public final class SearchResolver {
         item.put("author", author);
         item.put("thumb", thumbnail);
         if ("video".equals(type)) {
-            if (!isId(id, true, false, false, false, false)) return null;
+            if (!isId(id, true, false, false, false)) return null;
             long duration = 0;
             try { duration = Long.parseLong(col(parts, 4)); } catch (Exception ignored) { }
             item.put("url", YT_WATCH + id);
@@ -423,7 +471,7 @@ public final class SearchResolver {
         return new ArrayList<>(seen.values());
     }
 
-    private static Map<String, Object> fromRow(String line, boolean youtube, boolean tiktok, boolean kick, boolean twitch, boolean pornflip) {
+    private static Map<String, Object> fromRow(String line, boolean youtube, boolean tiktok, boolean kick, boolean twitch) {
         if (line == null) return null;
         String t = line.trim();
         if (t.isEmpty()) return null;
@@ -432,7 +480,7 @@ public final class SearchResolver {
         String title = col(parts, 1);
         long duration = 0;
         try { duration = Long.parseLong(col(parts, 3)); } catch (Exception ignored) { }
-        if (id.isEmpty() || !isId(id, youtube, tiktok, kick, twitch, pornflip)) return null;
+        if (id.isEmpty() || !isId(id, youtube, tiktok, kick, twitch)) return null;
         if (title.isEmpty() || "NA".equals(title)) title = "";
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("type", "video");
@@ -454,7 +502,6 @@ public final class SearchResolver {
         else if (tiktok) { m.put("url", TT_WATCH + id); m.put("thumb", THUMB + id); }
         else if (kick) { m.put("url", KICK_WATCH + id); m.put("thumb", THUMB + id); }
         else if (twitch) { m.put("url", TWITCH_WATCH + id); m.put("thumb", TWITCH_THUMB + id + "-320x180.jpg"); }
-        else if (pornflip) { m.put("url", PF_WATCH + id); m.put("thumb", PF_THUMB + id + ".jpg"); }
         else { m.put("url", DM_WATCH + id); m.put("thumb", THUMB + id); }
         if (!youtube) { m.put("duration", duration); m.put("author", ""); }
         return m;
@@ -467,7 +514,7 @@ public final class SearchResolver {
         StringBuilder ids = new StringBuilder();
         for (Map<String, Object> item : items) {
             String id = String.valueOf(item.get("id"));
-            if (isId(id, false, false, false, false, false)) { if (ids.length() > 0) ids.append(','); ids.append(id); }
+            if (isId(id, false, false, false, false)) { if (ids.length() > 0) ids.append(','); ids.append(id); }
         }
         if (ids.length() == 0) return;
         Object data = httpJson(API + "?ids=" + ids + "&limit=" + Math.min(100, items.size() + 4)
@@ -515,7 +562,7 @@ public final class SearchResolver {
             Map<String, Object> v = Json.asMap(entry);
             if (v == null) continue;
             String id = Json.str(v, "id", "");
-            if (!isId(id, false, false, false, false, false)) continue;
+            if (!isId(id, false, false, false, false)) continue;
             String author = Json.str(v, "owner.username", "");
             if (author.isEmpty()) author = Json.str(Json.asMap(v.get("owner")), "username", "");
             Map<String, Object> m = new LinkedHashMap<>();
@@ -547,6 +594,135 @@ public final class SearchResolver {
             if (!id.isEmpty()) byId.put(id, v);
         }
         return byId;
+    }
+
+    private static String fetchPornFlipSearchPage(String term) throws PornFlipSearchException {
+        HttpURLConnection connection = null;
+        try {
+            String url = PF_SEARCH + URLEncoder.encode(term, "UTF-8");
+            connection = (HttpURLConnection) new URI(url).toURL().openConnection();
+            connection.setInstanceFollowRedirects(true);
+            connection.setConnectTimeout(10000);
+            connection.setReadTimeout(15000);
+            connection.setRequestProperty("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8");
+            connection.setRequestProperty("Accept-Language", "en-US,en;q=0.9");
+            connection.setRequestProperty("Referer", PF_BASE + "/");
+            connection.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/126.0.0.0 Safari/537.36");
+            int code = connection.getResponseCode();
+            if (code != 200) throw new PornFlipSearchException("PornFlip أعاد HTTP " + code + " أثناء البحث");
+            if (connection.getContentLengthLong() > 2_097_152L)
+                throw new PornFlipSearchException("صفحة نتائج PornFlip أكبر من الحد المسموح");
+
+            try (java.io.InputStream input = connection.getInputStream();
+                 java.io.ByteArrayOutputStream output = new java.io.ByteArrayOutputStream()) {
+                byte[] chunk = new byte[8192];
+                int size = 0;
+                int count;
+                while ((count = input.read(chunk)) > 0) {
+                    size += count;
+                    if (size > 2_097_152) throw new PornFlipSearchException("صفحة نتائج PornFlip أكبر من الحد المسموح");
+                    output.write(chunk, 0, count);
+                }
+                if (size == 0) throw new PornFlipSearchException("صفحة نتائج PornFlip فارغة");
+                return new String(output.toByteArray(), StandardCharsets.UTF_8);
+            }
+        } catch (PornFlipSearchException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new PornFlipSearchException("تعذّر الاتصال بصفحة بحث PornFlip حالياً");
+        } finally {
+            if (connection != null) connection.disconnect();
+        }
+    }
+
+    /** Resolve only HTTPS URLs on PornFlip and its subdomains; reject injected hosts. */
+    private static String safePornFlipUrl(String raw) {
+        if (raw == null || raw.trim().isEmpty()) return "";
+        try {
+            String value = htmlDecode(raw.trim());
+            URI uri = new URI(PF_BASE + "/").resolve(value);
+            String host = uri.getHost();
+            if (!"https".equalsIgnoreCase(uri.getScheme()) || uri.getRawUserInfo() != null || host == null) return "";
+            host = host.toLowerCase(java.util.Locale.ROOT);
+            if (!(host.equals("pornflip.com") || host.endsWith(".pornflip.com"))) return "";
+            if (uri.getPort() != -1 && uri.getPort() != 443) return "";
+            return uri.toASCIIString();
+        } catch (Exception e) {
+            return "";
+        }
+    }
+
+    private static String pornFlipVideoId(String rawUrl) {
+        String safe = safePornFlipUrl(rawUrl);
+        if (safe.isEmpty()) return "";
+        try {
+            String[] parts = URI.create(safe).getPath().split("/");
+            if (parts.length < 2) return "";
+            String first = parts[1];
+            String id;
+            if ("v".equalsIgnoreCase(first) || "sv".equalsIgnoreCase(first)
+                    || "embed".equalsIgnoreCase(first) || "video".equalsIgnoreCase(first)) {
+                if (parts.length < 3) return "";
+                id = parts[2];
+            } else {
+                id = first;
+            }
+            if (!id.matches("[A-Za-z0-9_-]{8,32}")) return "";
+            String reserved = id.toLowerCase(java.util.Locale.ROOT);
+            if (Arrays.asList("search", "categories", "category", "pornstars", "pornstar", "trending-porn").contains(reserved)) return "";
+            return id;
+        } catch (Exception e) {
+            return "";
+        }
+    }
+
+    private static String htmlText(String raw) {
+        if (raw == null) return "";
+        return htmlDecode(raw.replaceAll("(?is)<[^>]*>", " "))
+                .replace('\u00A0', ' ').replaceAll("\\s+", " ").trim();
+    }
+
+    private static String htmlDecode(String raw) {
+        if (raw == null || raw.isEmpty()) return "";
+        Matcher matcher = HTML_ENTITY.matcher(raw);
+        StringBuffer decoded = new StringBuffer();
+        while (matcher.find()) {
+            String entity = matcher.group(1);
+            String replacement = matcher.group(0);
+            try {
+                if (entity.startsWith("#")) {
+                    boolean hex = entity.length() > 2 && (entity.charAt(1) == 'x' || entity.charAt(1) == 'X');
+                    int point = Integer.parseInt(entity.substring(hex ? 2 : 1), hex ? 16 : 10);
+                    if (Character.isValidCodePoint(point) && (point < 0xD800 || point > 0xDFFF))
+                        replacement = new String(Character.toChars(point));
+                } else if ("amp".equalsIgnoreCase(entity)) replacement = "&";
+                else if ("quot".equalsIgnoreCase(entity)) replacement = "\"";
+                else if ("apos".equalsIgnoreCase(entity)) replacement = "'";
+                else if ("lt".equalsIgnoreCase(entity)) replacement = "<";
+                else if ("gt".equalsIgnoreCase(entity)) replacement = ">";
+                else if ("nbsp".equalsIgnoreCase(entity)) replacement = " ";
+                else if ("rsquo".equalsIgnoreCase(entity)) replacement = "’";
+                else if ("lsquo".equalsIgnoreCase(entity)) replacement = "‘";
+                else if ("mdash".equalsIgnoreCase(entity)) replacement = "—";
+                else if ("ndash".equalsIgnoreCase(entity)) replacement = "–";
+                else if ("hellip".equalsIgnoreCase(entity)) replacement = "…";
+            } catch (Exception ignored) { }
+            matcher.appendReplacement(decoded, Matcher.quoteReplacement(replacement));
+        }
+        matcher.appendTail(decoded);
+        return decoded.toString();
+    }
+
+    private static long parseClockDuration(String raw) {
+        String value = htmlText(raw);
+        if (!value.matches("\\d{1,4}(?::\\d{1,2}){1,2}")) return 0;
+        long seconds = 0;
+        try {
+            for (String part : value.split(":")) seconds = Math.addExact(Math.multiplyExact(seconds, 60), Long.parseLong(part));
+            return seconds;
+        } catch (Exception e) {
+            return 0;
+        }
     }
 
     private static Object httpJson(String url, int seconds) {
@@ -608,12 +784,12 @@ public final class SearchResolver {
     }
 
     /** معرّف يوتيوب: 11 محرفاً صارم · ديليموشن: حروف وأرقام حتى 32 · تيك توك/كيك/تويتش: أي نص غير فارغ */
-    private static boolean isId(String id, boolean youtube, boolean tiktok, boolean kick, boolean twitch, boolean pornflip) {
+    private static boolean isId(String id, boolean youtube, boolean tiktok, boolean kick, boolean twitch) {
         if (id == null) return false;
         String v = id.trim();
         if (v.isEmpty()) return false;
         if (youtube) return v.length() == 11 && v.matches("[A-Za-z0-9_-]{11}");
-        if (tiktok || kick || twitch || pornflip) return true; /* أي معرف غير فارغ مقبول لهذه المنصات */
+        if (tiktok || kick || twitch) return true; /* أي معرف غير فارغ مقبول لهذه المنصات */
         if (v.length() > 32) return false;
         for (int i = 0; i < v.length(); i++) {
             char c = v.charAt(i);
