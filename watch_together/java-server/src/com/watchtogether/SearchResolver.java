@@ -20,8 +20,10 @@ import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 
 /**
- * نقطة بحث في ديليموشن:  GET /api/search?q=كلمة&limit=18
- * ------------------------------------------------------------
+ * نقطة بحث في الفيديو: GET /api/search?q=كلمة&limit=18&site=dailymotion|youtube|pornflip
+ * ----------------------------------------------------------------------------------
+ *  • ديليموشن ويوتيوب وPornFlip: عبر yt-dlp؛ البحث في PornFlip يتطلب adult_confirmed=1
+ *    بوصفه إقراراً ذاتياً من الواجهة، لا كتحقق مستقل من العمر.
  *  • المصدر الأول: yt-dlp بمستخرج البحث dailymotion:search
  *    (الرابط: https://www.dailymotion.com/search/<كلمة>/videos)
  *    مع --flat-playlist حتى تكون النتيجة سريعة (نداء بحث واحد).
@@ -33,8 +35,8 @@ import java.util.concurrent.TimeUnit;
  *  المتصفح لا يستطيع فعل هذا بنفسه (CORS)، ولا علاقة لهذه النقطة
  *  بتشغيل الفيديو: الرابط المباشر يأتي من /api/resolve بعملية yt-dlp.
  *
- *  الأمان: الكلمة تُنظّف ويُحدّ طولها، والرابطان المستخدمان ثابتان
- *  (dailymotion.com فقط) — لا يوجد تمرير لروابط من المستخدم.
+ *  الأمان: تُنظّف كلمة البحث وتُحدّ، ولكل مصدر مضيف بحث ثابت؛ تُبنى روابط النتائج من المعرّفات
+ *  بدلاً من تمرير روابط من المستخدم.
  */
 public final class SearchResolver {
 
@@ -86,6 +88,10 @@ public final class SearchResolver {
             boolean kick = site.equals("kick");
             boolean twitch = site.equals("twitch") || site.equals("تويتش");
             boolean pornflip = site.equals("pornflip") || site.equals("بورن فليب");
+            if (pornflip && !"1".equals(query.get("adult_confirmed"))) {
+                status = 403;
+                throw new IllegalArgumentException("تأكيد 18+ مطلوب قبل البحث في PornFlip");
+            }
             String browse = String.valueOf(query.getOrDefault("browse", "")).trim().toLowerCase();
             if (term.length() > 80) term = term.substring(0, 80);
             if (!(youtube && !browse.isEmpty()) && term.length() < 2) {

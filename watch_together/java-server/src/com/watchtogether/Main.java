@@ -159,7 +159,7 @@ public final class Main {
             + "<p style=\"color:#9AA8B8;margin:0 0 18px\">هذه النسخة في <strong>وضع API فقط</strong>: "
             + "الموقع على استضافة ثابتة، والسيرفر مسؤول عن البحث وتحويل الروابط.</p>"
             + "<ul style=\"list-style:none;padding:0;margin:0 0 18px;color:#C5A572;line-height:2\">"
-            + "<li>GET /api/search?q=…&amp;site=dailymotion|youtube</li>"
+            + "<li>GET /api/search?q=…&amp;site=dailymotion|youtube|pornflip (PornFlip يتطلب adult_confirmed=1 وإقرار 18+)</li>"
             + "<li>POST /api/resolve</li>"
             + "<li>POST /api/suggest</li>"
             + "<li>GET /healthz · GET /api/stats</li></ul>"
