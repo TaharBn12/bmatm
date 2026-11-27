@@ -797,350 +797,102 @@
 .play-actions #playFavorite.is-on { color: #ff8da0; border-color: rgba(255,141,160,.48); }
 .play-actions #playFavorite.is-on .ic { color: #ff8da0; }
 
-/* ---------- ePorner Discovery landing ---------- */
-.eporner-hero {
-  position: relative;
-  isolation: isolate;
-  display: grid;
-  grid-template-columns: minmax(0, 1.35fr) minmax(210px, .65fr);
-  align-items: center;
-  min-height: 270px;
-  margin: 12px 0 20px;
-  padding: clamp(24px, 5vw, 48px);
-  overflow: hidden;
-  border: 1px solid rgba(197, 165, 114, .2);
-  border-radius: 28px;
-  background:
-    radial-gradient(ellipse at 82% 15%, rgba(197, 165, 114, .16), transparent 34%),
-    radial-gradient(ellipse at 10% 100%, rgba(70, 145, 146, .12), transparent 42%),
-    linear-gradient(128deg, #111821 0%, #101620 52%, #151a22 100%);
-  box-shadow: 0 22px 60px rgba(0, 0, 0, .25), inset 0 1px rgba(255, 255, 255, .035);
+/* ---------- واجهة بحث مختصرة ---------- */
+.search-intro {
+  margin: 10px 0 15px;
+  padding: 18px 21px;
+  border: 1px solid rgba(197, 165, 114, .16);
+  border-radius: 18px;
+  background: linear-gradient(115deg, rgba(197,165,114,.075), rgba(17,23,31,.86) 42%, rgba(17,23,31,.66));
 }
-.eporner-hero::before,
-.eporner-hero::after {
-  content: "";
-  position: absolute;
-  z-index: -1;
-  border: 1px solid rgba(197, 165, 114, .1);
-  border-radius: 50%;
-  pointer-events: none;
-}
-.eporner-hero::before { width: 430px; height: 430px; inset-inline-start: -250px; inset-block-start: -290px; }
-.eporner-hero::after { width: 270px; height: 270px; inset-inline-end: 9%; inset-block-end: -215px; }
-.eporner-hero__copy { position: relative; z-index: 2; max-width: 660px; }
-.eporner-hero__eyebrow,
-.eporner-section-kicker {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  margin: 0;
-  color: #dfc28f;
-  font: 800 10px/1.4 ui-monospace, SFMono-Regular, Consolas, monospace;
-  letter-spacing: .12em;
-  text-transform: uppercase;
-}
-.eporner-hero__eyebrow > span:last-child {
-  padding: 4px 8px;
-  border: 1px solid rgba(197, 165, 114, .22);
-  border-radius: 999px;
-  color: #bcb5a7;
-  letter-spacing: .04em;
-}
-.eporner-hero__pulse {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: #b9d7b0;
-  box-shadow: 0 0 0 4px rgba(185, 215, 176, .11), 0 0 14px rgba(185, 215, 176, .45);
-}
-.eporner-hero .search-title {
-  margin: 14px 0 8px;
-  color: #f1e9da;
-  font-size: clamp(28px, 4.5vw, 42px);
-  line-height: 1.25;
-  letter-spacing: -.8px;
-  background: none;
-  -webkit-text-fill-color: currentColor;
-}
-.eporner-hero .search-sub {
-  max-width: 57ch;
-  margin: 0;
-  color: #aeb7c1;
-  font-size: 13px;
-  line-height: 1.9;
-}
-.eporner-hero__metrics { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 24px; }
-.eporner-hero__metrics > span {
-  display: flex;
-  align-items: baseline;
-  gap: 7px;
-  padding: 8px 11px;
-  border: 1px solid rgba(255, 255, 255, .07);
-  border-radius: 11px;
-  background: rgba(255, 255, 255, .035);
-}
-.eporner-hero__metrics b { color: #e0c18a; font: 800 14px/1 ui-monospace, SFMono-Regular, Consolas, monospace; }
-.eporner-hero__metrics small { color: #929ca8; font-size: 10px; font-weight: 700; }
-.eporner-hero__art { position: relative; display: grid; place-items: center; min-height: 220px; }
-.eporner-hero__halo {
-  position: absolute;
-  width: 245px;
-  height: 245px;
-  border: 1px solid rgba(220, 190, 137, .24);
-  border-radius: 50%;
-  box-shadow: 0 0 0 18px rgba(197, 165, 114, .025), 0 0 70px rgba(197, 165, 114, .09);
-}
-.eporner-hero__poster {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  width: 154px;
-  height: 196px;
-  padding: 12px;
-  transform: rotate(7deg);
-  border: 1px solid rgba(236, 216, 174, .38);
-  border-radius: 14px;
-  background:
-    radial-gradient(circle at 65% 35%, rgba(240, 202, 132, .23), transparent 32%),
-    linear-gradient(145deg, #293840 0%, #121b20 48%, #382c26 100%);
-  box-shadow: 0 26px 52px rgba(0, 0, 0, .52), inset 0 0 32px rgba(0, 0, 0, .25);
-}
-.eporner-hero__poster::before,
-.eporner-hero__poster::after { content: ""; position: absolute; border-radius: 50%; pointer-events: none; }
-.eporner-hero__poster::before { width: 105px; height: 105px; inset: 40px auto auto 25px; border: 1px solid rgba(237, 205, 150, .32); }
-.eporner-hero__poster::after { width: 64px; height: 64px; inset: 60px auto auto 45px; background: rgba(228, 178, 109, .1); filter: blur(2px); }
-.eporner-hero__poster-top,
-.eporner-hero__poster-bottom { position: relative; z-index: 1; display: flex; justify-content: space-between; color: rgba(242, 224, 190, .76); font: 700 6px/1.2 ui-monospace, SFMono-Regular, Consolas, monospace; letter-spacing: .12em; }
-.eporner-hero__poster-mark { position: absolute; z-index: 1; inset: 52px 0 auto; color: rgba(245, 229, 198, .94); font: 900 56px/.9 var(--font); text-align: center; letter-spacing: -8px; }
-.eporner-hero__poster-mark span { color: #d2a86c; }
-.eporner-hero__poster-play { position: absolute; z-index: 2; inset: 77px auto auto calc(50% - 17px); display: grid; place-items: center; width: 34px; height: 34px; border: 1px solid rgba(255,255,255,.55); border-radius: 50%; background: rgba(15, 20, 24, .4); backdrop-filter: blur(5px); }
-.eporner-hero__poster-play span { width: 0; height: 0; margin-inline-start: 3px; border-block: 6px solid transparent; border-inline-start: 8px solid #f5e9d3; }
-.eporner-hero__poster-lines { position: absolute; inset: auto 18px 38px; display: flex; flex-direction: column; gap: 4px; }
-.eporner-hero__poster-lines i { height: 2px; border-radius: 2px; background: rgba(238, 219, 183, .38); }
-.eporner-hero__poster-lines i:nth-child(2) { width: 72%; }
-.eporner-hero__poster-lines i:nth-child(3) { width: 48%; }
-.eporner-hero__floating {
-  position: absolute;
-  z-index: 3;
-  padding: 7px 11px;
-  border: 1px solid rgba(255, 255, 255, .1);
-  border-radius: 999px;
-  background: rgba(20, 27, 33, .88);
-  color: #e5d4b1;
-  font-size: 10px;
-  font-weight: 800;
-  box-shadow: 0 8px 22px rgba(0,0,0,.3);
-}
-.eporner-hero__floating--one { inset-inline-start: 4%; inset-block-start: 23%; }
-.eporner-hero__floating--two { inset-inline-end: 0; inset-block-end: 22%; }
+.search-intro__eyebrow { color: #b9a277; font: 800 9px/1.4 ui-monospace, monospace; letter-spacing: .12em; }
+.search-intro .search-title { margin-top: 5px; font-size: clamp(22px, 4vw, 30px); }
+.search-intro .search-sub { margin-bottom: 0; font-size: 11px; }
 
-.search-sources { gap: 5px; padding: 5px; margin-bottom: 13px; border-radius: 15px; }
-.source-tab { min-height: 41px; }
+.search-sources { gap: 5px; padding: 5px; margin-bottom: 12px; border-radius: 14px; }
+.source-tab { min-height: 39px; }
 .search-badge { border-color: rgba(197, 165, 114, .38); }
 
 .eporner-consent {
   display: flex;
   align-items: center;
-  gap: 14px;
-  margin: 0 0 16px;
-  padding: 15px 17px;
-  border: 1px solid rgba(230, 152, 165, .28);
-  border-radius: 17px;
-  background: linear-gradient(100deg, rgba(110, 40, 54, .2), rgba(25, 24, 32, .86));
-  box-shadow: inset 3px 0 rgba(227, 152, 165, .48);
+  gap: 10px;
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border: 1px solid rgba(230, 152, 165, .25);
+  border-radius: 13px;
+  background: rgba(70, 29, 39, .32);
 }
-.eporner-hero[hidden], .search-generic-hero[hidden], .eporner-consent[hidden], .eporner-filter-panel[hidden], .eporner-discovery[hidden], .eporner-tools[hidden], .eporner-output-wrap[hidden] { display: none !important; }
-.eporner-consent__mark { display: grid; flex: 0 0 43px; place-items: center; width: 43px; height: 43px; border: 1px solid rgba(245, 174, 185, .4); border-radius: 12px; color: #ffc4cb; font: 900 14px/1 ui-monospace, monospace; }
-.eporner-consent__copy { display: flex; flex: 1; flex-direction: column; gap: 3px; min-width: 0; }
-.eporner-consent__copy strong { color: #f2d9dc; font-size: 12px; }
-.eporner-consent__copy span { color: #b8a9ae; font-size: 10.5px; line-height: 1.6; }
-.eporner-consent .btn { flex: 0 0 auto; min-height: 40px; font-size: 11px; }
-
-.eporner-filter-panel {
-  margin: 0 0 14px;
-  border: 1px solid rgba(197, 165, 114, .18);
-  border-radius: 17px;
-  background: rgba(17, 23, 31, .76);
-  overflow: hidden;
-}
-.eporner-filter-panel > summary,
-.eporner-tools > summary { display: flex; align-items: center; justify-content: space-between; gap: 16px; list-style: none; cursor: pointer; }
-.eporner-filter-panel > summary::-webkit-details-marker,
-.eporner-tools > summary::-webkit-details-marker { display: none; }
-.eporner-filter-panel > summary { padding: 14px 17px; }
-.eporner-filter-panel > summary > span:first-child,
-.eporner-tools > summary > span:first-child { display: flex; flex-direction: column; gap: 4px; }
-.eporner-filter-panel summary strong,
-.eporner-tools summary strong { color: #e8d8b9; font-size: 12px; }
-.eporner-filter-panel summary small,
-.eporner-tools summary small { color: var(--muted-2); font-size: 10px; font-weight: 600; }
-.eporner-filter-panel__hint { padding: 5px 9px; border: 1px solid rgba(197, 165, 114, .17); border-radius: 999px; color: #c6ae7f; font-size: 9px; font-weight: 800; white-space: nowrap; }
-.eporner-filter-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; padding: 0 17px 14px; }
-.eporner-field { display: flex; flex-direction: column; gap: 7px; min-width: 0; color: #b8c0c9; font-size: 10px; font-weight: 700; }
-.eporner-field .input { width: 100%; min-width: 0; min-height: 39px; padding: 8px 10px; border-radius: 10px; font-size: 11px; }
-.eporner-field input[type="number"] { direction: ltr; text-align: start; }
-.eporner-field input[type="text"], .eporner-field input[type="url"], .eporner-field textarea { direction: ltr; text-align: left; }
-.eporner-field--wide { grid-column: 1 / -1; }
-.eporner-fields-choice { display: flex; flex-wrap: wrap; gap: 9px 17px; margin: 0; padding: 11px 12px 12px; border: 1px solid rgba(255, 255, 255, .08); border-radius: 12px; }
-.eporner-fields-choice legend { padding-inline: 6px; color: #b8c0c9; font-size: 10px; font-weight: 800; }
-.eporner-fields-choice label { display: inline-flex; align-items: center; gap: 7px; min-height: 26px; color: #c8cdd2; font-size: 10px; font-weight: 700; cursor: pointer; }
-.eporner-fields-choice input { accent-color: #c5a572; }
-.eporner-filter-footnote { margin: -1px 17px 15px; color: #7f8a96; font-size: 10px; line-height: 1.65; }
-.eporner-filter-panel > summary::after,
-.eporner-tools > summary::after { content: "+"; display: grid; flex: 0 0 24px; place-items: center; width: 24px; height: 24px; border: 1px solid rgba(197,165,114,.24); border-radius: 50%; color: #d4bb8b; font: 500 16px/1 ui-monospace, monospace; }
-.eporner-filter-panel[open] > summary::after,
-.eporner-tools[open] > summary::after { content: "−"; }
-.eporner-filter-panel > summary:focus-visible,
-.eporner-tools > summary:focus-visible { outline: 2px solid var(--brand); outline-offset: -3px; }
-
-.eporner-search-form { margin-top: 4px; }
-.eporner-search-form .search-input { border-color: rgba(197, 165, 114, .27); box-shadow: 0 8px 26px rgba(0,0,0,.14); }
-.eporner-search-form .search-go { min-width: 130px; }
-.search-type-tabs[hidden] { display: none !important; }
-
-.eporner-discovery { margin: 29px 0 25px; }
-.eporner-discovery__heading { display: flex; align-items: flex-end; justify-content: space-between; gap: 18px; margin-bottom: 14px; }
-.eporner-discovery__heading h2 { margin: 6px 0 5px; color: #e9e1d2; font-size: clamp(18px, 2.8vw, 23px); font-weight: 900; }
-.eporner-discovery__heading p { max-width: 58ch; margin: 0; color: var(--muted-2); font-size: 11px; line-height: 1.65; }
-.eporner-discovery__stamp { padding: 7px 10px; border: 1px solid rgba(197, 165, 114, .2); border-radius: 9px; color: #c9ad7a; font: 700 9px/1 ui-monospace, monospace; white-space: nowrap; }
-.eporner-discovery__grid { display: grid; grid-template-columns: minmax(0, .92fr) minmax(0, 1.08fr); gap: 13px; align-items: stretch; }
-.eporner-directory-card { min-width: 0; padding: 16px; border: 1px solid rgba(255, 255, 255, .075); border-radius: 19px; background: linear-gradient(145deg, rgba(23, 30, 39, .94), rgba(14, 19, 26, .92)); box-shadow: 0 14px 34px rgba(0,0,0,.13); }
-.eporner-directory-card--categories { border-top-color: rgba(197, 165, 114, .37); }
-.eporner-directory-card--performers { border-top-color: rgba(135, 171, 169, .33); }
-.eporner-directory-card__head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 12px; }
-.eporner-directory-card__head > div { display: flex; flex-direction: column; gap: 5px; }
-.eporner-directory-card__head h3 { margin: 0; color: #e4e0d7; font-size: 17px; font-weight: 900; }
-.eporner-icon-button { display: grid; flex: 0 0 35px; place-items: center; width: 35px; height: 35px; border: 1px solid var(--border); border-radius: 10px; background: rgba(255,255,255,.035); color: #bdc5cc; cursor: pointer; transition: .18s ease; }
-.eporner-icon-button:hover { border-color: rgba(197,165,114,.4); color: var(--brand); transform: rotate(8deg); }
-.eporner-icon-button:focus-visible, .eporner-category-chip:focus-visible, .eporner-performer-card:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
-.eporner-directory-filter { position: relative; display: block; margin-bottom: 9px; }
-.eporner-directory-filter > .ic { position: absolute; inset-inline-start: 11px; inset-block-start: 50%; display: grid; transform: translateY(-50%); color: #838e99; pointer-events: none; }
-.eporner-directory-filter .input { width: 100%; min-height: 36px; padding-inline-start: 34px; border-radius: 10px; font-size: 10px; }
-.eporner-directory-meta { min-height: 16px; margin: 0 0 9px; color: #84909b; font-size: 9.5px; font-weight: 700; }
-.eporner-category-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 7px; max-height: 360px; padding: 1px 1px 6px; overflow: auto; scrollbar-color: rgba(197, 165, 114, .32) transparent; scrollbar-width: thin; }
-.eporner-category-chip { display: flex; align-items: center; gap: 7px; min-width: 0; padding: 9px 9px; border: 1px solid rgba(255,255,255,.065); border-radius: 10px; background: rgba(255,255,255,.025); color: #d0d4d7; text-align: start; font: 700 10px/1.3 var(--font); cursor: pointer; transition: border-color .16s, background .16s, transform .16s; }
-.eporner-category-chip:hover { transform: translateY(-1px); border-color: rgba(197,165,114,.3); background: rgba(197,165,114,.075); }
-.eporner-category-chip > span:nth-child(2) { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.eporner-category-chip small { margin-inline-start: auto; color: #7e8994; font: 8px/1.1 ui-monospace, monospace; }
-.eporner-category-chip__dot { flex: 0 0 6px; width: 6px; height: 6px; border-radius: 50%; background: #c5a572; box-shadow: 0 0 10px rgba(197,165,114,.45); }
-.eporner-directory-empty { grid-column: 1 / -1; margin: 0; padding: 24px 12px; border: 1px dashed rgba(255,255,255,.1); border-radius: 11px; color: #85909c; font-size: 10px; text-align: center; }
-.eporner-directory-controls { display: flex; align-items: end; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
-.eporner-directory-controls .eporner-field { width: 155px; flex: 0 0 auto; }
-.eporner-directory-controls .input { min-height: 34px; }
-.eporner-directory-controls .eporner-directory-meta { margin: 0 0 9px; text-align: end; }
-.eporner-performer-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(195px, 1fr)); gap: 7px; min-height: 42px; }
-.eporner-performer-card { display: flex; align-items: center; gap: 9px; min-width: 0; padding: 8px; border: 1px solid rgba(255,255,255,.065); border-radius: 12px; background: rgba(255,255,255,.025); color: inherit; text-align: start; font-family: inherit; cursor: pointer; transition: border-color .16s, background .16s, transform .16s; }
-.eporner-performer-card:hover { transform: translateY(-1px); border-color: rgba(135,171,169,.38); background: rgba(100,150,148,.08); }
-.eporner-performer-card__avatar { display: grid; flex: 0 0 34px; place-items: center; width: 34px; height: 34px; border: 1px solid rgba(168,193,182,.22); border-radius: 11px; background: linear-gradient(145deg, rgba(100,145,141,.22), rgba(65,70,76,.17)); color: #d5dbcf; font-size: 13px; font-weight: 900; }
-.eporner-performer-card__copy { display: flex; flex: 1; flex-direction: column; gap: 4px; min-width: 0; }
-.eporner-performer-card__copy strong { overflow: hidden; color: #d8d9d3; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
-.eporner-performer-card__copy small { overflow: hidden; color: #83909a; font-size: 8px; text-overflow: ellipsis; white-space: nowrap; }
-.eporner-performer-card > .ic { flex: 0 0 auto; color: #9db6b1; opacity: .7; }
-.eporner-pager { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 12px; }
-.eporner-pager .btn { min-height: 32px; padding: 6px 12px; font-size: 9px; }
-.eporner-pager .btn:disabled { opacity: .45; cursor: not-allowed; }
-.eporner-pager > span { color: #929ca5; font: 700 10px/1 ui-monospace, monospace; }
-.eporner-discovery__note { display: flex; align-items: flex-start; gap: 7px; margin: 11px 2px 0; color: #86919b; font-size: 9.5px; line-height: 1.65; }
-.eporner-discovery__note .ic { flex: 0 0 auto; color: #c2a775; }
-
-.eporner-tools { margin: 0 0 20px; border: 1px solid rgba(197, 165, 114, .2); border-radius: 17px; background: rgba(15, 20, 29, .78); color: var(--text); overflow: hidden; }
-.eporner-tools > summary { min-height: 58px; padding: 12px 16px; }
-.eporner-tools__badge { padding: 6px 9px; border-radius: 999px; background: rgba(197, 165, 114, .1); color: #c9ac78; font: 800 9px/1 ui-monospace, monospace; white-space: nowrap; }
-.eporner-tools__body { padding: 0 16px 16px; }
-.eporner-tools__description { margin: 0 0 14px; color: #89949f; font-size: 10px; line-height: 1.7; }
-.eporner-tools__selector { display: grid; grid-template-columns: minmax(120px, .25fr) minmax(230px, .8fr) auto; align-items: center; gap: 10px; margin-bottom: 10px; }
-.eporner-tools__selector > label { color: #bec5ca; font-size: 10px; font-weight: 800; }
-.eporner-tools__select { width: 100%; min-height: 40px; border-radius: 10px; font-size: 11px; }
-.eporner-tools__path { justify-self: start; padding: 7px 9px; border: 1px solid rgba(197,165,114,.17); border-radius: 8px; background: rgba(0,0,0,.18); color: #d6c295; direction: ltr; font: 10px/1 ui-monospace, monospace; }
-.eporner-tools__help { margin: 0 0 12px; color: #8d98a1; font-size: 9.5px; line-height: 1.7; }
-.eporner-operation-fields { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-bottom: 12px; }
-.eporner-operation-fields .eporner-field { gap: 6px; }
-.eporner-operation-fields .input { min-height: 36px; font-size: 10px; }
-.eporner-operation-fields textarea.input { min-height: 74px; resize: vertical; }
-.eporner-no-params { grid-column: 1/-1; margin: 0; padding: 13px; border: 1px dashed rgba(255,255,255,.1); border-radius: 10px; color: #a3adb6; font-size: 10px; }
-.eporner-operation-form > .btn { min-height: 38px; font-size: 10px; }
-.eporner-output-wrap { margin-top: 14px; border: 1px solid rgba(255,255,255,.08); border-radius: 12px; background: rgba(0,0,0,.13); overflow: hidden; }
-.eporner-output-wrap > header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 9px 12px; border-bottom: 1px solid rgba(255,255,255,.07); }
-.eporner-output-wrap > header strong { color: #d6ccb7; font-size: 10px; }
-.eporner-output-wrap > header span { color: #788691; font: 9px/1.2 ui-monospace, monospace; direction: ltr; }
-.eporner-tools__output { max-height: 390px; margin: 0; padding: 13px; overflow: auto; border: 0; border-radius: 0; background: transparent; color: #c7d1d8; direction: ltr; text-align: left; white-space: pre-wrap; overflow-wrap: anywhere; font: 10px/1.6 ui-monospace, SFMono-Regular, Consolas, monospace; }
-.eporner-tools__footer { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 13px; padding-top: 12px; border-top: 1px solid rgba(255,255,255,.065); color: #74808a; font-size: 9px; }
-.eporner-tools__footer .btn { min-height: 32px; padding: 6px 10px; font-size: 9px; }
+.eporner-consent[hidden], .eporner-entity-dialog[hidden] { display: none !important; }
+.eporner-consent__mark { display: grid; flex: 0 0 34px; place-items: center; width: 34px; height: 34px; border: 1px solid rgba(245,174,185,.35); border-radius: 10px; color: #ffc4cb; font: 900 11px/1 ui-monospace, monospace; }
+.eporner-consent__copy { display: flex; flex: 1; flex-direction: column; gap: 2px; min-width: 0; }
+.eporner-consent__copy strong { color: #f2d9dc; font-size: 10px; }
+.eporner-consent__copy span { color: #b8a9ae; font-size: 9px; line-height: 1.5; }
+.eporner-consent .btn { flex: 0 0 auto; min-height: 34px; padding: 6px 10px; font-size: 9px; }
+.eporner-search-form { margin-bottom: 14px; }
 
 .result-card__api-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 2px; }
 .result-card__api-tags > span { padding: 3px 6px; border: 1px solid rgba(197,165,114,.16); border-radius: 6px; background: rgba(197,165,114,.06); color: #bca878; font-size: 8px; font-weight: 800; }
 .result-card__translation { color: #89949e; font-size: 9px; font-weight: 600; }
+.result-card__entity-actions { display: flex; flex-wrap: wrap; gap: 5px; padding: 0 10px 10px; }
+.result-card__entity-chip { display: inline-flex; align-items: center; gap: 5px; max-width: 100%; min-height: 25px; padding: 4px 7px; border: 1px solid rgba(197,165,114,.16); border-radius: 8px; background: rgba(197,165,114,.045); color: #c8b88f; font: inherit; cursor: pointer; }
+.result-card__entity-chip:hover { border-color: rgba(197,165,114,.42); background: rgba(197,165,114,.1); }
+.result-card__entity-chip:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+.result-card__entity-chip > span { flex: 0 0 auto; color: #82909b; font-size: 8px; font-weight: 700; }
+.result-card__entity-chip > strong { overflow: hidden; font-size: 9px; font-weight: 800; text-overflow: ellipsis; white-space: nowrap; }
+.result-card__entity-chip--performer { border-color: rgba(123,168,163,.19); background: rgba(90,145,140,.055); color: #c2d2cc; }
+.result-card__entity-chip--performer:hover { border-color: rgba(123,168,163,.42); background: rgba(90,145,140,.11); }
 
-@media (max-width: 780px) {
-  .eporner-hero { grid-template-columns: minmax(0, 1.3fr) minmax(170px, .7fr); min-height: 245px; }
-  .eporner-hero__art { min-height: 200px; }
-  .eporner-hero__poster { transform: rotate(5deg) scale(.9); }
-  .eporner-hero__halo { width: 210px; height: 210px; }
-  .eporner-discovery__grid { grid-template-columns: 1fr; }
-  .eporner-category-grid { max-height: 260px; }
-  .eporner-performer-grid { grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); }
+.search-browsebar__title small { color: #83909a; font-size: 9px; line-height: 1.5; }
+.search-browsebar__external { flex: 0 0 auto; padding: 7px 10px; border: 1px solid rgba(197,165,114,.2); border-radius: 9px; color: #cdb37d; font-size: 9px; font-weight: 800; text-decoration: none; }
+.search-browsebar__external:hover { background: rgba(197,165,114,.08); }
+.search-browsebar__external[hidden] { display: none !important; }
+
+.eporner-entity-dialog {
+  width: min(470px, calc(100% - 24px));
+  max-height: calc(100dvh - 36px);
+  padding: 18px;
+  border: 1px solid rgba(197,165,114,.28);
+  border-radius: 18px;
+  background: linear-gradient(150deg, rgba(22,29,38,.99), rgba(10,14,20,.99));
+  color: var(--text);
+  box-shadow: 0 24px 80px rgba(0,0,0,.7);
+  overflow: auto;
 }
+.eporner-entity-dialog::backdrop { background: rgba(4,6,10,.78); backdrop-filter: blur(4px); }
+.eporner-entity-dialog__head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding-bottom: 12px; border-bottom: 1px solid var(--border); }
+.eporner-entity-dialog__kind { color: #c6ad79; font-size: 9px; font-weight: 800; }
+.eporner-entity-dialog__head h2 { margin: 4px 0 0; color: #f0e5d0; font-size: 18px; font-weight: 900; overflow-wrap: anywhere; }
+.eporner-entity-dialog__facts { display: grid; gap: 7px; margin: 14px 0; }
+.eporner-entity-dialog__facts > div { display: flex; justify-content: space-between; gap: 12px; padding: 9px 10px; border: 1px solid rgba(255,255,255,.055); border-radius: 9px; background: rgba(255,255,255,.025); }
+.eporner-entity-dialog__facts dt { color: #8d99a4; font-size: 10px; font-weight: 700; }
+.eporner-entity-dialog__facts dd { max-width: 70%; margin: 0; color: #d5d8d7; font-size: 10px; font-weight: 800; overflow-wrap: anywhere; text-align: end; }
+.eporner-entity-dialog__actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.eporner-entity-dialog__actions .btn { flex: 1 1 150px; min-height: 38px; font-size: 10px; justify-content: center; }
+.eporner-entity-dialog__actions [hidden] { display: none !important; }
+.eporner-entity-dialog__note { margin: 12px 0 0; color: #7e8993; font-size: 9px; line-height: 1.7; }
 
 @media (max-width: 560px) {
   .search-main { width: min(1080px, calc(100% - 20px)); padding-top: 5px; }
-  .eporner-hero { grid-template-columns: 1fr; min-height: 0; margin-top: 7px; padding: 23px 20px 20px; border-radius: 22px; }
-  .eporner-hero__copy { max-width: none; }
-  .eporner-hero .search-title { margin-top: 12px; font-size: clamp(27px, 8vw, 36px); }
-  .eporner-hero .search-sub { max-width: 48ch; font-size: 11px; }
-  .eporner-hero__metrics { gap: 7px; margin-top: 16px; }
-  .eporner-hero__metrics > span { gap: 5px; padding: 7px 8px; }
-  .eporner-hero__metrics b { font-size: 12px; }
-  .eporner-hero__metrics small { font-size: 8px; }
-  .eporner-hero__art { position: absolute; inset-inline-end: -42px; inset-block-start: 42px; width: 145px; min-height: 180px; opacity: .34; transform: scale(.8); transform-origin: center; pointer-events: none; }
-  .eporner-hero__poster { width: 145px; height: 184px; }
-  .eporner-hero__floating { display: none; }
-  .eporner-hero__halo { width: 190px; height: 190px; }
-  .eporner-hero__copy { padding-inline-end: 78px; }
-  .search-sources { width: 100%; display: flex; max-width: 100%; flex-wrap: nowrap; justify-content: space-between; overflow-x: auto; scrollbar-width: none; }
+  .search-intro { margin-top: 7px; padding: 14px 15px; border-radius: 14px; }
+  .search-intro .search-title { font-size: 23px; }
+  .search-intro .search-sub { font-size: 10px; }
+  .search-sources { width: 100%; display: flex; max-width: 100%; flex-wrap: nowrap; justify-content: flex-start; overflow-x: auto; scrollbar-width: none; }
   .search-sources::-webkit-scrollbar { display: none; }
   .source-tab { flex: 0 0 auto; gap: 5px; padding-inline: 10px; font-size: 10px; }
-  .eporner-consent { align-items: flex-start; flex-wrap: wrap; gap: 9px 11px; padding: 12px; }
-  .eporner-consent__mark { flex-basis: 38px; width: 38px; height: 38px; }
-  .eporner-consent__copy { align-self: center; flex-basis: calc(100% - 52px); }
+  .eporner-consent { align-items: center; flex-wrap: wrap; gap: 8px; padding: 9px; }
+  .eporner-consent__copy { flex-basis: calc(100% - 45px); }
   .eporner-consent .btn { width: 100%; }
-  .eporner-filter-panel > summary { padding: 12px; }
-  .eporner-filter-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; padding: 0 12px 12px; }
-  .eporner-field { font-size: 9px; }
-  .eporner-field .input { min-height: 36px; padding: 7px 8px; font-size: 10px; }
-  .eporner-field--wide { grid-column: 1 / -1; }
-  .eporner-filter-footnote { margin-inline: 12px; }
   .eporner-search-form { gap: 8px; }
   .eporner-search-form .search-go { min-width: 100%; }
-  .eporner-discovery { margin-top: 24px; }
-  .eporner-discovery__heading { align-items: flex-start; }
-  .eporner-discovery__stamp { display: none; }
-  .eporner-directory-card { padding: 12px; border-radius: 15px; }
-  .eporner-category-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
-  .eporner-category-chip { gap: 5px; padding: 8px 7px; font-size: 9px; }
-  .eporner-category-chip small { display: none; }
-  .eporner-performer-grid { grid-template-columns: 1fr; }
-  .eporner-directory-controls { align-items: flex-end; }
-  .eporner-directory-controls .eporner-field { width: 125px; }
-  .eporner-tools > summary { padding: 12px; }
-  .eporner-tools__body { padding: 0 12px 12px; }
-  .eporner-tools__selector { grid-template-columns: 1fr; gap: 7px; }
-  .eporner-tools__path { justify-self: start; }
-  .eporner-operation-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
-  .eporner-tools__footer { align-items: flex-start; flex-direction: column; }
-  .eporner-tools__footer .btn { width: 100%; justify-content: center; }
-}
-
-@media (max-width: 370px) {
-  .eporner-hero__art { opacity: .22; }
-  .eporner-hero__copy { padding-inline-end: 0; }
-  .eporner-hero__eyebrow { font-size: 8px; }
-  .eporner-hero__metrics { gap: 4px; }
-  .eporner-hero__metrics > span { padding: 6px; }
-  .eporner-filter-grid, .eporner-operation-fields { grid-template-columns: 1fr; }
-  .eporner-field--wide { grid-column: auto; }
+  .search-browsebar { align-items: flex-start; flex-wrap: wrap; }
+  .search-browsebar__title { flex-basis: calc(100% - 100px); }
+  .search-browsebar__external { margin-inline-start: auto; }
+  .eporner-entity-dialog { padding: 14px; }
+  .eporner-entity-dialog__actions { flex-direction: column; }
+  .eporner-entity-dialog__actions .btn { width: 100%; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .eporner-category-chip, .eporner-performer-card, .eporner-icon-button { transition: none; }
+  .result-card__entity-chip { transition: none; }
 }
