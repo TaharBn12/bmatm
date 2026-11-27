@@ -34,14 +34,31 @@
     picker: $('roomPicker'), pickerList: $('pickerList'), pickerEmpty: $('pickerEmpty'),
     pickerClose: $('pickerClose'), adultGate: $('adultGate'),
     adultGateAccept: $('adultGateAccept'), adultGateCancel: $('adultGateCancel'),
-    epornerTools: $('epornerTools'), epornerOperation: $('epornerOperation'), epornerParams: $('epornerParams'),
-    epornerOperationHelp: $('epornerOperationHelp'), epornerRun: $('epornerRunOperation'), epornerOutput: $('epornerOutput')
+    epornerHero: $('epornerHero'), searchGenericHero: $('searchGenericHero'),
+    epornerConsent: $('epornerConsent'), epornerConsentOpen: $('epornerConsentOpen'),
+    epornerFilters: $('epornerSearchFilters'), epornerDiscovery: $('epornerDiscovery'),
+    epornerOrder: $('epornerOrder'), epornerPerPage: $('epornerPerPage'), epornerPage: $('epornerPage'),
+    epornerGay: $('epornerGay'), epornerLq: $('epornerLq'), epornerMinDuration: $('epornerMinDuration'),
+    epornerMaxDuration: $('epornerMaxDuration'), epornerAddedAfter: $('epornerAddedAfter'),
+    epornerAddedBefore: $('epornerAddedBefore'), epornerThumbsize: $('epornerThumbsize'),
+    epornerThumbs: $('epornerThumbs'), epornerLang: $('epornerLang'), epornerFormat: $('epornerFormat'),
+    epornerFieldCategories: $('epornerFieldCategories'), epornerFieldPornstars: $('epornerFieldPornstars'),
+    epornerFieldQuality: $('epornerFieldQuality'), epornerCategoryFilter: $('epornerCategoryFilter'),
+    epornerCategoryList: $('epornerCategoryList'), epornerCategoriesMeta: $('epornerCategoriesMeta'),
+    epornerCategoriesReload: $('epornerCategoriesReload'), epornerPornstarList: $('epornerPornstarList'),
+    epornerPornstarsMeta: $('epornerPornstarsMeta'), epornerPornstarsReload: $('epornerPornstarsReload'),
+    epornerPornstarsPerPage: $('epornerPornstarsPerPage'), epornerPornstarsPrev: $('epornerPornstarsPrev'),
+    epornerPornstarsNext: $('epornerPornstarsNext'), epornerPornstarsPageLabel: $('epornerPornstarsPageLabel'),
+    epornerTools: $('epornerTools'), epornerOperation: $('epornerOperation'),
+    epornerOperationPath: $('epornerOperationPath'), epornerOperationHelp: $('epornerOperationHelp'),
+    epornerOperationForm: $('epornerOperationForm'), epornerOperationFields: $('epornerOperationFields'),
+    epornerRun: $('epornerRunOperation'), epornerOutputWrap: $('epornerOutputWrap'),
+    epornerOutputTitle: $('epornerOutputTitle'), epornerOutputMeta: $('epornerOutputMeta'), epornerOutput: $('epornerOutput')
   };
 
   const QUICK_DM = ['وثائقيات', 'موسيقى', 'طبخ', 'رياضة', 'تقنية', 'أفلام قصيرة'];
   const QUICK_YT = ['محاضرات', 'قرآن', 'أغاني', 'برمجة', 'طبخ', 'رياضة'];
   const RECENT_KEY = 'search:recent';
-  const SITE_KEY = 'search:site';
   const ADULT_ACK_KEY = 'wt:search:adult-confirmed';
   const PENDING = 'pending-queue:';
   const LIMIT = 18;
@@ -58,13 +75,17 @@
   };
 
   const state = {
-    query: '', site: 'dailymotion', searchType: 'all', items: [], viewItems: [], view: 'search', loading: false,
+    query: '', site: 'eporner', searchType: 'video', items: [], viewItems: [], view: 'search', loading: false,
     browse: null, favoriteKeys: new Set(), favoriteError: null,
     adultConfirmed: false,    /* إقرار 18+ مؤقت للجلسة فقط */
     previousSite: 'dailymotion', pendingAdultAction: '', pendingAdultQuery: '',
     server: null,            /* null = لم يُختبر · true = سيرفر Java · false = استضافة ثابتة */
     reason: '',              /* سبب تعذّر الوصول إلى /api/search (نص تشخيصي) */
     epornerNextPage: 1, epornerHasMore: false, epornerToolBusy: false,
+    epornerCategories: [], epornerCategoriesLoaded: false, epornerCategoriesLoading: false,
+    epornerPornstarsPage: 1, epornerPornstarsTotalPages: 1,
+    epornerPornstarsLoaded: false, epornerPornstarsLoading: false,
+    epornerOperationBusy: false,
     token: 0,                /* رقم مسلسل للبحث الجاري — يمنع نتائج قديمة من التغطية على جديدة */
     direct: new Map(),       /* معرّف الفيديو ← رابط التشغيل */
     current: null, busyId: null
@@ -274,6 +295,14 @@
     if (!thumb && isDM) thumb = 'https://www.dailymotion.com/thumbnail/video/' + id;
     const performers = isEP && Array.isArray(raw.pornstars)
       ? raw.pornstars.map(person => String(person && person.name || '').trim()).filter(Boolean).slice(0, 3).join(', ') : '';
+    const categories = isEP && Array.isArray(raw.categories)
+      ? raw.categories.map(category => String(typeof category === 'string' ? category : category && category.name || '').trim()).filter(Boolean).slice(0, 3) : [];
+    const quality = isEP && raw.quality && typeof raw.quality === 'object'
+      ? { max: String(raw.quality.max || '').trim(), hd: raw.quality.hd === true, vr: raw.quality.vr === true,
+        fps: Number(raw.quality.fps) || 0, available: Array.isArray(raw.quality.available)
+          ? raw.quality.available.map(value => String(value || '').trim()).filter(Boolean).slice(0, 7) : [] } : null;
+    const translation = isEP && raw.translation && typeof raw.translation === 'object'
+      ? { lang: String(raw.translation.lang || '').trim(), title: String(raw.translation.title || '').trim() } : null;
     const author = String(raw.author || raw.owner || raw.channel || performers).replace(/\s+/g, ' ').trim().slice(0, 140);
     const channelId = String(raw.channelId || raw.channel_id || '').trim().slice(0, 120);
     const channelUrl = isYT ? safeYouTubeProfile(raw.channelUrl || raw.channel_url ||
@@ -283,8 +312,78 @@
       id, type, site: isYT ? 'youtube' : isDM ? 'dailymotion' : isPF ? 'pornflip' : isEP ? 'eporner' : (source || 'external'),
       title, url, thumb, duration: Number(raw.duration || raw.length_sec) || 0, author,
       embedUrl: isEP ? safeEpornerEmbed(raw.embed || raw.embedUrl, id) : '',
-      channelId, channelUrl, count: Number(raw.count || raw.channel_follower_count || raw.views || 0) || 0
+      categories, quality, translation, channelId, channelUrl,
+      count: Number(raw.count || raw.channel_follower_count || raw.views || 0) || 0
     };
+  }
+
+  function epornerInteger(raw, key, minimum, maximum) {
+    const value = String(raw == null ? '' : raw).trim();
+    if (!/^\d+$/.test(value)) throw new Error(key + ' يجب أن يكون عددًا صحيحًا');
+    const parsed = BigInt(value);
+    if (parsed < BigInt(minimum) || (maximum != null && parsed > BigInt(maximum)))
+      throw new Error(key + ' يجب أن يكون بين ' + minimum + (maximum == null ? ' فأكثر' : ' و' + maximum));
+    return parsed <= BigInt(Number.MAX_SAFE_INTEGER) ? Number(parsed) : parsed.toString();
+  }
+
+  function incrementEpornerPage(value) {
+    const raw = String(value == null || value === '' ? '1' : value).trim();
+    return /^\d+$/.test(raw) ? (BigInt(raw) + 1n).toString() : '2';
+  }
+
+  function decrementEpornerPage(value) {
+    const raw = String(value == null || value === '' ? '1' : value).trim();
+    if (!/^\d+$/.test(raw)) return '1';
+    const parsed = BigInt(raw);
+    return parsed > 1n ? (parsed - 1n).toString() : '1';
+  }
+
+  function epornerSearchParams(term, pageOverride) {
+    const readInteger = (control, key, fallback, minimum, maximum) => {
+      const raw = String(control && control.value || '').trim();
+      return epornerInteger(raw || fallback, key, minimum, maximum);
+    };
+    const fields = [
+      [el.epornerFieldCategories, 'categories'],
+      [el.epornerFieldPornstars, 'pornstars'],
+      [el.epornerFieldQuality, 'quality']
+    ].filter(([control]) => control && (control.checked === true || typeof control.checked === 'undefined'))
+      .map(([, value]) => value);
+    const params = {
+      query: String(term || '').trim() || 'all',
+      per_page: readInteger(el.epornerPerPage, 'per_page', 30, 1, 1000),
+      page: pageOverride == null
+        ? readInteger(el.epornerPage, 'page', 1, 1, null)
+        : readInteger({ value: pageOverride }, 'page', 1, 1, null),
+      order: String(el.epornerOrder && el.epornerOrder.value || 'latest'),
+      gay: readInteger(el.epornerGay, 'gay', 0, 0, 2),
+      lq: readInteger(el.epornerLq, 'lq', 1, 0, 2),
+      thumbsize: String(el.epornerThumbsize && el.epornerThumbsize.value || 'medium'),
+      thumbs: String(el.epornerThumbs && el.epornerThumbs.value || 'all'),
+      format: String(el.epornerFormat && el.epornerFormat.value || 'json')
+    };
+    const minDuration = String(el.epornerMinDuration && el.epornerMinDuration.value || '').trim();
+    const maxDuration = String(el.epornerMaxDuration && el.epornerMaxDuration.value || '').trim();
+    const addedAfter = String(el.epornerAddedAfter && el.epornerAddedAfter.value || '').trim();
+    const addedBefore = String(el.epornerAddedBefore && el.epornerAddedBefore.value || '').trim();
+    const lang = String(el.epornerLang && el.epornerLang.value || '').trim();
+    if (minDuration) params.min_duration = readInteger({ value: minDuration }, 'min_duration', 0, 0, 86400);
+    if (maxDuration) params.max_duration = readInteger({ value: maxDuration }, 'max_duration', 0, 0, 86400);
+    if (addedAfter) params.added_after = addedAfter;
+    if (addedBefore) params.added_before = addedBefore;
+    if (fields.length) params.fields = fields.join(',');
+    if (lang) {
+      if (!/^[a-z]{2}$/.test(lang)) throw new Error('lang يجب أن يكون حرفين صغيرين مثل pl أو fr أو es');
+      params.lang = lang;
+    }
+    if (!['latest', 'longest', 'shortest', 'top-rated', 'most-popular', 'top-weekly', 'top-monthly'].includes(params.order))
+      throw new Error('قيمة order غير مدعومة في OpenAPI');
+    if (![0, 1, 2].includes(params.gay) || ![0, 1, 2].includes(params.lq))
+      throw new Error('قيم gay وlq الموثّقة هي 0 أو 1 أو 2');
+    if (!['small', 'medium', 'big'].includes(params.thumbsize) || !['all', 'default', 'none'].includes(params.thumbs))
+      throw new Error('قيمة حجم/عدد الصور غير مدعومة في OpenAPI');
+    if (!['json', 'xml'].includes(params.format)) throw new Error('صيغة البحث يجب أن تكون json أو xml');
+    return params;
   }
 
   /**
@@ -298,13 +397,11 @@
     if (site === 'eporner') {
       if (!state.adultConfirmed) throw new Error('تأكيد 18+ مطلوب قبل البحث في ePorner');
       if (!window.WTEpornerApi) throw new Error('عميل ePorner API غير متاح في هذه النسخة');
-      const page = Math.max(1, Number(browse && browse.page) || 1);
+      const params = epornerSearchParams(term, browse && browse.page != null ? browse.page : null);
+      const page = String(params.page || '1');
       let data;
       try {
-        data = await window.WTEpornerApi.search({
-          query: term || 'all', per_page: limit, page, order: 'latest',
-          thumbsize: 'medium', thumbs: 'default', fields: 'categories,pornstars,quality'
-        });
+        data = await window.WTEpornerApi.search(params);
       } catch (error) {
         if (error && error.status) { state.server = true; throw error; }
         state.reason = location.protocol === 'file:'
@@ -312,12 +409,20 @@
           : 'تعذّر الاتصال بخادم ePorner على ' + (apiBaseUrl() || location.host || 'العنوان الحالي');
         return null;
       }
-      if (!data || !Array.isArray(data.videos)) throw new Error('استجابة بحث ePorner غير مفهومة');
       state.reason = '';
+      if (typeof data === 'string') return {
+        items: [], raw: data, source: 'eporner-api-xml', hasMore: false, nextOffset: incrementEpornerPage(page),
+        totalCount: 0, totalPages: page, format: params.format
+      };
+      if (!data || !Array.isArray(data.videos)) throw new Error('استجابة بحث ePorner غير مفهومة');
+      const totalPagesValue = data.total_pages == null ? page : String(data.total_pages);
+      let hasMore = false;
+      try { hasMore = BigInt(page) < BigInt(totalPagesValue); } catch (_) { hasMore = false; }
       return {
         items: data.videos.map(item => normalize({ ...item, type: 'video', site: 'eporner' }, 'eporner')).filter(Boolean),
-        source: 'eporner-api', hasMore: page < (Number(data.total_pages) || page), nextOffset: page + 1,
-        totalCount: Number(data.total_count) || 0, totalPages: Number(data.total_pages) || page
+        source: 'eporner-api', hasMore, nextOffset: incrementEpornerPage(page),
+        totalCount: Number(data.total_count) || 0, totalPages: Number(data.total_pages) || Number(page) || 1,
+        format: params.format
       };
     }
     const api = (window.WTServer && window.WTServer.api) ? window.WTServer.api('api/search') : 'api/search';
@@ -437,19 +542,26 @@
   }
 
   async function runSearch(term) {
-    const query = String(term || '').trim();
+    const enteredQuery = String(term || '').trim();
     if (isAdultSource(state.site) && !state.adultConfirmed) {
-      requestAdultConfirmation('search', query);
+      requestAdultConfirmation('search', enteredQuery);
       return;
     }
-    if (query.length < 2) { status('اكتب كلمتين على الأقل للبحث', true); el.input.focus(); return; }
+    if (state.site !== 'eporner' && enteredQuery.length < 2) {
+      status('اكتب كلمتين على الأقل للبحث', true);
+      el.input.focus();
+      return;
+    }
+    const query = state.site === 'eporner' && !enteredQuery ? 'all' : enteredQuery;
     const token = ++state.token;
     state.view = 'search';
     state.browse = null;
     state.loading = true;
     state.query = query;
-    state.epornerNextPage = 1;
+    state.epornerNextPage = state.site === 'eporner'
+      ? incrementEpornerPage(el.epornerPage && el.epornerPage.value) : 1;
     state.epornerHasMore = false;
+    if (state.site === 'eporner') clearEpornerToolOutput();
     el.browseBar.hidden = true;
     el.browseMore.hidden = true;
     el.go.disabled = true;
@@ -487,9 +599,22 @@
         item && (!isAdultItem(item) || (isAdultSource(state.site) && state.adultConfirmed)));
       state.viewItems = state.items;
       state.epornerHasMore = state.site === 'eporner' && !!result.hasMore;
-      state.epornerNextPage = state.site === 'eporner' ? (Number(result.nextOffset) || 2) : 1;
+      state.epornerNextPage = state.site === 'eporner'
+        ? String(result.nextOffset || incrementEpornerPage(el.epornerPage && el.epornerPage.value)) : 1;
+      if (state.site === 'eporner' && el.epornerPage) el.epornerPage.value = decrementEpornerPage(state.epornerNextPage);
       el.browseMore.hidden = !state.epornerHasMore;
       updateNote();
+      if (state.site === 'eporner' && typeof result.raw === 'string') {
+        el.results.innerHTML = '';
+        el.results.setAttribute('aria-busy', 'false');
+        el.empty.hidden = true;
+        state.epornerHasMore = false;
+        el.browseMore.hidden = true;
+        showEpornerToolOutput(result.raw, 'رد XML خام من /video/search/', 'text/xml');
+        status('أعاد ePorner XML. افتح مختبر API لقراءة الرد الخام؛ لم يُحوّل إلى بطاقات.');
+        renderChips();
+        return;
+      }
       if (!state.items.length) {
         el.results.innerHTML = '';
         el.results.setAttribute('aria-busy', 'false');
@@ -574,7 +699,8 @@
       const found = result.items.filter(item => !seen.has(item.id));
       state.items = state.items.concat(found);
       state.viewItems = state.items;
-      state.epornerNextPage = Number(result.nextOffset) || page + 1;
+      state.epornerNextPage = String(result.nextOffset || incrementEpornerPage(page));
+      if (el.epornerPage) el.epornerPage.value = String(page);
       state.epornerHasMore = !!result.hasMore;
       render(state.items);
       el.browseMore.hidden = !state.epornerHasMore;
@@ -694,6 +820,9 @@
     el.results.innerHTML = items.map((item, index) => {
       const type = item.type || 'video';
       const isVideo = type === 'video';
+      const displayTitle = item.translation && item.translation.title ? item.translation.title : item.title;
+      const originalTitle = displayTitle !== item.title
+        ? '<span class="result-card__translation">العنوان الأصلي · ' + U.esc(item.title) + '</span>' : '';
       const badge = isVideo ? duration(item.duration) : '';
       const tag = type === 'channel' ? 'قناة' : type === 'playlist' ? 'قائمة تشغيل' : '';
       const thumb = item.thumb
@@ -708,16 +837,29 @@
       const heart = isVideo && !isAdultItem(item)
         ? '<button class="result-card__favorite' + (isFavorite(item) ? ' is-on' : '') + '" type="button" data-favorite-index="' + index + '" aria-pressed="' + String(isFavorite(item)) + '" aria-label="' + (isFavorite(item) ? 'إزالة من المفضّلة' : 'إضافة إلى المفضّلة') + '" title="' + (isFavorite(item) ? 'إزالة من المفضّلة' : 'إضافة إلى المفضّلة') + '">' + IC.html('heart', 18) + '</button>'
         : '';
+      const epornerTags = [];
+      if (item.site === 'eporner') {
+        (item.categories || []).slice(0, 2).forEach(name => epornerTags.push('الفئة · ' + name));
+        if (item.quality && item.quality.max) epornerTags.push(item.quality.max);
+        else if (item.quality && item.quality.hd) epornerTags.push('HD');
+        if (item.quality && item.quality.available && item.quality.available.length)
+          epornerTags.push('الجودات · ' + item.quality.available.join(' / '));
+        if (item.quality && item.quality.vr) epornerTags.push('VR');
+        if (item.quality && item.quality.fps > 0) epornerTags.push(item.quality.fps + ' fps');
+      }
+      const extra = epornerTags.length ? '<span class="result-card__api-tags">' + epornerTags.map(tag =>
+        '<span>' + U.esc(tag) + '</span>').join('') + '</span>' : '';
       const action = isVideo ? 'تشغيل' : 'تصفّح';
       return '<article class="result-card result-card--' + U.esc(type) + '">' +
-        '<button class="result-card__main" type="button" data-index="' + index + '" aria-label="' + action + ': ' + U.esc(item.title) + '">' +
+        '<button class="result-card__main" type="button" data-index="' + index + '" aria-label="' + action + ': ' + U.esc(displayTitle) + '">' +
           '<span class="result-card__thumb">' + thumb +
             (badge ? '<span class="result-card__badge">' + badge + '</span>' : '') +
             (tag ? '<span class="result-card__type">' + tag + '</span>' : '') +
             (isVideo ? '<span class="result-card__play"><span>' + IC.html('play', 22) + '</span></span>' : '') +
           '</span>' +
           '<span class="result-card__body">' +
-            '<span class="result-card__title">' + U.esc(item.title) + '</span>' +
+            '<span class="result-card__title">' + U.esc(displayTitle) + '</span>' +
+            originalTitle + extra +
             '<span class="result-card__meta">' + author + count + '</span>' +
           '</span>' +
         '</button>' + channel + heart +
@@ -775,91 +917,437 @@
       tab.classList.toggle('is-active', on);
       tab.setAttribute('aria-selected', String(on));
     });
-    if (el.types) el.types.querySelectorAll('[data-search-type]').forEach(tab => {
-      const on = state.view === 'search' && tab.getAttribute('data-search-type') === state.searchType;
-      tab.classList.toggle('is-active', on);
-      tab.setAttribute('aria-selected', String(on));
-      if (['channel', 'playlist'].includes(tab.getAttribute('data-search-type')))
-        tab.hidden = state.site !== 'youtube';
-    });
-    if (el.types) el.types.querySelectorAll('[data-search-view]').forEach(tab => {
-      const on = state.view === 'favorites';
-      tab.classList.toggle('is-active', on);
-      tab.setAttribute('aria-selected', String(on));
-    });
+    if (el.types) {
+      el.types.hidden = state.site === 'eporner';
+      el.types.querySelectorAll('[data-search-type]').forEach(tab => {
+        const on = state.view === 'search' && tab.getAttribute('data-search-type') === state.searchType;
+        tab.classList.toggle('is-active', on);
+        tab.setAttribute('aria-selected', String(on));
+        if (['channel', 'playlist'].includes(tab.getAttribute('data-search-type')))
+          tab.hidden = state.site !== 'youtube';
+      });
+      el.types.querySelectorAll('[data-search-view]').forEach(tab => {
+        const on = state.view === 'favorites';
+        tab.classList.toggle('is-active', on);
+        tab.setAttribute('aria-selected', String(on));
+      });
+    }
   }
 
   const SITE_LABEL_AR = { youtube: 'يوتيوب', dailymotion: 'ديليموشن', pornflip: 'PornFlip · 18+', eporner: 'ePorner · 18+' };
   const TYPE_LABEL_AR = { all: 'الكل', video: 'فيديوهات', channel: 'قنوات', playlist: 'قوائم التشغيل' };
-  const EPORNER_EXAMPLES = {
-    search: { query: 'yoga', per_page: 24, page: 1, order: 'latest', thumbs: 'default', thumbsize: 'medium', fields: 'categories,pornstars,quality' },
-    video: { id: 'AbCdEfGhIjK', thumbs: 'default', fields: 'categories,pornstars,quality' },
-    removed: { since: '2026-11-01', per_page: 100 },
-    status: { id: 'AbCdEfGhIjK' },
-    categories: {},
-    pornstars: { page: 1, per_page: 24 },
-    oembed: { url: 'https://www.eporner.com/video-AbCdEfGhIjK/sample-title/', maxwidth: 640, maxheight: 360 },
-    openapi: {}
+  const EPORNER_OPERATIONS = {
+    search: {
+      path: '/video/search/',
+      help: 'query اختياري (الافتراضي all؛ كل كلمة يجب أن تطابق). per_page من 1 إلى 1000، وpage من 1 فأكثر. الترتيب والقيم والحقول واللغة والصيغة محصورة في القوائم الموثّقة.',
+      fields: [
+        { name: 'query', label: 'عبارة البحث · query', type: 'text', placeholder: 'all لعرض كل الفيديوهات', default: 'all' },
+        { name: 'per_page', label: 'عدد الفيديوهات · per_page', type: 'number', min: 1, max: 1000, default: '30' },
+        { name: 'page', label: 'رقم الصفحة · page', type: 'number', min: 1, default: '1' },
+        { name: 'order', label: 'الترتيب · order', type: 'select', default: 'latest', options: [
+          ['latest', 'الأحدث'], ['longest', 'الأطول'], ['shortest', 'الأقصر'], ['top-rated', 'الأعلى تقييمًا'],
+          ['most-popular', 'الأكثر مشاهدة'], ['top-weekly', 'الأكثر مشاهدة أسبوعيًا'], ['top-monthly', 'الأكثر مشاهدة شهريًا']
+        ] },
+        { name: 'gay', label: 'المحتوى المثلي · gay', type: 'select', default: '0', options: [['0', 'استبعاد · 0'], ['1', 'تضمين · 1'], ['2', 'هذا النوع فقط · 2']] },
+        { name: 'lq', label: 'الجودة المنخفضة · lq', type: 'select', default: '1', options: [['0', 'استبعاد · 0'], ['1', 'تضمين · 1'], ['2', 'هذا النوع فقط · 2']] },
+        { name: 'min_duration', label: 'أقصر مدة · min_duration (ثانية)', type: 'number', min: 0, max: 86400, placeholder: 'اختياري' },
+        { name: 'max_duration', label: 'أطول مدة · max_duration (ثانية)', type: 'number', min: 0, max: 86400, placeholder: 'اختياري' },
+        { name: 'added_after', label: 'أُضيف بعد · added_after', type: 'text', placeholder: 'YYYY-MM-DD أو RFC 3339 أو Unix' },
+        { name: 'added_before', label: 'أُضيف قبل · added_before', type: 'text', placeholder: 'YYYY-MM-DD أو RFC 3339 أو Unix' },
+        { name: 'thumbsize', label: 'حجم الصورة · thumbsize', type: 'select', default: 'medium', options: [['small', 'صغير · 190×152'], ['medium', 'متوسط · 427×240'], ['big', 'كبير · 640×360']] },
+        { name: 'thumbs', label: 'الصور · thumbs', type: 'select', default: 'all', options: [['all', 'كل الصور (الافتراضي)'], ['default', 'الصورة الافتراضية فقط'], ['none', 'من دون صور']] },
+        { name: 'fields', label: 'الحقول الإضافية · fields', type: 'checkboxes', default: ['categories', 'pornstars', 'quality'], options: [['categories', 'الفئات'], ['pornstars', 'المؤدّون'], ['quality', 'الجودة وVR']] },
+        { name: 'lang', label: 'لغة العنوان المترجم · lang', type: 'text', maxLength: 2, pattern: '[a-z]{2}', placeholder: 'pl / fr / es' },
+        { name: 'format', label: 'صيغة الرد · format', type: 'select', default: 'json', options: [['json', 'JSON'], ['xml', 'XML (رد خام)']] }
+      ]
+    },
+    video: {
+      path: '/video/id/',
+      help: 'أدخل معرّف فيديو من 11 حرفًا أو رقمًا (حساس لحالة الأحرف). الفيديو المحذوف أو غير المتاح يعيد []، ولا يعني ذلك خطأ في الخدمة.',
+      fields: [
+        { name: 'id', label: 'معرّف الفيديو · id (مطلوب)', type: 'text', required: true, pattern: '[A-Za-z0-9]{11}', placeholder: '11 حرفًا أو رقمًا' },
+        { name: 'thumbsize', label: 'حجم الصورة · thumbsize', type: 'select', default: 'medium', options: [['small', 'صغير · 190×152'], ['medium', 'متوسط · 427×240'], ['big', 'كبير · 640×360']] },
+        { name: 'thumbs', label: 'الصور · thumbs', type: 'select', default: 'all', options: [['all', 'كل الصور (الافتراضي)'], ['default', 'الصورة الافتراضية فقط'], ['none', 'من دون صور']] },
+        { name: 'fields', label: 'الحقول الإضافية · fields', type: 'checkboxes', default: ['categories', 'pornstars', 'quality'], options: [['categories', 'الفئات'], ['pornstars', 'المؤدّون'], ['quality', 'الجودة وVR']] },
+        { name: 'lang', label: 'لغة العنوان المترجم · lang', type: 'text', maxLength: 2, pattern: '[a-z]{2}', placeholder: 'pl / fr / es' },
+        { name: 'format', label: 'صيغة الرد · format', type: 'select', default: 'json', options: [['json', 'JSON'], ['xml', 'XML (رد خام)']] }
+      ]
+    },
+    removed: {
+      path: '/video/removed/',
+      help: 'since يقبل تاريخًا أو وقت RFC 3339 أو طابع Unix. بعد كل رد مرّر قيمة next في after لمتابعة القائمة؛ اتركهما فارغين لطلب ملف المعرّفات الكامل. per_page من 1 إلى 1000.',
+      fields: [
+        { name: 'since', label: 'من وقت · since', type: 'text', placeholder: 'YYYY-MM-DD أو RFC 3339 أو Unix' },
+        { name: 'after', label: 'رمز المتابعة · after', type: 'text', placeholder: 'قيمة next من الرد السابق' },
+        { name: 'per_page', label: 'عدد العناصر · per_page', type: 'number', min: 1, max: 1000, default: '1000' }
+      ]
+    },
+    status: {
+      path: '/video/status/',
+      help: 'أدخل من 1 إلى 100 معرّف فيديو، مفصولة بفواصل. لا يفرض مخطط OpenAPI نمطًا شكليًا آخر على هذا الحقل. تُعاد الحالات بالترتيب نفسه: active أو removed أو unavailable أو unknown.',
+      fields: [{ name: 'id', label: 'معرّفات الفيديو · id (مطلوب، 1–100)', type: 'textarea', required: true, placeholder: 'id-one, id-two, …' }]
+    },
+    categories: {
+      path: '/categories/',
+      help: 'يعيد الدليل الكامل للفئات. لا تقبل هذه العملية معاملات؛ استخدم التصفية المحلية في بطاقة الفئات، ثم ابحث باسم الفئة عبر query.'
+    },
+    pornstars: {
+      path: '/pornstars/',
+      help: 'دليل المؤدّين مرتب حسب الشعبية. page من 1 إلى 100000 وper_page من 1 إلى 1000؛ لا يقبل endpoint مرشح اسم أو معرّف.',
+      fields: [
+        { name: 'page', label: 'رقم الصفحة · page', type: 'number', min: 1, max: 100000, default: '1' },
+        { name: 'per_page', label: 'عدد المؤدّين · per_page', type: 'number', min: 1, max: 1000, default: '100' }
+      ]
+    },
+    oembed: {
+      path: '/oembed/',
+      help: 'ألصق رابط صفحة فيديو أو مشغّله على eporner.com أو أحد نطاقاته اللغوية. maxwidth وmaxheight عددان صحيحان ≥1؛ صيغة JSON فقط.',
+      fields: [
+        { name: 'url', label: 'رابط فيديو ePorner · url (مطلوب)', type: 'url', required: true, placeholder: 'https://www.eporner.com/video-…/' },
+        { name: 'maxwidth', label: 'أقصى عرض · maxwidth (بكسل)', type: 'number', min: 1, placeholder: 'اختياري؛ الافتراضي حتى 1280' },
+        { name: 'maxheight', label: 'أقصى ارتفاع · maxheight (بكسل)', type: 'number', min: 1, placeholder: 'اختياري' },
+        { name: 'format', label: 'صيغة الرد · format', type: 'select', default: 'json', options: [['json', 'JSON فقط']] }
+      ]
+    },
+    openapi: {
+      path: '/openapi/',
+      help: 'يعيد وثيقة OpenAPI v2.1.0 بصيغة JSON، وهي نفس المواصفة المحفوظة في المشروع. لا تقبل هذه العملية معاملات.'
+    }
+  };
+
+  const EPORNER_OPERATION_NAMES = {
+    search: 'بحث الفيديوهات', video: 'بيانات فيديو', removed: 'الفيديوهات المحذوفة', status: 'حالة الفيديوهات',
+    categories: 'دليل الفئات', pornstars: 'دليل المؤدّين', oembed: 'بيانات المشغّل', openapi: 'وثيقة OpenAPI'
   };
 
   function updateEpornerToolsVisibility() {
-    if (el.epornerTools) el.epornerTools.hidden = state.site !== 'eporner' || !state.adultConfirmed;
+    const active = state.site === 'eporner';
+    const allowed = active && state.adultConfirmed;
+    if (el.epornerHero) el.epornerHero.hidden = !active;
+    if (el.searchGenericHero) el.searchGenericHero.hidden = active;
+    if (el.form) el.form.classList.toggle('eporner-search-form', active);
+    if (el.input) el.input.placeholder = active
+      ? 'ابحث عن عنوان، كلمة مفتاحية، فئة أو مؤدٍ…'
+      : state.site === 'youtube' ? 'ابحث في يوتيوب…'
+        : state.site === 'pornflip' ? 'ابحث في PornFlip…' : 'ابحث في ديليموشن…';
+    if (el.epornerConsent) el.epornerConsent.hidden = !active || state.adultConfirmed;
+    if (el.epornerFilters) el.epornerFilters.hidden = !allowed;
+    if (el.epornerDiscovery) el.epornerDiscovery.hidden = !allowed;
+    if (el.epornerTools) el.epornerTools.hidden = !allowed;
+    if (el.types) el.types.hidden = active;
+    if (allowed) loadEpornerDirectories(false);
+  }
+
+  function operationFieldMarkup(field, index) {
+    const id = 'epornerParam_' + field.name + '_' + index;
+    if (field.type === 'checkboxes') {
+      return '<fieldset class="eporner-field eporner-field--wide eporner-fields-choice"><legend>' + U.esc(field.label) + '</legend>' +
+        field.options.map((option, optionIndex) => {
+          const checked = Array.isArray(field.default) && field.default.includes(option[0]);
+          return '<label><input type="checkbox" data-eporner-param="' + U.esc(field.name) + '" data-default="' + (checked ? 'checked' : '') +
+            '" data-value="' + U.esc(option[0]) + '" value="' + U.esc(option[0]) + '"> ' + U.esc(option[1]) + '</label>';
+        }).join('') + '</fieldset>';
+    }
+    const common = ' id="' + id + '" class="input" data-eporner-param="' + U.esc(field.name) + '" data-default="' +
+      U.esc(field.default == null ? '' : field.default) + '"';
+    const attrs = (field.required ? ' required' : '') +
+      (field.min != null ? ' min="' + field.min + '"' : '') +
+      (field.max != null ? ' max="' + field.max + '"' : '') +
+      (field.maxLength != null ? ' maxlength="' + field.maxLength + '"' : '') +
+      (field.pattern ? ' pattern="' + U.esc(field.pattern) + '"' : '') +
+      (field.placeholder ? ' placeholder="' + U.esc(field.placeholder) + '"' : '');
+    let control;
+    if (field.type === 'select') {
+      control = '<select' + common + attrs + '>' + field.options.map(option =>
+        '<option value="' + U.esc(option[0]) + '">' + U.esc(option[1]) + '</option>').join('') + '</select>';
+    } else if (field.type === 'textarea') {
+      control = '<textarea' + common + attrs + ' rows="3"></textarea>';
+    } else {
+      control = '<input' + common + ' type="' + U.esc(field.type) + '" step="1"' + attrs + '>';
+    }
+    return '<label class="eporner-field" for="' + id + '"><span>' + U.esc(field.label) + '</span>' + control + '</label>';
   }
 
   function setEpornerToolExample() {
-    if (!el.epornerOperation || !el.epornerParams) return;
+    if (!el.epornerOperation || !el.epornerOperationFields) return;
     const operation = el.epornerOperation.value || 'search';
-    const examples = EPORNER_EXAMPLES[operation] || {};
-    el.epornerParams.value = JSON.stringify(examples, null, 2);
-    if (el.epornerOperationHelp) {
-      const descriptions = {
-        search: 'query نص (افتراضي all؛ كل كلمة يجب أن تطابق وall يسرد كل الفيديوهات)، per_page عدد 1–1000 (افتراضي 30؛ القيم خارج المجال تُقرّب لأقرب حد)، page ≥1 (افتراضي 1؛ الصفحة بعد النهاية فارغة)، order: latest|longest|shortest|top-rated|most-popular|top-weekly|top-monthly، gay وlq: 0|1|2، min_duration وmax_duration: 0–86400 ثانية، added_after وadded_before: YYYY-MM-DD أو RFC 3339 أو طابع Unix، thumbsize: small|medium|big، thumbs: all|default|none، fields: categories,pornstars,quality، lang حرفان صغيران (تتوفر الترجمات pl وfr وes)، format: json|xml. نتائج البحث والقوائم المقيّدة تصل إلى أول 100000 نتيجة؛ قائمة all غير المقيّدة بلا هذا الحد.',
-        video: 'id مطلوب: 11 حرفًا/رقمًا، حساس لحالة الأحرف. يقبل thumbsize: small|medium|big، thumbs: all|default|none، fields: categories,pornstars,quality، lang حرفين صغيرين، format: json|xml. الفيديو المحذوف أو غير القابل للتشغيل أو غير الموجود يعيد قائمة فارغة [].',
-        removed: 'since اختياري: تاريخ YYYY-MM-DD أو وقت RFC 3339 أو طابع Unix. after اختياري: قيمة next من الرد السابق (النمط [0-9]{1,10}\\.[0-9]{1,10}). per_page: 1–1000 (افتراضي 1000). تُرتب الإزالات من الأقدم؛ دون since وafter يحوّل API إلى ملف القائمة الكاملة، بمعرّف واحد في كل سطر.',
-        status: 'id مطلوب: من 1 إلى 100 معرّف فيديو مفصولًا بفواصل، بالترتيب المطلوب.',
-        categories: 'يعيد جميع الفئات؛ معاملات غير مطلوبة. تستخدم مقاطع categories في الفيديوهات الفئات نفسها.',
-        pornstars: 'page: 1–100000 (افتراضي 1)، وper_page: 1–1000 (افتراضي 100). الدليل مرتب بالأكثر شعبية أولًا.',
-        oembed: 'url مطلوب: رابط صفحة فيديو أو مشغّله على eporner.com أو أحد نطاقاته اللغوية. maxwidth وmaxheight عددان صحيحان ≥1؛ من دون maxwidth يكون الحد الأقصى للعرض 1280. format=json فقط.',
-        openapi: 'يعيد مستند OpenAPI 3.1 القابل للقراءة آليًا؛ معاملات غير مطلوبة.'
-      };
-      el.epornerOperationHelp.textContent = descriptions[operation] || '';
+    const definition = EPORNER_OPERATIONS[operation] || EPORNER_OPERATIONS.search;
+    if (el.epornerOperationPath) el.epornerOperationPath.textContent = 'GET ' + definition.path;
+    if (el.epornerOperationHelp) el.epornerOperationHelp.textContent = definition.help;
+    el.epornerOperationFields.innerHTML = (definition.fields || []).map(operationFieldMarkup).join('') ||
+      '<p class="eporner-no-params">لا توجد معاملات لهذه العملية. نفّذ الطلب مباشرة.</p>';
+    el.epornerOperationFields.querySelectorAll('[data-eporner-param]').forEach(control => {
+      const defaultValue = control.getAttribute('data-default');
+      if (control.type === 'checkbox') {
+        control.checked = defaultValue === 'checked';
+        control.value = control.getAttribute('data-value') || control.value;
+      } else if (defaultValue) control.value = defaultValue;
+    });
+  }
+
+  function readEpornerOperationParams() {
+    const operation = el.epornerOperation && el.epornerOperation.value || 'search';
+    const definition = EPORNER_OPERATIONS[operation];
+    if (!definition) throw new Error('عملية ePorner غير معروفة');
+    const params = {};
+    const fields = {};
+    el.epornerOperationFields.querySelectorAll('[data-eporner-param]').forEach(control => {
+      const name = control.getAttribute('data-eporner-param');
+      const spec = (definition.fields || []).find(item => item.name === name);
+      if (!spec) return;
+      if (control.type === 'checkbox') {
+        if (control.checked) (fields[name] = fields[name] || []).push(control.value);
+        return;
+      }
+      const raw = String(control.value || '').trim();
+      if (!raw) {
+        if (spec.required) throw new Error('المعامل مطلوب: ' + name);
+        return;
+      }
+      if (spec.type === 'number') {
+        if (!/^\d+$/.test(raw)) throw new Error(name + ' يجب أن يكون عددًا صحيحًا');
+        const value = BigInt(raw);
+        if (value < BigInt(spec.min || 0) || (spec.max != null && value > BigInt(spec.max)))
+          throw new Error(name + ' خارج المجال الموثّق');
+        params[name] = value <= BigInt(Number.MAX_SAFE_INTEGER) ? Number(value) : value.toString();
+      } else {
+        params[name] = raw;
+      }
+    });
+    Object.keys(fields).forEach(name => {
+      if (fields[name].length) params[name] = fields[name].join(',');
+    });
+    if (operation === 'video' && !/^[A-Za-z0-9]{11}$/.test(String(params.id || '')))
+      throw new Error('id يجب أن يتكوّن من 11 حرفًا أو رقمًا');
+    if (operation === 'status') {
+      const ids = String(params.id || '').split(',').map(value => value.trim());
+      if (ids.length < 1 || ids.length > 100 || ids.some(id => !id))
+        throw new Error('أدخل من 1 إلى 100 معرّف غير فارغ، مفصولة بفواصل');
+      params.id = ids.join(',');
+    }
+    if (operation === 'removed' && params.after && !/^\d{1,10}\.\d{1,10}$/.test(String(params.after)))
+      throw new Error('after يجب أن يكون قيمة next المنسوخة من الرد السابق');
+    if (operation === 'oembed') {
+      if (!safeEpornerUrl(params.url)) throw new Error('url يجب أن يكون رابط HTTPS على نطاق ePorner');
+      if (params.format && params.format !== 'json') throw new Error('عملية oEmbed توفر JSON فقط');
+    }
+    if (params.lang && !/^[a-z]{2}$/.test(String(params.lang))) throw new Error('lang يجب أن يكون حرفين صغيرين مثل pl أو fr أو es');
+    if (params.gay != null && !['0', '1', '2'].includes(String(params.gay))) throw new Error('gay يقبل 0 أو 1 أو 2');
+    if (params.lq != null && !['0', '1', '2'].includes(String(params.lq))) throw new Error('lq يقبل 0 أو 1 أو 2');
+    return { operation, params };
+  }
+
+  function clearEpornerToolOutput() {
+    if (el.epornerOutputWrap) el.epornerOutputWrap.hidden = true;
+    if (el.epornerOutput) el.epornerOutput.textContent = '';
+    if (el.epornerOutputMeta) el.epornerOutputMeta.textContent = '';
+  }
+
+  function showEpornerToolOutput(data, title, contentType) {
+    if (!el.epornerOutput) return;
+    if (el.epornerTools) el.epornerTools.open = true;
+    if (el.epornerOutputWrap) el.epornerOutputWrap.hidden = false;
+    if (el.epornerOutputTitle) el.epornerOutputTitle.textContent = title || 'استجابة API';
+    if (el.epornerOutputMeta) el.epornerOutputMeta.textContent = contentType || (typeof data === 'string' ? 'نص خام' : 'application/json');
+    el.epornerOutput.textContent = typeof data === 'string' ? data : JSON.stringify(data, null, 2);
+  }
+
+  function renderEpornerCategories(categories, message) {
+    if (!Array.isArray(categories) || !el.epornerCategoryList) return;
+    state.epornerCategories = categories.filter(item => item && typeof item.name === 'string');
+    state.epornerCategoriesLoaded = true;
+    const filter = String(el.epornerCategoryFilter && el.epornerCategoryFilter.value || '').trim().toLowerCase();
+    const visible = state.epornerCategories.filter(item => !filter ||
+      String(item.name || '').toLowerCase().includes(filter) || String(item.slug || '').toLowerCase().includes(filter));
+    if (el.epornerCategoriesMeta) el.epornerCategoriesMeta.textContent = message ||
+      (visible.length === state.epornerCategories.length
+        ? state.epornerCategories.length + ' فئة — اختر اسمًا للبحث'
+        : visible.length + ' من ' + state.epornerCategories.length + ' فئة مطابقة');
+    el.epornerCategoryList.innerHTML = visible.map(category => {
+      const name = String(category.name || '').trim();
+      const slug = String(category.slug || '').trim();
+      return '<button class="eporner-category-chip" type="button" role="listitem" data-eporner-search="' + U.esc(name) + '" aria-label="ابحث عن فئة ' + U.esc(name) + '">' +
+        '<span class="eporner-category-chip__dot" aria-hidden="true"></span><span>' + U.esc(name) + '</span>' +
+        (slug ? '<small>' + U.esc(slug) + '</small>' : '') + '</button>';
+    }).join('') || '<p class="eporner-directory-empty">' + (state.epornerCategories.length ? 'لا توجد فئات تطابق هذا الاسم.' : 'لا تتوفر فئات في هذا الرد.') + '</p>';
+  }
+
+  function updateEpornerPornstarPager() {
+    const page = state.epornerPornstarsPage;
+    const pages = state.epornerPornstarsTotalPages;
+    if (el.epornerPornstarsPageLabel) el.epornerPornstarsPageLabel.textContent = page + ' / ' + pages;
+    if (el.epornerPornstarsPrev) el.epornerPornstarsPrev.disabled = state.epornerPornstarsLoading || page <= 1;
+    if (el.epornerPornstarsNext) el.epornerPornstarsNext.disabled = state.epornerPornstarsLoading || page >= pages;
+  }
+
+  function renderEpornerPornstars(data, requestedPage, requestedPerPage) {
+    const entries = data && Array.isArray(data.pornstars) ? data.pornstars : [];
+    state.epornerPornstarsLoaded = true;
+    const page = Math.max(1, Number(data && data.page) || requestedPage || 1);
+    const pages = Math.max(1, Number(data && data.total_pages) || page);
+    state.epornerPornstarsPage = page;
+    state.epornerPornstarsTotalPages = pages;
+    const total = Number(data && data.total_count);
+    if (el.epornerPornstarsMeta) el.epornerPornstarsMeta.textContent = Number.isFinite(total) && total > 0
+      ? total.toLocaleString() + ' مؤدٍ في الدليل · ترتيب حسب الشعبية'
+      : entries.length + ' مؤدٍ في هذه الصفحة';
+    if (el.epornerPornstarsPerPage && requestedPerPage) el.epornerPornstarsPerPage.value = String(requestedPerPage);
+    if (el.epornerPornstarList) {
+      el.epornerPornstarList.innerHTML = entries.map(person => {
+        const name = String(person && person.name || '').trim();
+        if (!name) return '';
+        const gender = person.gender === 'female' ? 'أنثى' : person.gender === 'male' ? 'ذكر' : 'المؤدّي';
+        const videos = Number(person.videos) || 0;
+        const photos = Number(person.photos) || 0;
+        return '<button class="eporner-performer-card" type="button" role="listitem" data-eporner-search="' + U.esc(name) + '" aria-label="ابحث عن ' + U.esc(name) + '">' +
+          '<span class="eporner-performer-card__avatar" aria-hidden="true">' + U.esc(name.slice(0, 1).toUpperCase()) + '</span>' +
+          '<span class="eporner-performer-card__copy"><strong>' + U.esc(name) + '</strong><small>' + U.esc(gender) + ' · ' + videos.toLocaleString() + ' فيديو · ' + photos.toLocaleString() + ' صورة</small></span>' +
+          '<span class="ic" data-icon="search" data-size="15"></span></button>';
+      }).join('') || '<p class="eporner-directory-empty">لا توجد أسماء في هذه الصفحة.</p>';
+    }
+    updateEpornerPornstarPager();
+  }
+
+  async function loadEpornerCategories(force) {
+    if (!state.adultConfirmed || state.site !== 'eporner' || state.epornerCategoriesLoading ||
+        (state.epornerCategoriesLoaded && !force) || !window.WTEpornerApi) return;
+    state.epornerCategoriesLoading = true;
+    if (el.epornerCategoriesMeta) el.epornerCategoriesMeta.textContent = 'جارٍ تحميل دليل الفئات…';
+    try {
+      const data = await window.WTEpornerApi.categories({});
+      renderEpornerCategories(data && data.categories, '');
+      if (!Array.isArray(data && data.categories)) throw new Error('استجابة الفئات غير مفهومة');
+    } catch (error) {
+      if (el.epornerCategoriesMeta) el.epornerCategoriesMeta.textContent =
+        (error && error.message ? error.message : 'تعذّر تحميل الفئات') + (error && error.retryAfter ? ' · أعد المحاولة بعد ' + error.retryAfter + ' ثانية' : '');
+    } finally { state.epornerCategoriesLoading = false; }
+  }
+
+  function epornerPornstarsPerPage() {
+    const raw = String(el.epornerPornstarsPerPage && el.epornerPornstarsPerPage.value || '').trim();
+    const value = raw ? Number(raw) : 24;
+    if (!Number.isSafeInteger(value) || value < 1 || value > 1000) throw new Error('per_page للمؤدّين يجب أن يكون بين 1 و1000');
+    return value;
+  }
+
+  async function loadEpornerPornstars(page, force) {
+    if (!state.adultConfirmed || state.site !== 'eporner' || state.epornerPornstarsLoading ||
+        (state.epornerPornstarsLoaded && !force) || !window.WTEpornerApi) return;
+    let perPage;
+    try { perPage = epornerPornstarsPerPage(); }
+    catch (error) {
+      if (el.epornerPornstarsMeta) el.epornerPornstarsMeta.textContent = error.message;
+      return;
+    }
+    const requestedPage = Math.max(1, Number(page) || 1);
+    state.epornerPornstarsLoading = true;
+    updateEpornerPornstarPager();
+    if (el.epornerPornstarsMeta) el.epornerPornstarsMeta.textContent = 'جارٍ تحميل الصفحة ' + requestedPage + '…';
+    try {
+      const data = await window.WTEpornerApi.pornstars({ page: requestedPage, per_page: perPage });
+      if (!data || !Array.isArray(data.pornstars)) throw new Error('استجابة دليل المؤدّين غير مفهومة');
+      renderEpornerPornstars(data, requestedPage, perPage);
+    } catch (error) {
+      if (el.epornerPornstarsMeta) el.epornerPornstarsMeta.textContent =
+        (error && error.message ? error.message : 'تعذّر تحميل المؤدّين') + (error && error.retryAfter ? ' · أعد المحاولة بعد ' + error.retryAfter + ' ثانية' : '');
+    } finally {
+      state.epornerPornstarsLoading = false;
+      updateEpornerPornstarPager();
     }
   }
 
-  async function runEpornerTool() {
+  function loadEpornerDirectories(force) {
+    if (!state.adultConfirmed || state.site !== 'eporner') return;
+    loadEpornerCategories(!!force);
+    loadEpornerPornstars(force ? 1 : state.epornerPornstarsPage, !!force);
+  }
+
+  function startEpornerSearchFromDirectory(term) {
+    const name = String(term || '').trim();
+    if (!name) return;
+    el.input.value = name;
+    el.clear.hidden = false;
+    state.site = 'eporner';
+    updateSourceBadge();
+    renderTabs();
+    updateEpornerToolsVisibility();
+    runSearch(name);
+    el.input.focus();
+  }
+
+  function rawOutputLabel(operation) {
+    return 'استجابة ' + (EPORNER_OPERATION_NAMES[operation] || 'ePorner API') + ' · ' + EPORNER_OPERATIONS[operation].path;
+  }
+
+  function renderEpornerOperationVideos(data, operation, params) {
+    let rawVideos = [];
+    if (operation === 'search' && data && Array.isArray(data.videos)) rawVideos = data.videos;
+    else if (operation === 'video' && data && !Array.isArray(data) && typeof data === 'object') rawVideos = [data];
+    const items = rawVideos.map(item => normalize({ ...item, type: 'video', site: 'eporner' }, 'eporner')).filter(Boolean);
+    state.site = 'eporner';
+    state.view = 'search';
+    state.browse = null;
+    state.items = items;
+    state.viewItems = items;
+    state.epornerHasMore = false;
+    el.browseBar.hidden = true;
+    el.browseMore.hidden = true;
+    if (items.length) {
+      el.empty.hidden = true;
+      render(items);
+      status(items.length + ' نتيجة — ePorner API v2');
+    } else {
+      el.results.innerHTML = '';
+      el.results.setAttribute('aria-busy', 'false');
+      el.empty.hidden = false;
+      el.emptyText.textContent = operation === 'video' ? 'لا توجد بيانات متاحة لهذا المعرّف.' : 'لم يُرجع البحث فيديوهات.';
+      status('');
+    }
+    if (operation === 'search') {
+      const page = Number(params.page) || 1;
+      const totalPages = Number(data.total_pages) || page;
+      const total = Number(data.total_count) || 0;
+      status(items.length + ' نتيجة — ' + total.toLocaleString() + ' إجمالًا · الصفحة ' + page + ' من ' + totalPages);
+    }
+  }
+
+  async function runEpornerTool(event) {
+    if (event && typeof event.preventDefault === 'function') event.preventDefault();
     if (state.site !== 'eporner' || !state.adultConfirmed) {
       requestAdultConfirmation('', '');
       return;
     }
-    if (state.epornerToolBusy || !window.WTEpornerApi) return;
-    let params;
+    if (state.epornerOperationBusy || !window.WTEpornerApi) return;
+    let operation, params;
     try {
-      params = JSON.parse(el.epornerParams.value || '{}');
-      if (!params || typeof params !== 'object' || Array.isArray(params)) throw new Error('اكتب كائن JSON للمعاملات');
+      const parsed = readEpornerOperationParams();
+      operation = parsed.operation;
+      params = parsed.params;
+      if (el.epornerOperationForm && typeof el.epornerOperationForm.reportValidity === 'function' && !el.epornerOperationForm.reportValidity()) return;
     } catch (error) {
-      if (el.epornerOutput) {
-        el.epornerOutput.hidden = false;
-        el.epornerOutput.textContent = error.message || 'JSON غير صالح';
-      }
+      showEpornerToolOutput(error.message || 'تحقّق من معاملات العملية', 'تحقّق من المدخلات', 'خطأ');
       return;
     }
-    state.epornerToolBusy = true;
+    state.epornerOperationBusy = true;
     if (el.epornerRun) el.epornerRun.disabled = true;
-    if (el.epornerOutput) {
-      el.epornerOutput.hidden = false;
-      el.epornerOutput.textContent = 'جارٍ تنفيذ العملية…';
-    }
+    showEpornerToolOutput('جارٍ تنفيذ ' + EPORNER_OPERATIONS[operation].path + '…', 'جارٍ تنفيذ العملية', 'قيد التنفيذ');
     try {
-      const operation = el.epornerOperation.value || 'search';
       const data = await window.WTEpornerApi.run(operation, params);
-      if (el.epornerOutput) el.epornerOutput.textContent = typeof data === 'string' ? data : JSON.stringify(data, null, 2);
-    } catch (error) {
-      if (el.epornerOutput) {
-        el.epornerOutput.textContent = (error && error.message ? error.message : 'تعذّرت عملية ePorner') +
-          (error && error.retryAfter ? ' — أعد المحاولة بعد ' + error.retryAfter + ' ثانية' : '');
+      if (operation === 'categories') {
+        if (!data || !Array.isArray(data.categories)) throw new Error('استجابة دليل الفئات غير مفهومة');
+        renderEpornerCategories(data.categories);
+      } else if (operation === 'pornstars') {
+        if (!data || !Array.isArray(data.pornstars)) throw new Error('استجابة دليل المؤدّين غير مفهومة');
+        renderEpornerPornstars(data, Number(params.page) || 1, Number(params.per_page) || 100);
+      } else if (operation === 'search' && typeof data !== 'string' || operation === 'video' && typeof data !== 'string') {
+        renderEpornerOperationVideos(data, operation, params);
       }
+      showEpornerToolOutput(data, rawOutputLabel(operation), typeof data === 'string' ? 'نص خام / XML أو text' : 'application/json');
+    } catch (error) {
+      showEpornerToolOutput((error && error.message ? error.message : 'تعذّرت عملية ePorner') +
+        (error && error.retryAfter ? ' — أعد المحاولة بعد ' + error.retryAfter + ' ثانية' : ''), 'تعذّر تنفيذ العملية', 'خطأ');
     } finally {
-      state.epornerToolBusy = false;
+      state.epornerOperationBusy = false;
       if (el.epornerRun) el.epornerRun.disabled = false;
     }
   }
@@ -914,7 +1402,6 @@
   function acceptAdultConfirmation() {
     state.adultConfirmed = true;
     try { window.sessionStorage.setItem(ADULT_ACK_KEY, 'yes'); } catch (_) { /* يبقى التأكيد في ذاكرة الصفحة */ }
-    if (isAdultSource(state.site)) store(SITE_KEY, state.site);
     updateEpornerToolsVisibility();
     const action = state.pendingAdultAction;
     const query = state.pendingAdultQuery;
@@ -926,7 +1413,10 @@
     else if (action === 'favorites') showFavorites();
     else {
       el.empty.hidden = false;
-      el.emptyText.textContent = 'اكتب عبارة للبحث في ' + (SITE_LABEL_AR[state.site] || 'المصدر') + ' بعد إقرار 18+.';
+      el.emptyText.textContent = state.site === 'eporner'
+        ? 'ابحث عن فيديو، أو اختر فئة أو مؤدّيًا من الدليل.'
+        : 'اكتب عبارة للبحث في ' + (SITE_LABEL_AR[state.site] || 'المصدر') + ' بعد إقرار 18+.';
+      status('');
     }
   }
 
@@ -945,7 +1435,6 @@
     el.input.value = '';
     el.clear.hidden = true;
     el.go.disabled = false;
-    store(SITE_KEY, state.site);
     updateSourceBadge();
     renderTabs();
     renderChips();
@@ -986,11 +1475,12 @@
       run = false; /* لا ترسل عبارة بحث للبالغين إلى منصة أخرى */
       clearSearchResults('ابحث عن فيديو لتبدأ');
     }
+    const previousSource = state.site;
     state.site = nextSite;
-    if (state.site !== 'youtube' && ['channel', 'playlist'].includes(state.searchType)) state.searchType = 'video';
+    if (state.site === 'youtube' && previousSource !== 'youtube') state.searchType = 'all';
+    else if (state.site !== 'youtube' && ['channel', 'playlist'].includes(state.searchType)) state.searchType = 'video';
     state.view = 'search';
     state.browse = null;
-    store(SITE_KEY, state.site);
     updateSourceBadge();
     renderTabs();
     renderChips();
@@ -1455,6 +1945,7 @@
 
   if (el.adultGateAccept) el.adultGateAccept.addEventListener('click', acceptAdultConfirmation);
   if (el.adultGateCancel) el.adultGateCancel.addEventListener('click', cancelAdultConfirmation);
+  if (el.epornerConsentOpen) el.epornerConsentOpen.addEventListener('click', () => requestAdultConfirmation('', ''));
   if (el.adultGate) el.adultGate.addEventListener('cancel', event => {
     event.preventDefault();
     cancelAdultConfirmation();
@@ -1484,7 +1975,25 @@
     else loadBrowsePage(true);
   });
   if (el.epornerOperation) el.epornerOperation.addEventListener('change', setEpornerToolExample);
-  if (el.epornerRun) el.epornerRun.addEventListener('click', runEpornerTool);
+  if (el.epornerOperationForm) el.epornerOperationForm.addEventListener('submit', runEpornerTool);
+  if (el.epornerCategoryFilter) el.epornerCategoryFilter.addEventListener('input', () =>
+    renderEpornerCategories(state.epornerCategories));
+  if (el.epornerCategoriesReload) el.epornerCategoriesReload.addEventListener('click', () => loadEpornerCategories(true));
+  if (el.epornerPornstarsReload) el.epornerPornstarsReload.addEventListener('click', () =>
+    loadEpornerPornstars(state.epornerPornstarsPage, true));
+  if (el.epornerPornstarsPerPage) el.epornerPornstarsPerPage.addEventListener('change', () => loadEpornerPornstars(1, true));
+  if (el.epornerPornstarsPrev) el.epornerPornstarsPrev.addEventListener('click', () =>
+    loadEpornerPornstars(Math.max(1, state.epornerPornstarsPage - 1), true));
+  if (el.epornerPornstarsNext) el.epornerPornstarsNext.addEventListener('click', () =>
+    loadEpornerPornstars(Math.min(state.epornerPornstarsTotalPages, state.epornerPornstarsPage + 1), true));
+  if (el.epornerCategoryList) el.epornerCategoryList.addEventListener('click', event => {
+    const button = event.target.closest('[data-eporner-search]');
+    if (button) startEpornerSearchFromDirectory(button.getAttribute('data-eporner-search'));
+  });
+  if (el.epornerPornstarList) el.epornerPornstarList.addEventListener('click', event => {
+    const button = event.target.closest('[data-eporner-search]');
+    if (button) startEpornerSearchFromDirectory(button.getAttribute('data-eporner-search'));
+  });
 
   el.chips.addEventListener('click', event => {
     const remove = event.target.closest('[data-remove]');
@@ -1595,8 +2104,6 @@
 
   try { state.adultConfirmed = window.sessionStorage.getItem(ADULT_ACK_KEY) === 'yes'; }
   catch (_) { state.adultConfirmed = false; }
-  const savedSite = store(SITE_KEY);
-  if (['youtube', 'dailymotion', 'pornflip', 'eporner'].includes(savedSite)) state.site = savedSite;
   renderTabs();
   renderChips();
 
@@ -1607,6 +2114,7 @@
     state.site = requestedSite;
   }
   if (['all', 'video', 'channel', 'playlist'].includes(params.get('type'))) state.searchType = params.get('type');
+  else if (state.site === 'youtube') state.searchType = 'all';
   if (state.site !== 'youtube' && ['channel', 'playlist'].includes(state.searchType)) state.searchType = 'video';
   updateSourceBadge();
   renderTabs();
@@ -1618,7 +2126,14 @@
     el.input.value = initial;
     el.clear.hidden = false;
     runSearch(initial);
+  } else if (state.site === 'eporner' && !state.adultConfirmed) {
+    if (el.epornerConsent) el.epornerConsent.hidden = false;
+    el.empty.hidden = false;
+    el.emptyText.textContent = 'أكّد 18+ أولًا لفتح البحث والدليلين. لن يُرسل أي طلب قبل موافقتك.';
   } else if (isAdultSource(state.site) && !state.adultConfirmed) {
     requestAdultConfirmation('', '');
+  } else if (state.site === 'eporner') {
+    el.empty.hidden = false;
+    el.emptyText.textContent = 'ابحث عن فيديو، أو اختر فئة أو مؤدّيًا من الدليل.';
   }
 })();

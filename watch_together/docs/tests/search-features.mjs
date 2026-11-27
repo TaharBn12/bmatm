@@ -1,4 +1,4 @@
-/* Search UI regressions: YouTube discovery/favorites plus adult-source confirmation and privacy. */
+/* Search UI regressions: YouTube browsing, ePorner discovery/OpenAPI forms, adult gating and privacy. */
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
@@ -64,7 +64,11 @@ const epornerVideo = {
   url: 'https://www.eporner.com/video-AbCdEfGhIjK/sample-title/',
   embed: 'https://www.eporner.com/embed/AbCdEfGhIjK/',
   default_thumb: { src: 'https://static-ca-cdn.eporner.com/thumbs/sample.jpg' },
-  length_sec: 72, views: 1234
+  length_sec: 72, views: 1234,
+  categories: [{ id: 1, name: 'Amateur', slug: 'amateur', url: 'https://www.eporner.com/cat/amateur/' }],
+  pornstars: [{ id: 11, name: 'Riley Lane', url: 'https://www.eporner.com/pornstar/riley-lane/' }],
+  quality: { max: '1080p', available: ['480p', '720p', '1080p'], hd: true, fps: 30, vr: false },
+  translation: { lang: 'fr', title: 'Titre traduit' }
 };
 const epornerVideoTwo = {
   id: 'LmNoPqRsTuV', title: 'نتيجة ePorner للصفحة التالية',
@@ -73,6 +77,14 @@ const epornerVideoTwo = {
   default_thumb: { src: 'https://static-ca-cdn.eporner.com/thumbs/sample-2.jpg' },
   length_sec: 88, views: 4321
 };
+const epornerCategories = [
+  { id: 1, name: 'Amateur', slug: 'amateur', url: 'https://www.eporner.com/cat/amateur/' },
+  { id: 2, name: 'Romance', slug: 'romance', url: 'https://www.eporner.com/cat/romance/' }
+];
+const epornerPornstars = [
+  { id: 11, name: 'Riley Lane', url: 'https://www.eporner.com/pornstar/riley-lane/', gender: 'female', videos: 123, photos: 42 },
+  { id: 12, name: 'Alex North', url: 'https://www.eporner.com/pornstar/alex-north/', gender: 'male', videos: 87, photos: 19 }
+];
 const jsonResponse = value => ({ ok: true, status: 200, text: async () => JSON.stringify(value) });
 const fetch = async input => {
   const url = new URL(input, sandbox.location.origin);
@@ -80,10 +92,24 @@ const fetch = async input => {
   if (url.pathname.startsWith('/api/eporner/')) {
     const operation = url.pathname.slice('/api/eporner/'.length);
     if (operation === 'video/search/') {
+      if (url.searchParams.get('format') === 'xml') return {
+        ok: true, status: 200, headers: { get: name => name.toLowerCase() === 'content-type' ? 'text/xml' : null },
+        text: async () => '<videos><video id="AbCdEfGhIjK"/></videos>'
+      };
       const page = Number(url.searchParams.get('page')) || 1;
       return jsonResponse({ videos: [page > 1 ? epornerVideoTwo : epornerVideo], total_count: 2, total_pages: 2 });
     }
-    return jsonResponse({ operation, ok: true });
+    if (operation === 'video/id/') return jsonResponse(epornerVideo);
+    if (operation === 'video/removed/') return jsonResponse({ since: '2026-11-01T00:00:00Z', count: 1,
+      has_more: false, removed: [{ id: 'AbCdEfGhIjK', removed_at: '2026-11-05T00:00:00Z' }] });
+    if (operation === 'video/status/') return jsonResponse({ count: 2, videos: url.searchParams.get('id').split(',').map(id => ({ id, status: 'active' })) });
+    if (operation === 'categories/') return jsonResponse({ count: epornerCategories.length, categories: epornerCategories });
+    if (operation === 'pornstars/') return jsonResponse({ count: epornerPornstars.length, page: Number(url.searchParams.get('page')) || 1,
+      per_page: Number(url.searchParams.get('per_page')) || 100, total_count: 2, total_pages: 1, pornstars: epornerPornstars });
+    if (operation === 'oembed/') return jsonResponse({ version: '1.0', type: 'video', provider_name: 'Eporner',
+      provider_url: 'https://www.eporner.com/', title: 'ePorner test', html: '<iframe src="https://www.eporner.com/embed/AbCdEfGhIjK/"></iframe>', width: 640, height: 360 });
+    if (operation === 'openapi/') return jsonResponse({ openapi: '3.1.0', info: { version: '2.1.0' }, paths: {} });
+    throw new Error('Unexpected ePorner operation ' + operation);
   }
   if (url.pathname.endsWith('/api/search') && url.searchParams.has('browse')) {
     const offset = Number(url.searchParams.get('offset')) || 0;
@@ -117,6 +143,8 @@ const favorites = {
 Object.assign(sandbox, { fetch, WTFavorites: favorites });
 prepareSearchDom(env);
 loadSearchScripts(env);
+assert.equal(byId.get('epornerHero').hidden, true, 'the ePorner-only landing art is hidden for other search providers');
+assert.equal(byId.get('searchGenericHero').hidden, false, 'other providers retain the shared search heading');
 const typeTabs = byId.get('searchTypes');
 
 const click = (parent, selector) => {
@@ -125,6 +153,49 @@ const click = (parent, selector) => {
   parent.dispatch('click', { target, preventDefault() { }, stopPropagation() { } });
   return target;
 };
+
+const searchMarkup = fs.readFileSync(new URL('../../search.html', import.meta.url), 'utf8');
+const searchIds = [...searchMarkup.matchAll(/\bid="([A-Za-z0-9_-]+)"/g)].map(match => match[1]);
+assert.equal(new Set(searchIds).size, searchIds.length, 'the redesigned search page has no duplicate DOM ids');
+assert.ok(searchMarkup.indexOf('data-site="eporner"') < searchMarkup.indexOf('data-site="pornflip"'),
+  'ePorner leads the source switcher');
+assert.doesNotMatch(searchMarkup, /id="epornerParams"|المعاملات \(JSON\)/,
+  'the ePorner explorer no longer hides API inputs behind a generic JSON editor');
+
+const landingEnv = createRoomEnv({ search: '', scripts: [] });
+const landingCalls = [];
+landingEnv.sandbox.fetch = async input => {
+  const url = new URL(input, landingEnv.sandbox.location.origin);
+  landingCalls.push(url);
+  if (url.pathname === '/api/eporner/categories/') return jsonResponse({ count: epornerCategories.length, categories: epornerCategories });
+  if (url.pathname === '/api/eporner/pornstars/') return jsonResponse({ count: 2, page: 1, per_page: 24, total_count: 2, total_pages: 1, pornstars: epornerPornstars });
+  if (url.pathname === '/api/eporner/video/search/') return jsonResponse({ videos: [], total_count: 0, total_pages: 0 });
+  throw new Error('Unexpected landing request ' + url.href);
+};
+prepareSearchDom(landingEnv);
+loadSearchScripts(landingEnv);
+try {
+  await wait(10);
+  assert.equal(landingEnv.byId.get('searchSources').querySelector('[data-site="eporner"]').classList.contains('is-active'), true,
+    'ePorner is the default source on a fresh visit');
+  assert.equal(landingEnv.byId.get('epornerHero').hidden, false, 'the ePorner discovery hero is visible for its source');
+  assert.equal(landingEnv.byId.get('searchGenericHero').hidden, true, 'the generic heading is hidden while ePorner is active');
+  assert.equal(landingEnv.byId.get('epornerConsent').hidden, false, 'the landing page presents an inline adult-consent callout');
+  assert.equal(landingEnv.byId.get('adultGate').getAttribute('open'), null, 'the age modal waits for an explicit user action');
+  assert.equal(landingCalls.length, 0, 'categories, performers and other ePorner data are not fetched before consent');
+  landingEnv.byId.get('epornerConsentOpen').dispatch('click', {});
+  assert.notEqual(landingEnv.byId.get('adultGate').getAttribute('open'), null, 'the consent callout opens the explicit age gate');
+  assert.equal(landingCalls.length, 0, 'opening the age gate alone does not request adult data');
+  landingEnv.byId.get('adultGateAccept').dispatch('click', {});
+  await wait(20);
+  assert.ok(landingCalls.some(url => url.pathname === '/api/eporner/categories/'), 'the category directory loads only after consent');
+  assert.ok(landingCalls.some(url => url.pathname === '/api/eporner/pornstars/'), 'the performer directory loads only after consent');
+  assert.equal(landingEnv.byId.get('epornerDiscovery').hidden, false, 'consent reveals the discovery directories');
+  landingEnv.byId.get('searchForm').dispatch('submit', { preventDefault() { } });
+  await wait(20);
+  assert.ok(landingCalls.some(url => url.pathname === '/api/eporner/video/search/' && url.searchParams.get('query') === 'all'),
+    'submitting an empty ePorner query uses the documented all-videos default');
+} finally { landingEnv.dispose(); }
 
 try {
   const input = byId.get('searchInput');
@@ -218,14 +289,57 @@ try {
     'adult search terms are not written to shared search history');
 
   // ePorner uses the documented v2 API, its returned embed URL, and a guarded tool for the remaining operations.
+  byId.get('epornerOrder').value = 'top-rated';
+  byId.get('epornerPerPage').value = '42';
+  byId.get('epornerPage').value = '1';
+  byId.get('epornerGay').value = '2';
+  byId.get('epornerLq').value = '1';
+  byId.get('epornerMinDuration').value = '30';
+  byId.get('epornerMaxDuration').value = '600';
+  byId.get('epornerAddedAfter').value = '2026-11-01';
+  byId.get('epornerAddedBefore').value = '2026-11-10';
+  byId.get('epornerThumbsize').value = 'big';
+  byId.get('epornerThumbs').value = 'default';
+  byId.get('epornerLang').value = 'fr';
+  byId.get('epornerFormat').value = 'json';
+  byId.get('epornerFieldCategories').checked = true;
+  byId.get('epornerFieldPornstars').checked = true;
+  byId.get('epornerFieldQuality').checked = true;
   click(byId.get('searchSources'), '[data-site="eporner"]');
   await wait(25);
-  const epornerSearch = calls.find(url => url.pathname === '/api/eporner/video/search/');
+  assert.equal(byId.get('epornerHero').hidden, false, 'switching to ePorner restores its discovery landing');
+  assert.equal(byId.get('searchGenericHero').hidden, true, 'the generic source heading hides for ePorner');
+  const epornerSearch = calls.find(url => url.pathname === '/api/eporner/video/search/' && url.searchParams.get('query') === adultQuery);
   assert.ok(epornerSearch, 'ePorner search calls the documented video/search operation');
   assert.equal(epornerSearch.searchParams.get('adult_confirmed'), '1', 'ePorner API requests carry the server-side age attestation');
-  assert.equal(epornerSearch.searchParams.get('query'), adultQuery, 'ePorner receives the entered query');
-  assert.equal(byId.get('epornerTools').hidden, false, 'the remaining ePorner operations become visible after age confirmation');
+  assert.equal(epornerSearch.searchParams.get('per_page'), '42');
+  assert.equal(epornerSearch.searchParams.get('page'), '1');
+  assert.equal(epornerSearch.searchParams.get('order'), 'top-rated');
+  assert.equal(epornerSearch.searchParams.get('gay'), '2');
+  assert.equal(epornerSearch.searchParams.get('lq'), '1');
+  assert.equal(epornerSearch.searchParams.get('min_duration'), '30');
+  assert.equal(epornerSearch.searchParams.get('max_duration'), '600');
+  assert.equal(epornerSearch.searchParams.get('added_after'), '2026-11-01');
+  assert.equal(epornerSearch.searchParams.get('added_before'), '2026-11-10');
+  assert.equal(epornerSearch.searchParams.get('thumbsize'), 'big');
+  assert.equal(epornerSearch.searchParams.get('thumbs'), 'default');
+  assert.equal(epornerSearch.searchParams.get('fields'), 'categories,pornstars,quality');
+  assert.equal(epornerSearch.searchParams.get('lang'), 'fr');
+  assert.equal(epornerSearch.searchParams.get('format'), 'json');
+  assert.equal(epornerSearch.searchParams.has('category_id'), false, 'the interface sends no undocumented category filter');
+  assert.equal(epornerSearch.searchParams.has('pornstar_id'), false, 'the interface sends no undocumented performer filter');
+  assert.match(byId.get('results').innerHTML, /Amateur/, 'the requested category field is surfaced on video cards');
+  assert.match(byId.get('results').innerHTML, /1080p/, 'the requested quality field is surfaced on video cards');
+  assert.match(byId.get('results').innerHTML, /Riley Lane/, 'the requested performer field is surfaced on video cards');
+  assert.match(byId.get('results').innerHTML, /Titre traduit/, 'the requested translation language is used in the visible card title');
+  assert.match(byId.get('results').innerHTML, /العنوان الأصلي/, 'translated titles retain an accessible original-title note');
+  assert.equal(byId.get('epornerTools').hidden, false, 'the other ePorner operations become visible after age confirmation');
   assert.match(byId.get('searchStatus').textContent, /ePorner API v2/);
+  assert.equal(byId.get('epornerDiscovery').hidden, false, 'age confirmation reveals the discovery directories');
+  assert.ok(calls.some(url => url.pathname === '/api/eporner/categories/'), 'the complete category directory uses GET /categories/');
+  assert.ok(calls.some(url => url.pathname === '/api/eporner/pornstars/'), 'the performer directory uses GET /pornstars/');
+  assert.match(byId.get('epornerCategoryList').innerHTML, /Amateur/);
+  assert.match(byId.get('epornerPornstarList').innerHTML, /Riley Lane/);
   assert.equal(byId.get('browseMore').hidden, false, 'ePorner search exposes another page when total_pages requires it');
   byId.get('browseLoadMore').dispatch('click', {});
   await wait(25);
@@ -244,14 +358,100 @@ try {
   assert.equal(calls.some(url => String(url).includes('/api/resolve')), false, 'ePorner playback uses its documented embed rather than yt-dlp');
   byId.get('playClose').dispatch('click', {});
 
-  byId.get('epornerOperation').value = 'categories';
-  byId.get('epornerOperation').dispatch('change', {});
-  assert.match(byId.get('epornerParams').value, /^\{\s*\}$/);
-  byId.get('epornerRunOperation').dispatch('click', {});
-  await wait(20);
-  assert.ok(calls.some(url => url.pathname === '/api/eporner/categories/' && url.searchParams.get('adult_confirmed') === '1'),
-    'the ePorner operation UI can execute GET /categories/ after confirmation');
+  // The directory buttons search by the documented query text; category IDs and performer IDs are not filters.
+  byId.get('epornerCategoryFilter').value = 'amateur';
+  byId.get('epornerCategoryFilter').dispatch('input', {});
+  assert.match(byId.get('epornerCategoryList').innerHTML, /Amateur/);
+  assert.doesNotMatch(byId.get('epornerCategoryList').innerHTML, /Romance/);
+  const directoryPornstarRequests = calls.filter(url => url.pathname === '/api/eporner/pornstars/').length;
+  click(byId.get('epornerCategoryList'), '[data-eporner-search="Amateur"]');
+  await wait(25);
+  assert.equal(calls.filter(url => url.pathname === '/api/eporner/pornstars/').length, directoryPornstarRequests,
+    'searching from a loaded directory does not refetch the performer list');
+  assert.ok(calls.some(url => url.pathname === '/api/eporner/video/search/' && url.searchParams.get('query') === 'Amateur'),
+    'choosing a category searches its name with the documented query parameter');
+  click(byId.get('epornerPornstarList'), '[data-eporner-search="Riley Lane"]');
+  await wait(25);
+  assert.ok(calls.some(url => url.pathname === '/api/eporner/video/search/' && url.searchParams.get('query') === 'Riley Lane'),
+    'choosing a performer searches their name without inventing a pornstar filter');
+
+  const chooseEpornerOperation = (name) => {
+    byId.get('epornerOperation').value = name;
+    byId.get('epornerOperation').dispatch('change', {});
+  };
+  const submitEpornerOperation = async () => {
+    byId.get('epornerOperationForm').dispatch('submit', { preventDefault() { } });
+    await wait(20);
+  };
+  assert.equal(byId.has('epornerParams'), false, 'there is no generic JSON parameter textarea');
+
+  chooseEpornerOperation('search');
+  const largePage = '9007199254740993';
+  byId.get('epornerOperationFields').querySelector('[data-eporner-param="page"]').value = largePage;
+  await submitEpornerOperation();
+  assert.ok(calls.some(url => url.pathname === '/api/eporner/video/search/' && url.searchParams.get('page') === largePage),
+    'the unbounded search page parameter is passed without an undocumented JavaScript-safe-integer cap');
+
+  chooseEpornerOperation('video');
+  byId.get('epornerOperationFields').querySelector('[data-eporner-param="id"]').value = 'AbCdEfGhIjK';
+  byId.get('epornerOperationFields').querySelector('[data-eporner-param="thumbsize"]').value = 'big';
+  byId.get('epornerOperationFields').querySelector('[data-eporner-param="thumbs"]').value = 'none';
+  byId.get('epornerOperationFields').querySelector('[data-eporner-param="lang"]').value = 'es';
+  await submitEpornerOperation();
+  assert.ok(calls.some(url => url.pathname === '/api/eporner/video/id/' && url.searchParams.get('id') === 'AbCdEfGhIjK' &&
+    url.searchParams.get('thumbsize') === 'big' && url.searchParams.get('thumbs') === 'none' &&
+    url.searchParams.get('fields') === 'categories,pornstars,quality' && url.searchParams.get('lang') === 'es' &&
+    url.searchParams.get('format') === 'json'), 'the typed video form exposes all documented /video/id/ parameters');
+  assert.match(byId.get('results').innerHTML, /نتيجة ePorner للاختبار/, 'video/id responses render a playable result card');
+
+  chooseEpornerOperation('removed');
+  byId.get('epornerOperationFields').querySelector('[data-eporner-param="since"]').value = '2026-11-01';
+  await submitEpornerOperation();
+  assert.ok(calls.some(url => url.pathname === '/api/eporner/video/removed/' &&
+    url.searchParams.get('since') === '2026-11-01' && url.searchParams.get('per_page') === '1000'),
+    'the removed-videos form exposes since, cursor pagination and the documented per_page range');
+
+  chooseEpornerOperation('status');
+  byId.get('epornerOperationFields').querySelector('[data-eporner-param="id"]').value = 'video-one,video-two';
+  await submitEpornerOperation();
+  assert.ok(calls.some(url => url.pathname === '/api/eporner/video/status/' &&
+    url.searchParams.get('id') === 'video-one,video-two'), 'the status form accepts documented comma-separated IDs without imposing an undocumented ID pattern');
+  assert.match(byId.get('epornerOutput').textContent, /active/);
+
+  chooseEpornerOperation('categories');
+  assert.match(byId.get('epornerOperationFields').innerHTML, /لا توجد معاملات/);
+  await submitEpornerOperation();
+  assert.ok(calls.filter(url => url.pathname === '/api/eporner/categories/').length >= 2,
+    'the category operation can be refreshed from the API toolkit');
   assert.match(byId.get('epornerOutput').textContent, /categories/);
+
+  chooseEpornerOperation('pornstars');
+  await submitEpornerOperation();
+  assert.ok(calls.some(url => url.pathname === '/api/eporner/pornstars/' && url.searchParams.get('per_page') === '100'),
+    'the typed performer operation exposes its documented page and per_page parameters');
+
+  chooseEpornerOperation('oembed');
+  byId.get('epornerOperationFields').querySelector('[data-eporner-param="url"]').value = 'https://www.eporner.com/video-AbCdEfGhIjK/sample-title/';
+  byId.get('epornerOperationFields').querySelector('[data-eporner-param="maxwidth"]').value = '640';
+  byId.get('epornerOperationFields').querySelector('[data-eporner-param="maxheight"]').value = '360';
+  await submitEpornerOperation();
+  assert.ok(calls.some(url => url.pathname === '/api/eporner/oembed/' && url.searchParams.get('url') === epornerVideo.url &&
+    url.searchParams.get('maxwidth') === '640' && url.searchParams.get('maxheight') === '360'), 'the oEmbed form passes its documented URI and size parameters');
+
+  chooseEpornerOperation('openapi');
+  await submitEpornerOperation();
+  assert.ok(calls.some(url => url.pathname === '/api/eporner/openapi/'), 'the OpenAPI operation can be called from the UI');
+  assert.match(byId.get('epornerOutput').textContent, /2\.1\.0/);
+
+  byId.get('epornerFormat').value = 'xml';
+  input.value = 'xml-check';
+  byId.get('searchForm').dispatch('submit', { preventDefault() { } });
+  await wait(20);
+  assert.ok(calls.some(url => url.pathname === '/api/eporner/video/search/' && url.searchParams.get('format') === 'xml'),
+    'the documented XML search format is available from the main filter panel');
+  assert.equal(byId.get('results').innerHTML, '', 'XML responses are shown as raw text rather than mis-rendered as cards');
+  assert.match(byId.get('epornerOutput').textContent, /<videos>/, 'the XML response is surfaced in the API response viewer');
+
   assert.equal((store['wt:search:recent'] || []).includes(adultQuery), false,
     'ePorner search terms are not written to shared search history');
 
