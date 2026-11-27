@@ -22,7 +22,7 @@ public final class VideoResolver {
      * السبب: حقل ناقص يُطبع كـ NA (بدون تنصيص) فيفسد أي قالب JSON نبنيه،
      * فيصل المستخدم خطأ محلّل JSON غامض بدل سبب حقيقي. التبويب لا يُفسد.
      */
-    private static final String FIELDS = "%(url)s\\t%(title)s\\t%(thumbnail)s";
+    private static final String FIELDS = "%(url)s\t%(title)s\t%(thumbnail)s";
 
     private static long windowStart = System.currentTimeMillis();
     private static int requests;
@@ -39,9 +39,9 @@ public final class VideoResolver {
     private static Map<String,Object> parseFields(String text) {
         if (text == null) return null;
         String last = "";
-        for (String line : text.split("\\\\R")) {
+        for (String line : text.split("\\R")) {
             String t = line.trim();
-            if (!t.isEmpty()) last = line;
+            if (!t.isEmpty()) last = t;
         }
         if (last.isEmpty()) return null;
         String[] parts = last.split("\\t", -1);
@@ -69,7 +69,7 @@ public final class VideoResolver {
 
     /** ملخّص قصير للسجل — لا نُغرق الطرفية بخرج طويل */
     private static String forLog(String text) {
-        String t = text == null ? "" : text.replaceAll("\\\\s+", " ").trim();
+        String t = text == null ? "" : text.replaceAll("\\s+", " ").trim();
         return t.isEmpty() ? "(فارغ)" : (t.length() > 300 ? t.substring(0, 300) + "…" : t);
     }
 

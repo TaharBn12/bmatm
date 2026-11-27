@@ -172,6 +172,19 @@ try {
     'the interface labels PornFlip HTML-page search accurately');
   assert.doesNotMatch(byId.get('results').innerHTML, /data-favorite-index/, 'PornFlip results are not added to favorites');
 
+  click(byId.get('results'), '[data-index="0"]');
+  await wait(10);
+  const adultFrame = byId.get('playStage').querySelector('.play-frame');
+  assert.ok(adultFrame, "PornFlip opens the site's embedded player rather than failing direct MPD extraction");
+  assert.equal(adultFrame.src, 'https://www.pornflip.com/embed/adult-test-123');
+  assert.equal(sandbox.WTUtil.parseWatchUrl(adultFrame.src).kind, 'embed',
+    'the generated player URL can also be embedded by the room player');
+  assert.equal(byId.get('playVideo').hidden, true, 'the DASH page is not assigned to an HTML video element');
+  assert.equal(byId.get('playSource').hidden, false, 'the original PornFlip page remains available as a fallback');
+  assert.equal(calls.some(url => String(url).includes('/api/resolve')), false,
+    'PornFlip playback does not request an unsupported single-file extraction');
+  byId.get('playClose').dispatch('click', {});
+
   const adultQuery = 'private-adult-query';
   input.value = adultQuery;
   byId.get('searchForm').dispatch('submit', { preventDefault() { } });
