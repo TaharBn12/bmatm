@@ -796,3 +796,60 @@
 }
 .play-actions #playFavorite.is-on { color: #ff8da0; border-color: rgba(255,141,160,.48); }
 .play-actions #playFavorite.is-on .ic { color: #ff8da0; }
+
+/* ---------- عمليات Eporner API الإضافية (كل الطلبات محمية بإقرار 18+) ---------- */
+.eporner-tools {
+  margin: 0 0 14px;
+  border: 1px solid rgba(197, 165, 114, .28);
+  border-radius: 14px;
+  background: rgba(15, 20, 29, .82);
+  color: var(--text);
+}
+
+.eporner-tools > summary {
+  padding: 11px 14px;
+  color: var(--brand);
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.eporner-tools > summary:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+.eporner-tools__body { padding: 0 14px 14px; }
+.eporner-tools__description,
+.eporner-tools__help { margin: 0 0 10px; color: var(--muted); font-size: 11px; line-height: 1.6; }
+.eporner-tools__row { display: flex; align-items: center; gap: 10px; margin-bottom: 9px; font-size: 12px; font-weight: 700; }
+.eporner-tools__select { width: min(100%, 430px); min-height: 40px; }
+.eporner-tools__label { display: block; margin: 0 0 6px; font-size: 12px; font-weight: 700; }
+.eporner-tools__params {
+  display: block;
+  width: 100%;
+  min-height: 78px;
+  resize: vertical;
+  direction: ltr;
+  text-align: left;
+  font: 12px/1.5 ui-monospace, SFMono-Regular, Consolas, monospace;
+}
+.eporner-tools__actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.eporner-tools__actions .btn { min-height: 38px; font-size: 11px; }
+.eporner-tools__output {
+  max-height: 360px;
+  margin: 12px 0 0;
+  padding: 12px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: rgba(0, 0, 0, .25);
+  color: #d8e0e8;
+  direction: ltr;
+  text-align: left;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font: 11px/1.55 ui-monospace, SFMono-Regular, Consolas, monospace;
+}
+
+@media (max-width: 560px) {
+  .search-sources { max-width: 100%; flex-wrap: wrap; }
+  .source-tab { padding-inline: 11px; font-size: 11px; }
+  .eporner-tools__row { align-items: stretch; flex-direction: column; gap: 6px; }
+}

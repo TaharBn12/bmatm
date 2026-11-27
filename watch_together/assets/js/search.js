@@ -1,9 +1,9 @@
 /* =========================================================
    WatchTogether — صفحة البحث (search.js)
    ---------------------------------------------------------
-   • المصادر: ديليموشن ويوتيوب وPornFlip (18+)، من سيرفر Java (/api/search).
-   • PornFlip يتطلب إقراراً صريحاً بالعمر في كل جلسة قبل أي طلب؛ لا يُخزّن البحث في السجل.
-   • ديليموشن: يستخرج السيرفر رابط التشغيل عبر yt-dlp؛ PornFlip يُشغَّل بمشغّله المضمّن.
+   • المصادر: ديليموشن ويوتيوب وPornFlip وePorner (18+)، من سيرفر Java.
+   • مصادر البالغين تتطلب إقراراً صريحاً بالعمر في كل جلسة قبل أي طلب؛ لا يُخزّن البحث في السجل.
+   • ديليموشن: يستخرج السيرفر رابط التشغيل عبر yt-dlp؛ PornFlip وePorner يستخدمان المشغّل المضمّن.
    • يوتيوب: يُشغّل بمشغّله الرسمي داخل iframe (بلا مفتاح API).
    • من أي نتيجة: افتح غرفة، أو أضفها إلى قائمة انتظار غرفة
      موجودة (تُسلَّم عبر sessionStorage وتُقرأ في room.js).
@@ -33,7 +33,9 @@
     source: $('playSource'), hint: $('playHint'),
     picker: $('roomPicker'), pickerList: $('pickerList'), pickerEmpty: $('pickerEmpty'),
     pickerClose: $('pickerClose'), adultGate: $('adultGate'),
-    adultGateAccept: $('adultGateAccept'), adultGateCancel: $('adultGateCancel')
+    adultGateAccept: $('adultGateAccept'), adultGateCancel: $('adultGateCancel'),
+    epornerTools: $('epornerTools'), epornerOperation: $('epornerOperation'), epornerParams: $('epornerParams'),
+    epornerOperationHelp: $('epornerOperationHelp'), epornerRun: $('epornerRunOperation'), epornerOutput: $('epornerOutput')
   };
 
   const QUICK_DM = ['وثائقيات', 'موسيقى', 'طبخ', 'رياضة', 'تقنية', 'أفلام قصيرة'];
@@ -62,6 +64,7 @@
     previousSite: 'dailymotion', pendingAdultAction: '', pendingAdultQuery: '',
     server: null,            /* null = لم يُختبر · true = سيرفر Java · false = استضافة ثابتة */
     reason: '',              /* سبب تعذّر الوصول إلى /api/search (نص تشخيصي) */
+    epornerNextPage: 1, epornerHasMore: false, epornerToolBusy: false,
     token: 0,                /* رقم مسلسل للبحث الجاري — يمنع نتائج قديمة من التغطية على جديدة */
     direct: new Map(),       /* معرّف الفيديو ← رابط التشغيل */
     current: null, busyId: null
@@ -168,12 +171,47 @@
     } catch (_) { return false; }
   }
 
+  function isAdultSource(site) { return site === 'pornflip' || site === 'eporner'; }
+
+  function safeEpornerUrl(raw) {
+    const safe = safeWebUrl(raw, true);
+    if (!safe) return '';
+    try {
+      const url = new URL(safe);
+      if (url.port) return '';
+      const host = url.hostname.toLowerCase().replace(/^www\./, '');
+      return host === 'eporner.com' || host.endsWith('.eporner.com') ? safe : '';
+    } catch (_) { return ''; }
+  }
+
+  function epornerVideoId(raw) {
+    const safe = safeEpornerUrl(raw);
+    if (!safe) return '';
+    try {
+      const path = new URL(safe).pathname;
+      const match = path.match(/^\/(?:video-([A-Za-z0-9]{11})|embed\/([A-Za-z0-9]{11}))(?:\/|$)/i);
+      return match ? (match[1] || match[2]) : '';
+    } catch (_) { return ''; }
+  }
+
+  function safeEpornerEmbed(raw, id) {
+    const safe = safeEpornerUrl(raw);
+    if (!safe || !/^[A-Za-z0-9]{11}$/.test(String(id || ''))) return '';
+    try {
+      const url = new URL(safe);
+      const match = url.pathname.match(/^\/embed\/([A-Za-z0-9]{11})\/?$/i);
+      if (!match || match[1] !== id || url.search || url.hash) return '';
+      return url.href;
+    } catch (_) { return ''; }
+  }
+
   function isAdultItem(item) {
     if (!item) return false;
-    if (String(item.site || '').toLowerCase() === 'pornflip') return true;
+    if (isAdultSource(String(item.site || '').toLowerCase())) return true;
     try {
       const host = new URL(String(item.url || '')).hostname.toLowerCase().replace(/^www\./, '');
-      return host === 'pornflip.com' || host.endsWith('.pornflip.com');
+      return host === 'pornflip.com' || host.endsWith('.pornflip.com') ||
+        host === 'eporner.com' || host.endsWith('.eporner.com');
     } catch (_) { return false; }
   }
 
@@ -183,6 +221,7 @@
     const isYT = source === 'youtube' || source === 'yt';
     const isDM = source === 'dailymotion' || source === 'dm';
     const isPF = source === 'pornflip';
+    const isEP = source === 'eporner';
     const type = ['video', 'channel', 'playlist'].includes(String(raw.type || '').toLowerCase())
       ? String(raw.type || '').toLowerCase() : 'video';
     let id = String(raw.id || '').trim();
@@ -203,6 +242,12 @@
         url = safePornFlipUrl(url);
         if (!url) return null;
         id = id || url;
+      } else if (isEP) {
+        url = safeEpornerUrl(url);
+        if (!url) return null;
+        const pathId = epornerVideoId(url);
+        if (!/^[A-Za-z0-9]{11}$/.test(id)) id = pathId;
+        if (!/^[A-Za-z0-9]{11}$/.test(id) || (pathId && pathId !== id)) return null;
       } else {
         if (!url) return null;
         id = id || url;
@@ -220,21 +265,25 @@
       id = playlist;
       url = 'https://www.youtube.com/playlist?list=' + id;
     }
-    url = isPF ? safePornFlipUrl(url) : safeWebUrl(url, false);
+    url = isPF ? safePornFlipUrl(url) : isEP ? safeEpornerUrl(url) : safeWebUrl(url, false);
     if (!url) return null;
     let thumb = isPF ? safePornFlipUrl(raw.thumb || raw.thumbnail || '')
+      : isEP ? safeEpornerUrl(raw.thumb || raw.thumbnail || raw.default_thumb && raw.default_thumb.src || '')
       : safeWebUrl(raw.thumb || raw.thumbnail || '', true);
     if (!thumb && isYT && type === 'video') thumb = 'https://i.ytimg.com/vi/' + id + '/hqdefault.jpg';
     if (!thumb && isDM) thumb = 'https://www.dailymotion.com/thumbnail/video/' + id;
-    const author = String(raw.author || raw.owner || raw.channel || '').replace(/\s+/g, ' ').trim().slice(0, 140);
+    const performers = isEP && Array.isArray(raw.pornstars)
+      ? raw.pornstars.map(person => String(person && person.name || '').trim()).filter(Boolean).slice(0, 3).join(', ') : '';
+    const author = String(raw.author || raw.owner || raw.channel || performers).replace(/\s+/g, ' ').trim().slice(0, 140);
     const channelId = String(raw.channelId || raw.channel_id || '').trim().slice(0, 120);
     const channelUrl = isYT ? safeYouTubeProfile(raw.channelUrl || raw.channel_url ||
       (channelId.match(/^UC[A-Za-z0-9_-]{20,30}$/) ? 'https://www.youtube.com/channel/' + channelId : '')) : '';
     const title = String(raw.title || '').replace(/\s+/g, ' ').trim().slice(0, 240) || 'بدون عنوان';
     return {
-      id, type, site: isYT ? 'youtube' : isDM ? 'dailymotion' : isPF ? 'pornflip' : (source || 'external'),
-      title, url, thumb, duration: Number(raw.duration) || 0, author,
-      channelId, channelUrl, count: Number(raw.count || raw.channel_follower_count || 0) || 0
+      id, type, site: isYT ? 'youtube' : isDM ? 'dailymotion' : isPF ? 'pornflip' : isEP ? 'eporner' : (source || 'external'),
+      title, url, thumb, duration: Number(raw.duration || raw.length_sec) || 0, author,
+      embedUrl: isEP ? safeEpornerEmbed(raw.embed || raw.embedUrl, id) : '',
+      channelId, channelUrl, count: Number(raw.count || raw.channel_follower_count || raw.views || 0) || 0
     };
   }
 
@@ -246,6 +295,31 @@
    *   3) خطأ من عندنا (4xx) → خطأ عادي
    */
   async function fromServer(term, limit, site, type, browse) {
+    if (site === 'eporner') {
+      if (!state.adultConfirmed) throw new Error('تأكيد 18+ مطلوب قبل البحث في ePorner');
+      if (!window.WTEpornerApi) throw new Error('عميل ePorner API غير متاح في هذه النسخة');
+      const page = Math.max(1, Number(browse && browse.page) || 1);
+      let data;
+      try {
+        data = await window.WTEpornerApi.search({
+          query: term || 'all', per_page: limit, page, order: 'latest',
+          thumbsize: 'medium', thumbs: 'default', fields: 'categories,pornstars,quality'
+        });
+      } catch (error) {
+        if (error && error.status) { state.server = true; throw error; }
+        state.reason = location.protocol === 'file:'
+          ? 'الصفحة مفتوحة كملف (file://) لا عبر سيرفر Java'
+          : 'تعذّر الاتصال بخادم ePorner على ' + (apiBaseUrl() || location.host || 'العنوان الحالي');
+        return null;
+      }
+      if (!data || !Array.isArray(data.videos)) throw new Error('استجابة بحث ePorner غير مفهومة');
+      state.reason = '';
+      return {
+        items: data.videos.map(item => normalize({ ...item, type: 'video', site: 'eporner' }, 'eporner')).filter(Boolean),
+        source: 'eporner-api', hasMore: page < (Number(data.total_pages) || page), nextOffset: page + 1,
+        totalCount: Number(data.total_count) || 0, totalPages: Number(data.total_pages) || page
+      };
+    }
     const api = (window.WTServer && window.WTServer.api) ? window.WTServer.api('api/search') : 'api/search';
     const params = new URLSearchParams({ q: term || '', limit: String(limit), site: String(site || '') });
     if (site === 'pornflip') {
@@ -364,7 +438,7 @@
 
   async function runSearch(term) {
     const query = String(term || '').trim();
-    if (state.site === 'pornflip' && !state.adultConfirmed) {
+    if (isAdultSource(state.site) && !state.adultConfirmed) {
       requestAdultConfirmation('search', query);
       return;
     }
@@ -374,6 +448,8 @@
     state.browse = null;
     state.loading = true;
     state.query = query;
+    state.epornerNextPage = 1;
+    state.epornerHasMore = false;
     el.browseBar.hidden = true;
     el.browseMore.hidden = true;
     el.go.disabled = true;
@@ -402,14 +478,17 @@
       }
       if (!result) {
         state.server = false;
-        result = ['youtube', 'pornflip'].includes(state.site)
+        result = ['youtube', 'pornflip', 'eporner'].includes(state.site)
           ? { items: [], source: 'none' }
           : await fromDailymotion(query, LIMIT);
         if (token !== state.token) return;
       }
       state.items = result.items.map(item => normalize(item, state.site)).filter(item =>
-        item && (!isAdultItem(item) || (state.site === 'pornflip' && state.adultConfirmed)));
+        item && (!isAdultItem(item) || (isAdultSource(state.site) && state.adultConfirmed)));
       state.viewItems = state.items;
+      state.epornerHasMore = state.site === 'eporner' && !!result.hasMore;
+      state.epornerNextPage = state.site === 'eporner' ? (Number(result.nextOffset) || 2) : 1;
+      el.browseMore.hidden = !state.epornerHasMore;
       updateNote();
       if (!state.items.length) {
         el.results.innerHTML = '';
@@ -429,6 +508,10 @@
           el.emptyText.textContent = state.server === false
             ? 'بحث PornFlip يحتاج خادم Java.' + (state.reason ? ' — ' + state.reason : ' شغّل الخادم أو اضبط javaServer.apiBase ثم أعد المحاولة.')
             : 'لم يُرجع PornFlip نتائج عن «' + query + '» — جرّب عبارة أخرى.';
+        } else if (state.site === 'eporner') {
+          el.emptyText.textContent = state.server === false
+            ? 'عمليات ePorner تحتاج خادم Java.' + (state.reason ? ' — ' + state.reason : ' شغّل الخادم أو اضبط javaServer.apiBase ثم أعد المحاولة.')
+            : 'لم يُرجع ePorner نتائج عن «' + query + '» — جرّب عبارة أخرى.';
         } else {
           el.emptyText.textContent = 'لا نتائج لـ «' + query + '» في ديليموشن — جرّب كلمة أخرى.';
         }
@@ -442,9 +525,10 @@
         const existing = el.results.parentNode.querySelector('.search-status--suggested');
         if (existing) existing.remove();
         render(state.items);
-        if (state.site !== 'pornflip') pushRecent(query);
+        if (!isAdultSource(state.site)) pushRecent(query);
         status(state.items.length + ' نتيجة — المصدر: ' + (
           result.source === 'pornflip-html' ? 'PornFlip (صفحة النتائج)' :
+          result.source === 'eporner-api' ? 'ePorner API v2' :
           result.source === 'yt-dlp' ? 'yt-dlp على السيرفر' :
           result.source === 'dailymotion-api' ? 'واجهة ديليموشن' : 'ديليموشن مباشرة'
         ));
@@ -461,14 +545,50 @@
       el.emptyText.textContent = error && error.serverDown
         ? state.site === 'pornflip'
           ? 'تعذّر جلب نتائج PornFlip من الخادم (' + (error.status || '5xx') + '): ' + (error.message || '')
-          : 'خدمة البحث على السيرفر معطّلة (' + (error.status || '5xx') + '): ' + (error.message || '') +
-            ' — حدّث yt-dlp: py -m pip install -U yt-dlp'
+          : state.site === 'eporner'
+            ? 'تعذّر الاتصال بواجهة ePorner API (' + (error.status || '5xx') + '): ' + (error.message || '') +
+              (error.retryAfter ? ' — أعد المحاولة بعد ' + error.retryAfter + ' ثانية' : '')
+            : 'خدمة البحث على السيرفر معطّلة (' + (error.status || '5xx') + '): ' + (error.message || '') +
+              ' — حدّث yt-dlp: py -m pip install -U yt-dlp'
         : 'تعذّر البحث — تحقّق من الاتصال ثم أعد المحاولة';
       status(error && error.message ? error.message : 'تعذّر البحث', true);
     } finally {
       if (token === state.token) {
         state.loading = false;
         el.go.disabled = false;
+      }
+    }
+  }
+
+  async function loadMoreEporner() {
+    if (state.site !== 'eporner' || state.view !== 'search' || state.loading || !state.epornerHasMore) return;
+    const token = ++state.token;
+    const page = state.epornerNextPage;
+    state.loading = true;
+    el.browseLoadMore.disabled = true;
+    status('جارٍ تحميل الصفحة ' + page + ' من ePorner…');
+    try {
+      const result = await fromServer(state.query, LIMIT, 'eporner', 'video', { page });
+      if (token !== state.token || state.site !== 'eporner') return;
+      const seen = new Set(state.items.map(item => item.id));
+      const found = result.items.filter(item => !seen.has(item.id));
+      state.items = state.items.concat(found);
+      state.viewItems = state.items;
+      state.epornerNextPage = Number(result.nextOffset) || page + 1;
+      state.epornerHasMore = !!result.hasMore;
+      render(state.items);
+      el.browseMore.hidden = !state.epornerHasMore;
+      status(state.items.length + ' نتيجة — ePorner API v2');
+      loadFavoriteState(false).then(() => {
+        if (token === state.token && state.site === 'eporner' && state.view === 'search') render(state.items);
+      });
+    } catch (error) {
+      if (token !== state.token) return;
+      status(error && error.message ? error.message : 'تعذّر تحميل نتائج ePorner الإضافية', true);
+    } finally {
+      if (token === state.token) {
+        state.loading = false;
+        el.browseLoadMore.disabled = false;
       }
     }
   }
@@ -497,7 +617,9 @@
       ? 'بحث يوتيوب يحتاج سيرفر Java مع yt-dlp. '
       : state.site === 'pornflip'
         ? 'بحث PornFlip يحتاج سيرفر Java، ويُشغّل عبر مشغّله المضمّن. '
-        : 'نتائج البحث تعمل، لكن استخراج رابط التشغيل المباشر يحتاج سيرفر Java مع yt-dlp. ';
+        : state.site === 'eporner'
+          ? 'بحث وعمليات ePorner API v2 تحتاج سيرفر Java. '
+          : 'نتائج البحث تعمل، لكن استخراج رابط التشغيل المباشر يحتاج سيرفر Java مع yt-dlp. ';
     el.noteText.textContent = siteMsg + where;
   }
 
@@ -538,7 +660,7 @@
   }
 
   async function toggleFavorite(item) {
-    if (isAdultItem(item)) throw new Error('حفظ نتائج PornFlip في المفضّلة غير متاح');
+    if (isAdultItem(item)) throw new Error('حفظ نتائج مصادر البالغين في المفضّلة غير متاح');
     if (!Favorites || typeof Favorites.toggle !== 'function') throw new Error('خدمة المفضّلة غير متاحة');
     const result = await Favorites.toggle(item);
     const key = favoriteKey(item);
@@ -634,9 +756,9 @@
   }
 
   function renderChips() {
-    const list = state.site === 'pornflip' ? [] : recent();
+    const list = isAdultSource(state.site) ? [] : recent();
     const quick = state.site === 'youtube' ? QUICK_YT
-      : state.site === 'pornflip' ? [] : QUICK_DM;
+      : isAdultSource(state.site) ? [] : QUICK_DM;
     const terms = list.concat(quick.filter(v => list.indexOf(v) < 0)).slice(0, 8);
     el.chips.innerHTML = terms.map(term => {
       const isRecent = list.indexOf(term) >= 0;
@@ -667,8 +789,80 @@
     });
   }
 
-  const SITE_LABEL_AR = { youtube: 'يوتيوب', dailymotion: 'ديليموشن', pornflip: 'PornFlip · 18+' };
+  const SITE_LABEL_AR = { youtube: 'يوتيوب', dailymotion: 'ديليموشن', pornflip: 'PornFlip · 18+', eporner: 'ePorner · 18+' };
   const TYPE_LABEL_AR = { all: 'الكل', video: 'فيديوهات', channel: 'قنوات', playlist: 'قوائم التشغيل' };
+  const EPORNER_EXAMPLES = {
+    search: { query: 'yoga', per_page: 24, page: 1, order: 'latest', thumbs: 'default', thumbsize: 'medium', fields: 'categories,pornstars,quality' },
+    video: { id: 'AbCdEfGhIjK', thumbs: 'default', fields: 'categories,pornstars,quality' },
+    removed: { since: '2026-11-01', per_page: 100 },
+    status: { id: 'AbCdEfGhIjK' },
+    categories: {},
+    pornstars: { page: 1, per_page: 24 },
+    oembed: { url: 'https://www.eporner.com/video-AbCdEfGhIjK/sample-title/', maxwidth: 640, maxheight: 360 },
+    openapi: {}
+  };
+
+  function updateEpornerToolsVisibility() {
+    if (el.epornerTools) el.epornerTools.hidden = state.site !== 'eporner' || !state.adultConfirmed;
+  }
+
+  function setEpornerToolExample() {
+    if (!el.epornerOperation || !el.epornerParams) return;
+    const operation = el.epornerOperation.value || 'search';
+    const examples = EPORNER_EXAMPLES[operation] || {};
+    el.epornerParams.value = JSON.stringify(examples, null, 2);
+    if (el.epornerOperationHelp) {
+      const descriptions = {
+        search: 'query نص (افتراضي all؛ كل كلمة يجب أن تطابق وall يسرد كل الفيديوهات)، per_page عدد 1–1000 (افتراضي 30؛ القيم خارج المجال تُقرّب لأقرب حد)، page ≥1 (افتراضي 1؛ الصفحة بعد النهاية فارغة)، order: latest|longest|shortest|top-rated|most-popular|top-weekly|top-monthly، gay وlq: 0|1|2، min_duration وmax_duration: 0–86400 ثانية، added_after وadded_before: YYYY-MM-DD أو RFC 3339 أو طابع Unix، thumbsize: small|medium|big، thumbs: all|default|none، fields: categories,pornstars,quality، lang حرفان صغيران (تتوفر الترجمات pl وfr وes)، format: json|xml. نتائج البحث والقوائم المقيّدة تصل إلى أول 100000 نتيجة؛ قائمة all غير المقيّدة بلا هذا الحد.',
+        video: 'id مطلوب: 11 حرفًا/رقمًا، حساس لحالة الأحرف. يقبل thumbsize: small|medium|big، thumbs: all|default|none، fields: categories,pornstars,quality، lang حرفين صغيرين، format: json|xml. الفيديو المحذوف أو غير القابل للتشغيل أو غير الموجود يعيد قائمة فارغة [].',
+        removed: 'since اختياري: تاريخ YYYY-MM-DD أو وقت RFC 3339 أو طابع Unix. after اختياري: قيمة next من الرد السابق (النمط [0-9]{1,10}\\.[0-9]{1,10}). per_page: 1–1000 (افتراضي 1000). تُرتب الإزالات من الأقدم؛ دون since وafter يحوّل API إلى ملف القائمة الكاملة، بمعرّف واحد في كل سطر.',
+        status: 'id مطلوب: من 1 إلى 100 معرّف فيديو مفصولًا بفواصل، بالترتيب المطلوب.',
+        categories: 'يعيد جميع الفئات؛ معاملات غير مطلوبة. تستخدم مقاطع categories في الفيديوهات الفئات نفسها.',
+        pornstars: 'page: 1–100000 (افتراضي 1)، وper_page: 1–1000 (افتراضي 100). الدليل مرتب بالأكثر شعبية أولًا.',
+        oembed: 'url مطلوب: رابط صفحة فيديو أو مشغّله على eporner.com أو أحد نطاقاته اللغوية. maxwidth وmaxheight عددان صحيحان ≥1؛ من دون maxwidth يكون الحد الأقصى للعرض 1280. format=json فقط.',
+        openapi: 'يعيد مستند OpenAPI 3.1 القابل للقراءة آليًا؛ معاملات غير مطلوبة.'
+      };
+      el.epornerOperationHelp.textContent = descriptions[operation] || '';
+    }
+  }
+
+  async function runEpornerTool() {
+    if (state.site !== 'eporner' || !state.adultConfirmed) {
+      requestAdultConfirmation('', '');
+      return;
+    }
+    if (state.epornerToolBusy || !window.WTEpornerApi) return;
+    let params;
+    try {
+      params = JSON.parse(el.epornerParams.value || '{}');
+      if (!params || typeof params !== 'object' || Array.isArray(params)) throw new Error('اكتب كائن JSON للمعاملات');
+    } catch (error) {
+      if (el.epornerOutput) {
+        el.epornerOutput.hidden = false;
+        el.epornerOutput.textContent = error.message || 'JSON غير صالح';
+      }
+      return;
+    }
+    state.epornerToolBusy = true;
+    if (el.epornerRun) el.epornerRun.disabled = true;
+    if (el.epornerOutput) {
+      el.epornerOutput.hidden = false;
+      el.epornerOutput.textContent = 'جارٍ تنفيذ العملية…';
+    }
+    try {
+      const operation = el.epornerOperation.value || 'search';
+      const data = await window.WTEpornerApi.run(operation, params);
+      if (el.epornerOutput) el.epornerOutput.textContent = typeof data === 'string' ? data : JSON.stringify(data, null, 2);
+    } catch (error) {
+      if (el.epornerOutput) {
+        el.epornerOutput.textContent = (error && error.message ? error.message : 'تعذّرت عملية ePorner') +
+          (error && error.retryAfter ? ' — أعد المحاولة بعد ' + error.retryAfter + ' ثانية' : '');
+      }
+    } finally {
+      state.epornerToolBusy = false;
+      if (el.epornerRun) el.epornerRun.disabled = false;
+    }
+  }
 
   function updateSourceBadge() {
     const badge = $('searchSourceBadge');
@@ -706,7 +900,8 @@
       state.pendingAdultAction = '';
       state.pendingAdultQuery = '';
     }
-    status('يتطلب PornFlip تأكيدًا صريحًا بأن عمرك 18 عامًا أو أكثر.');
+    status('يتطلب ' + (SITE_LABEL_AR[state.site] || 'المصدر المخصص للبالغين') + ' إقرارًا صريحًا بأن عمرك 18 عامًا أو أكثر.');
+    if (el.adultGateTitle) el.adultGateTitle.textContent = (SITE_LABEL_AR[state.site] || 'مصدر بالغين') + ' — تأكيد العمر';
     if (!el.adultGate) return true;
     if (!adultGateIsOpen()) {
       if (typeof el.adultGate.showModal === 'function') el.adultGate.showModal();
@@ -719,7 +914,8 @@
   function acceptAdultConfirmation() {
     state.adultConfirmed = true;
     try { window.sessionStorage.setItem(ADULT_ACK_KEY, 'yes'); } catch (_) { /* يبقى التأكيد في ذاكرة الصفحة */ }
-    if (state.site === 'pornflip') store(SITE_KEY, state.site);
+    if (isAdultSource(state.site)) store(SITE_KEY, state.site);
+    updateEpornerToolsVisibility();
     const action = state.pendingAdultAction;
     const query = state.pendingAdultQuery;
     state.pendingAdultAction = '';
@@ -730,7 +926,7 @@
     else if (action === 'favorites') showFavorites();
     else {
       el.empty.hidden = false;
-      el.emptyText.textContent = 'اكتب عبارة للبحث في PornFlip بعد تأكيد العمر.';
+      el.emptyText.textContent = 'اكتب عبارة للبحث في ' + (SITE_LABEL_AR[state.site] || 'المصدر') + ' بعد إقرار 18+.';
     }
   }
 
@@ -754,16 +950,17 @@
     renderTabs();
     renderChips();
     updateNote();
-    clearSearchResults('لم يتم تأكيد العمر؛ لم يُرسل أي طلب إلى PornFlip.');
-    status('لم يتم تأكيد 18+؛ لم يُرسل أي طلب إلى PornFlip.');
+    updateEpornerToolsVisibility();
+    clearSearchResults('لم يتم تأكيد العمر؛ لم يُرسل أي طلب إلى مصدر البالغين.');
+    status('لم يتم تأكيد 18+؛ لم يُرسل أي طلب إلى مصدر البالغين.');
   }
 
   function setSite(site, run) {
-    const nextSite = ['youtube', 'dailymotion', 'pornflip'].includes(site) ? site : 'dailymotion';
-    if (nextSite === state.site && !(nextSite === 'pornflip' && !state.adultConfirmed)) return;
-    if (nextSite === 'pornflip' && !state.adultConfirmed) {
-      if (state.site !== 'pornflip') state.previousSite = state.site;
-      state.site = 'pornflip';
+    const nextSite = ['youtube', 'dailymotion', 'pornflip', 'eporner'].includes(site) ? site : 'dailymotion';
+    if (nextSite === state.site && !(isAdultSource(nextSite) && !state.adultConfirmed)) return;
+    if (isAdultSource(nextSite) && !state.adultConfirmed) {
+      if (!isAdultSource(state.site)) state.previousSite = state.site;
+      state.site = nextSite;
       if (['channel', 'playlist'].includes(state.searchType)) state.searchType = 'video';
       state.view = 'search';
       state.browse = null;
@@ -773,11 +970,12 @@
       updateSourceBadge();
       renderTabs();
       renderChips();
-      clearSearchResults('تأكيد 18+ مطلوب قبل تحميل نتائج PornFlip.');
+      updateEpornerToolsVisibility();
+      clearSearchResults('تأكيد 18+ مطلوب قبل تحميل نتائج ' + (SITE_LABEL_AR[state.site] || 'المصدر') + '.');
       requestAdultConfirmation(run && state.query.length >= 2 ? 'search' : '', run ? state.query : '');
       return;
     }
-    const leavingAdult = state.site === 'pornflip' && nextSite !== 'pornflip';
+    const leavingAdult = isAdultSource(state.site) && !isAdultSource(nextSite);
     if (leavingAdult) {
       state.loading = false;
       state.token++;
@@ -797,6 +995,7 @@
     renderTabs();
     renderChips();
     updateNote();
+    updateEpornerToolsVisibility();
     el.browseBar.hidden = true;
     el.browseMore.hidden = true;
     if (run && state.query) runSearch(state.query);
@@ -847,7 +1046,7 @@
         el.results.setAttribute('aria-busy', 'false');
         el.empty.hidden = false;
         el.emptyText.textContent = hiddenAdultFavorites
-          ? 'بعض المفضّلات مخفية حتى تأكيد 18+ في تبويب PornFlip.'
+          ? 'بعض المفضّلات مخفية حتى تأكيد 18+ في تبويب مصدر بالغين.'
           : 'لم تحفظ فيديوهات بعد — اضغط القلب على فيديو لإضافته إلى مفضّلتك';
         status('');
       }
@@ -986,7 +1185,8 @@
     el.spinner.hidden = false;
     el.spinnerText.textContent = item.site === 'youtube'
       ? 'جارٍ تجهيز المشغّل…'
-      : item.site === 'pornflip' ? 'جارٍ فتح مشغّل PornFlip…' : 'جارٍ استخراج رابط التشغيل المباشر…';
+      : item.site === 'pornflip' ? 'جارٍ فتح مشغّل PornFlip…'
+        : item.site === 'eporner' ? 'جارٍ تجهيز مشغّل ePorner عبر API v2…' : 'جارٍ استخراج رابط التشغيل المباشر…';
     el.room.disabled = true;
     el.queue.disabled = true;
     el.copy.disabled = true;
@@ -1014,6 +1214,8 @@
       : 'يمكنك فتح الفيديو على موقعه الأصلي من الزر بالأسفل.';
   }
 
+  function directKey(item) { return String(item.site || '') + ':' + String(item.id || ''); }
+
   function ready(url, hint) {
     el.spinner.hidden = true;
     el.error.hidden = true;
@@ -1032,6 +1234,16 @@
       el.source.href = state.current.url;
       el.source.hidden = false;
       el.source.textContent = 'افتح على PornFlip';
+    } else if (state.current.site === 'eporner' && safeEpornerEmbed(url, state.current.id)) {
+      const f = frame();
+      f.src = url;
+      f.hidden = false;
+      try { el.video.pause(); } catch (_) { }
+      el.video.removeAttribute('src');
+      el.video.hidden = true;
+      el.source.href = state.current.url;
+      el.source.hidden = false;
+      el.source.textContent = 'افتح على ePorner';
     } else if (state.current.site === 'youtube') {
       const f = frame();
       f.src = 'https://www.youtube.com/embed/' + state.current.id + '?rel=0&autoplay=1';
@@ -1057,7 +1269,7 @@
     openDialog(item);
     /* يوتيوب لا يحتاج استخراجاً: مشغّله الرسمي يعمل داخل iframe */
     if (item.site === 'youtube') {
-      state.direct.set(item.id, item.url);
+      state.direct.set(directKey(item), item.url);
       ready(item.url, 'يُشغَّل يوتيوب بمشغّله الرسمي — لا حاجة لاستخراج رابط مباشر.');
       return;
     }
@@ -1072,13 +1284,27 @@
         el.source.textContent = 'افتح على PornFlip';
         return;
       }
-      state.direct.set(item.id, embedUrl);
+      state.direct.set(directKey(item), embedUrl);
       ready(embedUrl, 'يُشغَّل الفيديو بمشغّل PornFlip المضمّن. إذا منع المتصفح التضمين، استخدم زر «افتح على PornFlip».');
       return;
     }
+    if (item.site === 'eporner') {
+      const embedUrl = safeEpornerEmbed(item.embedUrl, item.id);
+      if (!embedUrl) {
+        showError('لم تُرجع واجهة ePorner رابط مشغّل صالحاً لهذا الفيديو.');
+        el.hint.textContent = 'يمكنك فتح الرابط الأصلي على ePorner من الزر بالأسفل.';
+        el.source.href = item.url;
+        el.source.hidden = false;
+        el.source.textContent = 'افتح على ePorner';
+        return;
+      }
+      state.direct.set(directKey(item), embedUrl);
+      ready(embedUrl, 'يُشغَّل الفيديو بمشغّل ePorner المضمّن حسب بيانات API v2. إذا منع المتصفح التضمين، استخدم زر «افتح على ePorner».');
+      return;
+    }
     /* تيك توك/كيك/تويتش/ديليموشن: نحاول استخراج رابط التشغيل عبر السيرفر (yt-dlp).
-       إن تعذّر الاستعرض (لا سيرفر، أو المنصة غير مدعومة)، نعرض زر «افتح على موقعها الأصلي». */
-    const cached = state.direct.get(item.id);
+       إن تعذّر الاستخراج (لا سيرفر، أو المنصة غير مدعومة)، نعرض زر «افتح على موقعها الأصلي». */
+    const cached = state.direct.get(directKey(item));
     if (cached) {
       ready(cached, item.site === 'dailymotion'
         ? 'الرابط المباشر مؤقّت (توقيع من ديليموشن) — صالح للتشغيل الآن فقط.'
@@ -1090,7 +1316,7 @@
       const media = await window.WTResolve(item.url);
       const src = media && media.parsed && media.parsed.src;
       if (!src) throw new Error('لم يرجع السيرفر رابط تشغيل');
-      state.direct.set(item.id, src);
+      state.direct.set(directKey(item), src);
       ready(src, item.site === 'dailymotion'
         ? 'الرابط المباشر مؤقّت (توقيع من ديليموشن) — صالح للتشغيل الآن فقط.'
         : 'الرابط المباشر مؤقّت — صالح للتشغيل الآن فقط.');
@@ -1111,7 +1337,7 @@
   function playableUrl() {
     const item = state.current;
     if (!item) return '';
-    return state.direct.get(item.id) || (item.site === 'youtube' ? item.url : '');
+    return state.direct.get(directKey(item)) || (item.site === 'youtube' ? item.url : '');
   }
 
   async function copyLink() {
@@ -1238,7 +1464,7 @@
     const tab = event.target.closest('[data-site]');
     if (!tab) return;
     const site = tab.getAttribute('data-site');
-    if (site === state.site && !(site === 'pornflip' && !state.adultConfirmed)) return;
+    if (site === state.site && !(isAdultSource(site) && !state.adultConfirmed)) return;
     setSite(site, state.query.length >= 2);
   });
 
@@ -1253,7 +1479,12 @@
   });
 
   el.browseBack.addEventListener('click', backFromBrowse);
-  el.browseLoadMore.addEventListener('click', () => loadBrowsePage(true));
+  el.browseLoadMore.addEventListener('click', () => {
+    if (state.site === 'eporner' && !state.browse) loadMoreEporner();
+    else loadBrowsePage(true);
+  });
+  if (el.epornerOperation) el.epornerOperation.addEventListener('change', setEpornerToolExample);
+  if (el.epornerRun) el.epornerRun.addEventListener('click', runEpornerTool);
 
   el.chips.addEventListener('click', event => {
     const remove = event.target.closest('[data-remove]');
@@ -1365,14 +1596,14 @@
   try { state.adultConfirmed = window.sessionStorage.getItem(ADULT_ACK_KEY) === 'yes'; }
   catch (_) { state.adultConfirmed = false; }
   const savedSite = store(SITE_KEY);
-  if (['youtube', 'dailymotion', 'pornflip'].includes(savedSite)) state.site = savedSite;
+  if (['youtube', 'dailymotion', 'pornflip', 'eporner'].includes(savedSite)) state.site = savedSite;
   renderTabs();
   renderChips();
 
   const params = new URLSearchParams(location.search);
   const requestedSite = params.get('site');
-  if (['youtube', 'dailymotion', 'pornflip'].includes(requestedSite)) {
-    if (requestedSite === 'pornflip' && state.site !== 'pornflip') state.previousSite = state.site;
+  if (['youtube', 'dailymotion', 'pornflip', 'eporner'].includes(requestedSite)) {
+    if (isAdultSource(requestedSite) && !isAdultSource(state.site)) state.previousSite = state.site;
     state.site = requestedSite;
   }
   if (['all', 'video', 'channel', 'playlist'].includes(params.get('type'))) state.searchType = params.get('type');
@@ -1380,12 +1611,14 @@
   updateSourceBadge();
   renderTabs();
   renderChips();
+  updateEpornerToolsVisibility();
+  setEpornerToolExample();
   const initial = params.get('q');
   if (initial) {
     el.input.value = initial;
     el.clear.hidden = false;
     runSearch(initial);
-  } else if (state.site === 'pornflip' && !state.adultConfirmed) {
+  } else if (isAdultSource(state.site) && !state.adultConfirmed) {
     requestAdultConfirmation('', '');
   }
 })();
