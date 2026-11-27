@@ -118,6 +118,7 @@ public final class Main {
                 if (path.equals("/api/resolve")) { VideoResolver.handle(ex); return; }
                 if (path.equals("/api/suggest")) { SuggestResolver.handle(ex); return; }
                 if (path.equals("/api/search")) { SearchResolver.handle(ex); return; }
+                if (path.startsWith("/api/eporner/")) { EpornerResolver.handle(ex); return; }
                 if (path.equals("/healthz")) { Origins.apply(ex, "GET, OPTIONS"); sendText(ex, 200, "OK", "ok\n"); return; }
                 if (path.equals("/api/stats")) { Origins.apply(ex, "GET, OPTIONS"); sendJson(ex, 200, stats()); return; }
                 if (API_ONLY) { apiHome(ex); return; }
@@ -160,6 +161,7 @@ public final class Main {
             + "الموقع على استضافة ثابتة، والسيرفر مسؤول عن البحث وتحويل الروابط.</p>"
             + "<ul style=\"list-style:none;padding:0;margin:0 0 18px;color:#C5A572;line-height:2\">"
             + "<li>GET /api/search?q=…&amp;site=dailymotion|youtube|pornflip (PornFlip يتطلب adult_confirmed=1 وإقرار 18+)</li>"
+            + "<li>GET /api/eporner/{operation} (عمليات Eporner API v2 الثماني؛ تتطلب adult_confirmed=1 وإقرار 18+)</li>"
             + "<li>POST /api/resolve</li>"
             + "<li>POST /api/suggest</li>"
             + "<li>GET /healthz · GET /api/stats</li></ul>"

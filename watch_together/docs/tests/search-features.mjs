@@ -20,7 +20,8 @@ function prepareSearchDom(env) {
     byId.set(id, node);
     documentStub.body.appendChild(node);
   }
-  byId.get('searchSources').innerHTML = '<button data-site="dailymotion"></button><button data-site="youtube"></button><button data-site="pornflip"></button>';
+  byId.get('searchSources').innerHTML = '<button data-site="dailymotion"></button><button data-site="youtube"></button>' +
+    '<button data-site="pornflip"></button><button data-site="eporner"></button>';
   byId.get('searchTypes').innerHTML = '<button data-search-type="all"></button><button data-search-type="video"></button>' +
     '<button data-search-type="channel"></button><button data-search-type="playlist"></button><button data-search-view="favorites"></button>';
   return html;
@@ -28,7 +29,7 @@ function prepareSearchDom(env) {
 
 function loadSearchScripts(env) {
   const { sandbox } = env;
-  for (const path of ['assets/js/config.js', 'assets/js/util.js', 'assets/js/icons.js']) {
+  for (const path of ['assets/js/config.js', 'assets/js/util.js', 'assets/js/icons.js', 'assets/js/eporner.js']) {
     vm.runInContext(fs.readFileSync(new URL('../../' + path, import.meta.url), 'utf8'), sandbox, { filename: path });
   }
   vm.runInContext(fs.readFileSync(new URL('../../assets/js/search.js', import.meta.url), 'utf8'), sandbox, { filename: 'search.js' });
@@ -58,10 +59,32 @@ const adultVideo = {
   type: 'video', site: 'pornflip', id: 'adult-test-123', title: 'نتيجة اختبار للبالغين',
   url: 'https://www.pornflip.com/v/adult-test-123', thumb: 'https://www.pornflip.com/thumbs/adult-test-123.jpg', duration: 91
 };
+const epornerVideo = {
+  id: 'AbCdEfGhIjK', title: 'نتيجة ePorner للاختبار',
+  url: 'https://www.eporner.com/video-AbCdEfGhIjK/sample-title/',
+  embed: 'https://www.eporner.com/embed/AbCdEfGhIjK/',
+  default_thumb: { src: 'https://static-ca-cdn.eporner.com/thumbs/sample.jpg' },
+  length_sec: 72, views: 1234
+};
+const epornerVideoTwo = {
+  id: 'LmNoPqRsTuV', title: 'نتيجة ePorner للصفحة التالية',
+  url: 'https://www.eporner.com/video-LmNoPqRsTuV/another-title/',
+  embed: 'https://www.eporner.com/embed/LmNoPqRsTuV/',
+  default_thumb: { src: 'https://static-ca-cdn.eporner.com/thumbs/sample-2.jpg' },
+  length_sec: 88, views: 4321
+};
 const jsonResponse = value => ({ ok: true, status: 200, text: async () => JSON.stringify(value) });
 const fetch = async input => {
   const url = new URL(input, sandbox.location.origin);
   calls.push(url);
+  if (url.pathname.startsWith('/api/eporner/')) {
+    const operation = url.pathname.slice('/api/eporner/'.length);
+    if (operation === 'video/search/') {
+      const page = Number(url.searchParams.get('page')) || 1;
+      return jsonResponse({ videos: [page > 1 ? epornerVideoTwo : epornerVideo], total_count: 2, total_pages: 2 });
+    }
+    return jsonResponse({ operation, ok: true });
+  }
   if (url.pathname.endsWith('/api/search') && url.searchParams.has('browse')) {
     const offset = Number(url.searchParams.get('offset')) || 0;
     const items = offset ? [pageTwo] : [pageOne];
@@ -194,8 +217,46 @@ try {
   assert.equal((store['wt:search:recent'] || []).includes(adultQuery), false,
     'adult search terms are not written to shared search history');
 
-  // A direct adult URL also remains gated; cancelling restores a safe source and hides old adult favorites.
-  const guardedEnv = createRoomEnv({ search: '?site=pornflip&q=must-not-send', scripts: [] });
+  // ePorner uses the documented v2 API, its returned embed URL, and a guarded tool for the remaining operations.
+  click(byId.get('searchSources'), '[data-site="eporner"]');
+  await wait(25);
+  const epornerSearch = calls.find(url => url.pathname === '/api/eporner/video/search/');
+  assert.ok(epornerSearch, 'ePorner search calls the documented video/search operation');
+  assert.equal(epornerSearch.searchParams.get('adult_confirmed'), '1', 'ePorner API requests carry the server-side age attestation');
+  assert.equal(epornerSearch.searchParams.get('query'), adultQuery, 'ePorner receives the entered query');
+  assert.equal(byId.get('epornerTools').hidden, false, 'the remaining ePorner operations become visible after age confirmation');
+  assert.match(byId.get('searchStatus').textContent, /ePorner API v2/);
+  assert.equal(byId.get('browseMore').hidden, false, 'ePorner search exposes another page when total_pages requires it');
+  byId.get('browseLoadMore').dispatch('click', {});
+  await wait(25);
+  assert.ok(calls.some(url => url.pathname === '/api/eporner/video/search/' && url.searchParams.get('page') === '2'),
+    'ePorner pagination requests the next documented page number');
+  assert.match(byId.get('results').innerHTML, /نتيجة ePorner للصفحة التالية/);
+  assert.match(byId.get('results').innerHTML, /static-ca-cdn\.eporner\.com\/thumbs\/sample\.jpg/);
+  assert.doesNotMatch(byId.get('results').innerHTML, /data-favorite-index/, 'ePorner results are not added to favorites');
+  click(byId.get('results'), '[data-index="0"]');
+  await wait(10);
+  const epornerFrame = byId.get('playStage').querySelector('.play-frame');
+  assert.ok(epornerFrame, 'ePorner results open in an embedded player');
+  assert.equal(epornerFrame.src, epornerVideo.embed, 'playback uses the API-provided safe embed URL');
+  assert.equal(sandbox.WTUtil.parseWatchUrl(epornerFrame.src).provider, 'ePorner', 'the room recognizes the embed as ePorner');
+  assert.equal(byId.get('playVideo').hidden, true, 'the embedded player is not assigned to an HTML video element');
+  assert.equal(calls.some(url => String(url).includes('/api/resolve')), false, 'ePorner playback uses its documented embed rather than yt-dlp');
+  byId.get('playClose').dispatch('click', {});
+
+  byId.get('epornerOperation').value = 'categories';
+  byId.get('epornerOperation').dispatch('change', {});
+  assert.match(byId.get('epornerParams').value, /^\{\s*\}$/);
+  byId.get('epornerRunOperation').dispatch('click', {});
+  await wait(20);
+  assert.ok(calls.some(url => url.pathname === '/api/eporner/categories/' && url.searchParams.get('adult_confirmed') === '1'),
+    'the ePorner operation UI can execute GET /categories/ after confirmation');
+  assert.match(byId.get('epornerOutput').textContent, /categories/);
+  assert.equal((store['wt:search:recent'] || []).includes(adultQuery), false,
+    'ePorner search terms are not written to shared search history');
+
+  // A direct ePorner URL also remains gated; cancelling restores a safe source and hides old adult favorites.
+  const guardedEnv = createRoomEnv({ search: '?site=eporner&q=must-not-send', scripts: [] });
   const guardedCalls = [];
   guardedEnv.sandbox.fetch = async input => { guardedCalls.push(input); throw new Error('adult request should remain blocked'); };
   guardedEnv.sandbox.WTFavorites = {
@@ -208,8 +269,9 @@ try {
   loadSearchScripts(guardedEnv);
   await wait(10);
   assert.notEqual(guardedEnv.byId.get('adultGate').getAttribute('open'), null,
-    'a PornFlip deep link asks for confirmation before sending its query');
+    'an ePorner deep link asks for confirmation before sending its query');
   assert.equal(guardedCalls.length, 0, 'deep-link query is not fetched before confirmation');
+  assert.equal(guardedEnv.byId.get('epornerTools').hidden, true, 'ePorner API tools stay hidden before confirmation');
   guardedEnv.byId.get('adultGateCancel').dispatch('click', {});
   assert.equal(guardedCalls.length, 0, 'cancelling leaves the server untouched');
   assert.equal(guardedEnv.byId.get('adultGate').getAttribute('open'), null, 'cancel closes the gate');
@@ -247,7 +309,7 @@ try {
   assert.equal(parsedCard[5], 'Title &amp; More');
   assert.doesNotMatch(javaSearch, /PF_WATCH/,
     'search results do not construct the invalid /video/ID URL');
-  console.log('Search features passed (YouTube browsing/favorites, PornFlip search parsing, 18+ gating, confirmation, privacy and server contract)');
+  console.log('Search features passed (YouTube browsing/favorites, PornFlip and ePorner search/playback, API tools, 18+ gating, privacy and server contract)');
 } finally {
   env.dispose();
 }

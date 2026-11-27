@@ -1,0 +1,1547 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Eporner API",
+    "version": "2.1.0",
+    "summary": "Video listings, single videos, removed videos and reference lists for sites and apps that link to or embed Eporner videos.",
+    "description": "All methods are read with HTTP GET and need no key. Replies are JSON; the search and id methods also offer XML. See https://www.eporner.com/api/v2/ for limits, errors and terms of use.",
+    "termsOfService": "https://www.eporner.com/api/v2/#terms",
+    "contact": {
+      "name": "Eporner support",
+      "url": "https://www.eporner.com/contact/"
+    }
+  },
+  "servers": [
+    {
+      "url": "https://www.eporner.com/api/v2"
+    }
+  ],
+  "externalDocs": {
+    "description": "Documentation",
+    "url": "https://www.eporner.com/api/v2/"
+  },
+  "tags": [
+    {
+      "name": "Videos",
+      "description": "Find videos and read one video."
+    },
+    {
+      "name": "Removed videos",
+      "description": "Keep your copy free of videos that were removed."
+    },
+    {
+      "name": "Lists",
+      "description": "Categories and performers."
+    },
+    {
+      "name": "Embedding",
+      "description": "The player for a video address."
+    }
+  ],
+  "paths": {
+    "/video/search/": {
+      "get": {
+        "operationId": "searchVideos",
+        "tags": [
+          "Videos"
+        ],
+        "summary": "Search videos",
+        "description": "Returns one page of videos that match a search, or of all videos. A search, and a listing of all videos narrowed by length or date, reaches its first 100,000 results; the plain listing of all videos has no such limit. The first page of a search can be about ten minutes old, deeper pages about two hours.",
+        "x-anchor": "search",
+        "x-example": {
+          "query": "yoga",
+          "per_page": 2,
+          "order": "most-popular",
+          "thumbs": "default"
+        },
+        "parameters": [
+          {
+            "name": "query",
+            "in": "query",
+            "description": "Search words in any script, for example `yoga` or `yoga outdoor`. Every word must match. Punctuation and search operators are ignored. `all` (the default) lists every video.",
+            "schema": {
+              "type": "string",
+              "default": "all"
+            },
+            "example": "yoga"
+          },
+          {
+            "name": "per_page",
+            "in": "query",
+            "description": "Videos per page. Values outside 1 to 1000 are moved to the nearest end.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1000,
+              "default": 30
+            },
+            "example": 30
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "description": "Page number, from 1 to `total_pages`. A page past the end is an empty page.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1
+            },
+            "example": 1
+          },
+          {
+            "name": "order",
+            "in": "query",
+            "description": "Sort order: `latest` newest first, `longest` and `shortest` by length, `top-rated` by rating, `most-popular` by all-time views, `top-weekly` and `top-monthly` by views in the last week or month.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "latest",
+                "longest",
+                "shortest",
+                "top-rated",
+                "most-popular",
+                "top-weekly",
+                "top-monthly"
+              ],
+              "default": "latest"
+            },
+            "example": "latest"
+          },
+          {
+            "name": "gay",
+            "in": "query",
+            "description": "Gay content: `0` leaves it out, `1` includes it, `2` returns only gay content.",
+            "schema": {
+              "type": "integer",
+              "enum": [
+                0,
+                1,
+                2
+              ],
+              "default": 0
+            }
+          },
+          {
+            "name": "lq",
+            "in": "query",
+            "description": "Content marked as low quality: `0` leaves it out, `1` includes it, `2` returns only low quality.",
+            "schema": {
+              "type": "integer",
+              "enum": [
+                0,
+                1,
+                2
+              ],
+              "default": 1
+            }
+          },
+          {
+            "name": "min_duration",
+            "in": "query",
+            "description": "Shortest length in seconds.",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 86400
+            },
+            "example": 300
+          },
+          {
+            "name": "max_duration",
+            "in": "query",
+            "description": "Longest length in seconds.",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 86400
+            },
+            "example": 1800
+          },
+          {
+            "name": "added_after",
+            "in": "query",
+            "description": "Only videos published at or after this moment: a date (`YYYY-MM-DD`, midnight UTC), an RFC 3339 date-time or a Unix timestamp. A fraction of a second counts as the next whole second.",
+            "schema": {
+              "type": "string",
+              "example": "2026-11-01"
+            }
+          },
+          {
+            "name": "added_before",
+            "in": "query",
+            "description": "Only videos published before this moment, in the same forms.",
+            "schema": {
+              "type": "string",
+              "example": "2026-11-15"
+            }
+          },
+          {
+            "name": "thumbsize",
+            "in": "query",
+            "description": "Thumbnail size: `small` fits 190x152, `medium` 427x240, `big` 640x360. The real width and height are in each thumbnail entry.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "small",
+                "medium",
+                "big"
+              ],
+              "default": "medium"
+            },
+            "example": "medium"
+          },
+          {
+            "name": "thumbs",
+            "in": "query",
+            "description": "Which thumbnails each video carries: `all` is the default thumbnail and the list of fifteen, `default` only the default thumbnail, `none` no thumbnails. The list of fifteen is about three quarters of a reply, so ask for `default` when you show one image per video.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "all",
+                "default",
+                "none"
+              ],
+              "default": "all"
+            },
+            "example": "default"
+          },
+          {
+            "name": "fields",
+            "in": "query",
+            "description": "Extra fields per video, separated by commas: `categories`, `pornstars`, `quality`. Each one costs a little time, so ask only for what you use.",
+            "schema": {
+              "type": "string",
+              "example": "categories,pornstars,quality"
+            }
+          },
+          {
+            "name": "lang",
+            "in": "query",
+            "description": "Adds `translation`: the title in this language, or `null` where there is none. Titles exist in `pl`, `fr` and `es`.",
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-z]{2}$",
+              "example": "pl"
+            }
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "description": "Reply format.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "json",
+                "xml"
+              ],
+              "default": "json"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "One page of videos. Malformed parameters are replaced by their defaults, so this method does not answer 400.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SearchResult"
+                },
+                "example": {
+                  "count": 2,
+                  "start": 0,
+                  "per_page": 2,
+                  "page": 1,
+                  "time_ms": 6,
+                  "total_count": 11626,
+                  "total_pages": 5813,
+                  "videos": [
+                    {
+                      "id": "AbCdEfGhIjK",
+                      "title": "Sample title",
+                      "keywords": "outdoor, garden, sample",
+                      "views": 260221,
+                      "rate": "4.13",
+                      "url": "https://www.eporner.com/video-AbCdEfGhIjK/sample-title/",
+                      "added": "2026-11-17 21:41:44",
+                      "length_sec": 2539,
+                      "length_min": "42:19",
+                      "embed": "https://www.eporner.com/embed/AbCdEfGhIjK/",
+                      "default_thumb": {
+                        "size": "medium",
+                        "width": 427,
+                        "height": 240,
+                        "src": "https://static-ca-cdn.eporner.com/thumbs/static4/5/50/500/5000001/5_240.jpg"
+                      }
+                    },
+                    {
+                      "id": "LmNoPqRsTuV",
+                      "title": "Another sample",
+                      "keywords": "outdoor, garden, sample",
+                      "views": 18400,
+                      "rate": "3.92",
+                      "url": "https://www.eporner.com/video-LmNoPqRsTuV/another-sample/",
+                      "added": "2026-11-17 21:41:44",
+                      "length_sec": 2539,
+                      "length_min": "42:19",
+                      "embed": "https://www.eporner.com/embed/LmNoPqRsTuV/",
+                      "default_thumb": {
+                        "size": "medium",
+                        "width": 427,
+                        "height": 240,
+                        "src": "https://static-ca-cdn.eporner.com/thumbs/static4/5/50/500/5000001/5_240.jpg"
+                      }
+                    }
+                  ]
+                }
+              },
+              "text/xml": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/video/id/": {
+      "get": {
+        "operationId": "getVideo",
+        "tags": [
+          "Videos"
+        ],
+        "summary": "Get one video",
+        "description": "Returns one video by its id. A video that was removed, is not playable or never existed gives an empty reply: `[]` in JSON. A 503 is not that reply: it means the video could not be looked up. To check many ids at once, use the status method.",
+        "x-anchor": "id",
+        "x-example": {
+          "id": "AbCdEfGhIjK",
+          "thumbs": "default"
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "query",
+            "description": "The video id: 11 letters and digits, case-sensitive.",
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9]{11}$"
+            },
+            "required": true,
+            "example": "AbCdEfGhIjK"
+          },
+          {
+            "name": "thumbsize",
+            "in": "query",
+            "description": "Thumbnail size: `small` fits 190x152, `medium` 427x240, `big` 640x360. The real width and height are in each thumbnail entry.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "small",
+                "medium",
+                "big"
+              ],
+              "default": "medium"
+            },
+            "example": "medium"
+          },
+          {
+            "name": "thumbs",
+            "in": "query",
+            "description": "Which thumbnails each video carries: `all` is the default thumbnail and the list of fifteen, `default` only the default thumbnail, `none` no thumbnails. The list of fifteen is about three quarters of a reply, so ask for `default` when you show one image per video.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "all",
+                "default",
+                "none"
+              ],
+              "default": "all"
+            },
+            "example": "default"
+          },
+          {
+            "name": "fields",
+            "in": "query",
+            "description": "Extra fields per video, separated by commas: `categories`, `pornstars`, `quality`. Each one costs a little time, so ask only for what you use.",
+            "schema": {
+              "type": "string",
+              "example": "categories,pornstars,quality"
+            }
+          },
+          {
+            "name": "lang",
+            "in": "query",
+            "description": "Adds `translation`: the title in this language, or `null` where there is none. Titles exist in `pl`, `fr` and `es`.",
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-z]{2}$",
+              "example": "pl"
+            }
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "description": "Reply format.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "json",
+                "xml"
+              ],
+              "default": "json"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The video, or an empty array when there is no such video.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/Video"
+                    },
+                    {
+                      "type": "array",
+                      "maxItems": 0
+                    }
+                  ]
+                },
+                "example": {
+                  "id": "AbCdEfGhIjK",
+                  "title": "Sample title",
+                  "keywords": "outdoor, garden, sample",
+                  "views": 260221,
+                  "rate": "4.13",
+                  "url": "https://www.eporner.com/video-AbCdEfGhIjK/sample-title/",
+                  "added": "2026-11-17 21:41:44",
+                  "length_sec": 2539,
+                  "length_min": "42:19",
+                  "embed": "https://www.eporner.com/embed/AbCdEfGhIjK/",
+                  "default_thumb": {
+                    "size": "medium",
+                    "width": 427,
+                    "height": 240,
+                    "src": "https://static-ca-cdn.eporner.com/thumbs/static4/5/50/500/5000001/5_240.jpg"
+                  }
+                }
+              },
+              "text/xml": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/video/removed/": {
+      "get": {
+        "operationId": "listRemovedVideos",
+        "tags": [
+          "Removed videos"
+        ],
+        "summary": "Removed videos",
+        "description": "With `since`, returns the videos removed from that moment on, oldest removal first, up to 1000 per reply. Read the reply, store `next`, and pass it as `after` to continue; when `has_more` is false you are up to date. Without `since` and `after` the reply is a redirect to the complete list of removed ids as one file, which is rebuilt about once a day.",
+        "x-anchor": "removed",
+        "x-example": {
+          "since": "2026-11-17T00:00:00Z",
+          "per_page": 2
+        },
+        "parameters": [
+          {
+            "name": "since",
+            "in": "query",
+            "description": "Removals at or after this moment: an RFC 3339 date-time, a date (`YYYY-MM-DD`, midnight UTC) or a Unix timestamp. A fraction of a second counts as the next whole second.",
+            "schema": {
+              "type": "string"
+            },
+            "example": "2026-11-17T00:00:00Z"
+          },
+          {
+            "name": "after",
+            "in": "query",
+            "description": "The `next` value of the previous reply. Continues the listing right after its last entry; `since` is then not needed.",
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9]{1,10}\\.[0-9]{1,10}$"
+            }
+          },
+          {
+            "name": "per_page",
+            "in": "query",
+            "description": "Entries per reply.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1000,
+              "default": 1000
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Removed videos, oldest removal first.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RemovedList"
+                },
+                "example": {
+                  "since": "2026-11-17T00:00:00Z",
+                  "count": 2,
+                  "has_more": true,
+                  "next": "1794873600.18200456",
+                  "removed": [
+                    {
+                      "id": "AbCdEfGhIjK",
+                      "removed_at": "2026-11-17T00:00:00Z"
+                    },
+                    {
+                      "id": "LmNoPqRsTuV",
+                      "removed_at": "2026-11-17T00:04:12Z"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "302": {
+            "description": "Without `since` and `after`: a redirect to the complete list, one id per line.",
+            "headers": {
+              "Location": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/InvalidParameter"
+          },
+          "405": {
+            "$ref": "#/components/responses/MethodNotAllowed"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/video/status/": {
+      "get": {
+        "operationId": "getVideoStatus",
+        "tags": [
+          "Removed videos"
+        ],
+        "summary": "Check video status",
+        "description": "Tells for up to 100 ids at once whether each video can still be watched. One request replaces up to 100 calls of the id method.",
+        "x-anchor": "status",
+        "x-example": {
+          "id": "AbCdEfGhIjK,LmNoPqRsTuV"
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "query",
+            "description": "One to 100 video ids, separated by commas.",
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "example": "AbCdEfGhIjK,LmNoPqRsTuV"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "One entry per id asked, in the order asked.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusList"
+                },
+                "example": {
+                  "count": 2,
+                  "videos": [
+                    {
+                      "id": "AbCdEfGhIjK",
+                      "status": "active"
+                    },
+                    {
+                      "id": "LmNoPqRsTuV",
+                      "status": "removed",
+                      "removed_at": "2026-11-17T00:04:12Z"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/InvalidParameter"
+          },
+          "405": {
+            "$ref": "#/components/responses/MethodNotAllowed"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/categories/": {
+      "get": {
+        "operationId": "listCategories",
+        "tags": [
+          "Lists"
+        ],
+        "summary": "Categories",
+        "description": "All categories. The `categories` field of a video uses the same entries.",
+        "x-anchor": "categories",
+        "x-example": {},
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "The category list.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CategoryList"
+                },
+                "example": {
+                  "count": 2,
+                  "categories": [
+                    {
+                      "id": 49,
+                      "name": "Outdoor",
+                      "slug": "outdoor",
+                      "url": "https://www.eporner.com/cat/outdoor/"
+                    },
+                    {
+                      "id": 18,
+                      "name": "Massage",
+                      "slug": "massage",
+                      "url": "https://www.eporner.com/cat/massage/"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "405": {
+            "$ref": "#/components/responses/MethodNotAllowed"
+          }
+        }
+      }
+    },
+    "/pornstars/": {
+      "get": {
+        "operationId": "listPornstars",
+        "tags": [
+          "Lists"
+        ],
+        "summary": "Pornstars",
+        "description": "The performer directory, most popular first. The `pornstars` field of a video uses the same ids.",
+        "x-anchor": "pornstars",
+        "x-example": {
+          "per_page": 2
+        },
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "description": "Page number.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100000,
+              "default": 1
+            }
+          },
+          {
+            "name": "per_page",
+            "in": "query",
+            "description": "Performers per page.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1000,
+              "default": 100
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "One page of performers.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PornstarList"
+                },
+                "example": {
+                  "count": 2,
+                  "page": 1,
+                  "per_page": 2,
+                  "total_count": 45440,
+                  "total_pages": 22720,
+                  "pornstars": [
+                    {
+                      "id": 4211,
+                      "name": "Sample Name",
+                      "url": "https://www.eporner.com/pornstar/sample-name/",
+                      "gender": "female",
+                      "videos": 312,
+                      "photos": 48
+                    },
+                    {
+                      "id": 977,
+                      "name": "Another Name",
+                      "url": "https://www.eporner.com/pornstar/another-name/",
+                      "gender": "male",
+                      "videos": 120,
+                      "photos": 0
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/InvalidParameter"
+          },
+          "405": {
+            "$ref": "#/components/responses/MethodNotAllowed"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/oembed/": {
+      "get": {
+        "operationId": "getOembed",
+        "tags": [
+          "Embedding"
+        ],
+        "summary": "oEmbed",
+        "description": "Returns the player for a video address in the oEmbed 1.0 format (type `video`), sized to fit `maxwidth` and `maxheight`. For VR videos, the iframe delegates `xr-spatial-tracking` so headset users can enter immersive mode.",
+        "x-anchor": "oembed",
+        "x-example": {
+          "url": "https://www.eporner.com/video-AbCdEfGhIjK/sample-title/",
+          "maxwidth": 640
+        },
+        "parameters": [
+          {
+            "name": "url",
+            "in": "query",
+            "description": "The address of a video page or of its player on eporner.com, on any of its language hosts.",
+            "schema": {
+              "type": "string",
+              "format": "uri"
+            },
+            "required": true,
+            "example": "https://www.eporner.com/video-AbCdEfGhIjK/sample-title/"
+          },
+          {
+            "name": "maxwidth",
+            "in": "query",
+            "description": "The widest player you can show, in pixels. Without it the player is at most 1280 wide.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "example": 640
+          },
+          {
+            "name": "maxheight",
+            "in": "query",
+            "description": "The tallest player you can show, in pixels.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "description": "Only `json` is offered; any other value is answered with 501.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "json"
+              ],
+              "default": "json"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The oEmbed reply.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Oembed"
+                },
+                "example": {
+                  "version": "1.0",
+                  "type": "video",
+                  "provider_name": "Eporner",
+                  "provider_url": "https://www.eporner.com/",
+                  "title": "Sample title",
+                  "html": "<iframe src=\"https://www.eporner.com/embed/AbCdEfGhIjK/\" width=\"640\" height=\"360\" frameborder=\"0\" scrolling=\"no\" allowfullscreen></iframe>",
+                  "width": 640,
+                  "height": 360,
+                  "thumbnail_url": "https://static-ca-cdn.eporner.com/thumbs/static4/5/50/500/5000001/5_360.jpg",
+                  "thumbnail_width": 640,
+                  "thumbnail_height": 360
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/InvalidParameter"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "405": {
+            "$ref": "#/components/responses/MethodNotAllowed"
+          },
+          "501": {
+            "$ref": "#/components/responses/FormatNotImplemented"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/openapi/": {
+      "get": {
+        "operationId": "getOpenapi",
+        "tags": [
+          "Lists"
+        ],
+        "summary": "This description",
+        "description": "This document: the machine-readable description of the API, for code generators and API clients.",
+        "x-anchor": "openapi",
+        "x-example": {},
+        "x-hidden": true,
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "An OpenAPI 3.1 document.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "405": {
+            "$ref": "#/components/responses/MethodNotAllowed"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "responses": {
+      "InvalidParameter": {
+        "description": "A parameter is missing or malformed. `parameter` names it.",
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/Problem"
+            },
+            "example": {
+              "type": "https://www.eporner.com/api/v2/#error-invalid-parameter",
+              "title": "Invalid parameter",
+              "status": 400,
+              "detail": "since must be a Unix timestamp, a date (YYYY-MM-DD) or an RFC 3339 date-time.",
+              "parameter": "since"
+            }
+          }
+        }
+      },
+      "NotFound": {
+        "description": "There is no such video or method.",
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/Problem"
+            },
+            "example": {
+              "type": "https://www.eporner.com/api/v2/#error-not-found",
+              "title": "Not found",
+              "status": 404,
+              "detail": "There is no video at this address."
+            }
+          }
+        }
+      },
+      "Unavailable": {
+        "description": "The request could not be answered right now. Wait for the time in `Retry-After` and try again; do not treat it as an empty result.",
+        "headers": {
+          "Retry-After": {
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Seconds to wait."
+          }
+        },
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/Problem"
+            },
+            "example": {
+              "type": "https://www.eporner.com/api/v2/#error-unavailable",
+              "title": "Temporarily unavailable",
+              "status": 503,
+              "detail": "The request could not be answered right now. Try again in half a minute."
+            }
+          }
+        }
+      },
+      "MethodNotAllowed": {
+        "description": "The method is read with GET (or HEAD). `Allow` lists what it accepts. The search and id methods also answer POST, as they always have.",
+        "headers": {
+          "Allow": {
+            "schema": {
+              "type": "string"
+            },
+            "description": "The HTTP methods the address accepts."
+          }
+        },
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/Problem"
+            },
+            "example": {
+              "type": "https://www.eporner.com/api/v2/#error-method-not-allowed",
+              "title": "Method not allowed",
+              "status": 405,
+              "detail": "Use GET."
+            }
+          }
+        }
+      },
+      "FormatNotImplemented": {
+        "description": "A format other than JSON was asked for.",
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/Problem"
+            },
+            "example": {
+              "type": "https://www.eporner.com/api/v2/#error-format-not-implemented",
+              "title": "Format not implemented",
+              "status": 501,
+              "detail": "oEmbed replies are available as JSON only."
+            }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "Thumbnail": {
+        "type": "object",
+        "required": [
+          "size",
+          "width",
+          "height",
+          "src"
+        ],
+        "properties": {
+          "size": {
+            "type": "string",
+            "enum": [
+              "small",
+              "medium",
+              "big"
+            ],
+            "description": "The size asked for."
+          },
+          "width": {
+            "type": "integer",
+            "description": "Width in pixels."
+          },
+          "height": {
+            "type": "integer",
+            "description": "Height in pixels."
+          },
+          "src": {
+            "type": "string",
+            "format": "uri",
+            "description": "The image address."
+          }
+        }
+      },
+      "Category": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "slug",
+          "url"
+        ],
+        "properties": {
+          "id": {
+            "type": "integer",
+            "description": "The category's number."
+          },
+          "name": {
+            "type": "string",
+            "description": "English name."
+          },
+          "slug": {
+            "type": "string",
+            "description": "The name as it appears in addresses."
+          },
+          "url": {
+            "type": "string",
+            "format": "uri",
+            "description": "The category page."
+          }
+        }
+      },
+      "PornstarRef": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "url"
+        ],
+        "properties": {
+          "id": {
+            "type": "integer",
+            "description": "The performer's number."
+          },
+          "name": {
+            "type": "string",
+            "description": "Name."
+          },
+          "url": {
+            "type": "string",
+            "format": "uri",
+            "description": "The performer's page."
+          }
+        }
+      },
+      "Pornstar": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "url",
+          "gender",
+          "videos",
+          "photos"
+        ],
+        "properties": {
+          "id": {
+            "type": "integer",
+            "description": "The performer's number."
+          },
+          "name": {
+            "type": "string",
+            "description": "Name."
+          },
+          "url": {
+            "type": "string",
+            "format": "uri",
+            "description": "The performer's page."
+          },
+          "gender": {
+            "type": "string",
+            "enum": [
+              "female",
+              "male"
+            ],
+            "description": "Gender as listed in the directory."
+          },
+          "videos": {
+            "type": "integer",
+            "description": "Number of videos."
+          },
+          "photos": {
+            "type": "integer",
+            "description": "Number of photos."
+          }
+        }
+      },
+      "Quality": {
+        "type": "object",
+        "required": [
+          "max",
+          "available",
+          "hd",
+          "fps",
+          "vr"
+        ],
+        "properties": {
+          "max": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The best quality the player offers, for example `1080p`; `null` when unknown."
+          },
+          "available": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "240p",
+                "360p",
+                "480p",
+                "720p",
+                "1080p",
+                "1440p",
+                "2160p"
+              ]
+            },
+            "description": "Every quality the player offers, lowest first. A quality counts when the video has it in H.264 or in AV1."
+          },
+          "hd": {
+            "type": "boolean",
+            "description": "True from 720p up."
+          },
+          "fps": {
+            "type": "integer",
+            "description": "Frames per second; 0 when unknown."
+          },
+          "vr": {
+            "type": "boolean",
+            "description": "True for a VR video."
+          }
+        }
+      },
+      "Translation": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "required": [
+          "lang",
+          "title"
+        ],
+        "properties": {
+          "lang": {
+            "type": "string",
+            "description": "The language asked for."
+          },
+          "title": {
+            "type": "string",
+            "description": "The title in that language."
+          }
+        }
+      },
+      "Video": {
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "keywords",
+          "views",
+          "rate",
+          "url",
+          "added",
+          "length_sec",
+          "length_min",
+          "embed"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The video id: 11 letters and digits, case-sensitive."
+          },
+          "title": {
+            "type": "string",
+            "description": "Title, UTF-8."
+          },
+          "keywords": {
+            "type": "string",
+            "description": "Keywords, separated by commas."
+          },
+          "views": {
+            "type": "integer",
+            "description": "Estimated number of views."
+          },
+          "rate": {
+            "type": "string",
+            "description": "Rating from `0.00` to `5.00`, as a string with two decimals."
+          },
+          "url": {
+            "type": "string",
+            "format": "uri",
+            "description": "The video page. Link to this address."
+          },
+          "added": {
+            "type": "string",
+            "description": "When the video was added: `YYYY-MM-DD hh:mm:ss` in Central European time, without an offset."
+          },
+          "length_sec": {
+            "type": "integer",
+            "description": "Length in seconds."
+          },
+          "length_min": {
+            "type": "string",
+            "description": "Length as `m:ss`. Minutes are not folded into hours: 2 h 5 min 30 s is `125:30`."
+          },
+          "embed": {
+            "type": "string",
+            "format": "uri",
+            "description": "The player address, for the `src` of an iframe."
+          },
+          "default_thumb": {
+            "$ref": "#/components/schemas/Thumbnail",
+            "description": "The thumbnail the site shows. Left out with `thumbs=none`."
+          },
+          "thumbs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Thumbnail"
+            },
+            "description": "Fifteen thumbnails from across the video. Only with `thumbs=all`."
+          },
+          "categories": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Category"
+            },
+            "description": "Only with `fields=categories`."
+          },
+          "pornstars": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PornstarRef"
+            },
+            "description": "Only with `fields=pornstars`."
+          },
+          "quality": {
+            "$ref": "#/components/schemas/Quality",
+            "description": "Only with `fields=quality`."
+          },
+          "translation": {
+            "$ref": "#/components/schemas/Translation",
+            "description": "Only with `lang`: the translated title, or `null`."
+          }
+        }
+      },
+      "SearchResult": {
+        "type": "object",
+        "required": [
+          "count",
+          "start",
+          "per_page",
+          "page",
+          "time_ms",
+          "total_count",
+          "total_pages",
+          "videos"
+        ],
+        "properties": {
+          "count": {
+            "type": "integer",
+            "description": "Videos in this reply."
+          },
+          "start": {
+            "type": "integer",
+            "description": "Position of the first video of this page: `per_page * (page - 1)`."
+          },
+          "per_page": {
+            "type": "integer",
+            "description": "Videos per page, as used."
+          },
+          "page": {
+            "type": "integer",
+            "description": "This page's number."
+          },
+          "time_ms": {
+            "type": "integer",
+            "description": "Time the request took on the server, in milliseconds."
+          },
+          "total_count": {
+            "type": "integer",
+            "description": "Videos that match, up to 100,000 for a search or a listing narrowed by length or date."
+          },
+          "total_pages": {
+            "type": "integer",
+            "description": "Pages there are with this `per_page`. Stop here; do not stop because a page is shorter than `per_page`."
+          },
+          "videos": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Video"
+            },
+            "description": "The videos of this page."
+          }
+        }
+      },
+      "RemovedList": {
+        "type": "object",
+        "required": [
+          "since",
+          "count",
+          "has_more",
+          "removed"
+        ],
+        "properties": {
+          "since": {
+            "type": "string",
+            "format": "date-time",
+            "description": "The moment this reply starts from."
+          },
+          "count": {
+            "type": "integer",
+            "description": "Entries in this reply."
+          },
+          "has_more": {
+            "type": "boolean",
+            "description": "True when more entries follow."
+          },
+          "next": {
+            "type": "string",
+            "description": "Pass as `after` to continue. Present when `has_more` is true."
+          },
+          "removed": {
+            "type": "array",
+            "description": "Removed videos, oldest removal first.",
+            "items": {
+              "type": "object",
+              "required": [
+                "id",
+                "removed_at"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "description": "The video id."
+                },
+                "removed_at": {
+                  "type": "string",
+                  "format": "date-time",
+                  "description": "When it was removed, UTC."
+                }
+              }
+            }
+          }
+        }
+      },
+      "StatusList": {
+        "type": "object",
+        "required": [
+          "count",
+          "videos"
+        ],
+        "properties": {
+          "count": {
+            "type": "integer",
+            "description": "Entries in this reply."
+          },
+          "videos": {
+            "type": "array",
+            "description": "One entry per id asked, in the order asked.",
+            "items": {
+              "type": "object",
+              "required": [
+                "id",
+                "status"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "description": "The id as asked."
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "active",
+                    "removed",
+                    "unavailable",
+                    "unknown"
+                  ],
+                  "description": "`active`: can be watched. `removed`: removed for good; drop it. `unavailable`: not playable right now. `unknown`: no video has this id."
+                },
+                "removed_at": {
+                  "type": "string",
+                  "format": "date-time",
+                  "description": "When it was removed, UTC. Only for `removed`."
+                }
+              }
+            }
+          }
+        }
+      },
+      "CategoryList": {
+        "type": "object",
+        "required": [
+          "count",
+          "categories"
+        ],
+        "properties": {
+          "count": {
+            "type": "integer",
+            "description": "Number of categories."
+          },
+          "categories": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Category"
+            },
+            "description": "All categories."
+          }
+        }
+      },
+      "PornstarList": {
+        "type": "object",
+        "required": [
+          "count",
+          "page",
+          "per_page",
+          "total_count",
+          "total_pages",
+          "pornstars"
+        ],
+        "properties": {
+          "count": {
+            "type": "integer",
+            "description": "Performers in this reply."
+          },
+          "page": {
+            "type": "integer",
+            "description": "This page's number."
+          },
+          "per_page": {
+            "type": "integer",
+            "description": "Performers per page."
+          },
+          "total_count": {
+            "type": "integer",
+            "description": "Performers in the directory."
+          },
+          "total_pages": {
+            "type": "integer",
+            "description": "Pages there are with this `per_page`."
+          },
+          "pornstars": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Pornstar"
+            },
+            "description": "The performers of this page."
+          }
+        }
+      },
+      "Oembed": {
+        "type": "object",
+        "required": [
+          "version",
+          "type",
+          "provider_name",
+          "provider_url",
+          "title",
+          "html",
+          "width",
+          "height"
+        ],
+        "properties": {
+          "version": {
+            "type": "string",
+            "const": "1.0",
+            "description": "The oEmbed version."
+          },
+          "type": {
+            "type": "string",
+            "const": "video",
+            "description": "Always `video`."
+          },
+          "provider_name": {
+            "type": "string",
+            "description": "Eporner."
+          },
+          "provider_url": {
+            "type": "string",
+            "format": "uri",
+            "description": "The site's address."
+          },
+          "title": {
+            "type": "string",
+            "description": "The video's title."
+          },
+          "html": {
+            "type": "string",
+            "description": "The markup to place on your page: an iframe with the player."
+          },
+          "width": {
+            "type": "integer",
+            "description": "Player width in pixels."
+          },
+          "height": {
+            "type": "integer",
+            "description": "Player height in pixels."
+          },
+          "thumbnail_url": {
+            "type": "string",
+            "format": "uri",
+            "description": "A thumbnail for the video."
+          },
+          "thumbnail_width": {
+            "type": "integer",
+            "description": "Thumbnail width."
+          },
+          "thumbnail_height": {
+            "type": "integer",
+            "description": "Thumbnail height."
+          }
+        }
+      },
+      "Problem": {
+        "type": "object",
+        "description": "An error in the RFC 9457 format.",
+        "required": [
+          "type",
+          "title",
+          "status",
+          "detail"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "format": "uri",
+            "description": "Identifies the kind of error; the address leads to its description."
+          },
+          "title": {
+            "type": "string",
+            "description": "The kind of error in words."
+          },
+          "status": {
+            "type": "integer",
+            "description": "The HTTP status code."
+          },
+          "detail": {
+            "type": "string",
+            "description": "What was wrong with this request."
+          },
+          "parameter": {
+            "type": "string",
+            "description": "The parameter at fault, for an invalid parameter."
+          }
+        }
+      }
+    }
+  }
+}

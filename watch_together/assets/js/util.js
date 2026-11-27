@@ -119,7 +119,11 @@
       /* 6) PornFlip */
       if (/pornflip\.com\/(?:video|videos)\/[a-zA-Z0-9_-]+/i.test(url)) return { kind: 'pornflip', src: url, provider: 'PornFlip', label: 'PornFlip' };
 
-      /* 7) رييلز إنستغرام */
+      /* مشغّل ePorner من واجهة API v2 (معرّف الفيديو 11 حرفاً/رقماً) */
+      if (/^https:\/\/(?:[a-z0-9-]+\.)*eporner\.com\/embed\/[A-Za-z0-9]{11}\/?(?:[?#].*)?$/i.test(url))
+        return { kind: 'embed', src: url, provider: 'ePorner', label: 'ePorner' };
+
+      /* 8) رييلز إنستغرام */
       if (/instagram\.com\/(reel|reels)\//i.test(url)) return { kind: 'instagram-reel', src: url, provider: 'Instagram', label: 'رييلز إنستغرام' };
 
       /* 5) HLS */

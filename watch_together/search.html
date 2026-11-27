@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
   <meta name="theme-color" content="#080c14">
-  <meta name="description" content="ابحث في ديليموشن ويوتيوب، أو استخدم PornFlip للبالغين بعد تأكيد 18+. يتطلب البحث خادم Java؛ ويُشغّل PornFlip عبر مشغّله المضمّن.">
+  <meta name="description" content="ابحث في ديليموشن ويوتيوب وPornFlip وePorner. المصادر المخصصة للبالغين تتطلب إقرارًا ذاتيًا صريحًا 18+ قبل الطلب.">
   <meta name="color-scheme" content="dark">
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="apple-touch-icon" href="assets/icons/apple-touch-icon.png">
@@ -12,11 +12,11 @@
   <meta property="og:site_name" content="WatchTogether">
   <meta property="og:locale" content="ar_DZ">
   <meta property="og:title" content="البحث — WatchTogether">
-  <meta property="og:description" content="ابحث في ديليموشن ويوتيوب، أو استخدم PornFlip للبالغين بعد تأكيد 18+.">
+  <meta property="og:description" content="ابحث في ديليموشن ويوتيوب وePorner وPornFlip؛ تتطلب مصادر البالغين تأكيد 18+.">
   <meta property="og:image" content="assets/icons/icon-512.png">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="البحث — WatchTogether">
-  <meta name="twitter:description" content="ابحث في ديليموشن ويوتيوب، أو استخدم PornFlip للبالغين بعد تأكيد 18+.">
+  <meta name="twitter:description" content="ابحث في ديليموشن ويوتيوب وePorner وPornFlip؛ تتطلب مصادر البالغين تأكيد 18+.">
   <meta name="twitter:image" content="assets/icons/icon-512.png">
   <script src="assets/js/prefs.js?v=1.0.0"></script>
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
@@ -30,7 +30,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800;900&family=Grand+Hotel&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="assets/css/app.css?v=4.1.0">
   <link rel="stylesheet" href="assets/css/home.css?v=4.3.0">
-  <link rel="stylesheet" href="assets/css/search.css?v=1.4.0">
+  <link rel="stylesheet" href="assets/css/search.css?v=1.5.0">
   <link rel="stylesheet" href="assets/css/site.css?v=1.0.0">
 </head>
 <body class="home-page search-page">
@@ -51,7 +51,7 @@
 
   <main class="search-main">
     <h1 class="search-title">ابحث في الفيديو والبث المباشر</h1>
-    <p class="search-sub">ابحث في ديليموشن أو يوتيوب. مصدر PornFlip للبالغين فقط (18+) ولا يرسل أي طلب قبل تأكيد العمر؛ يحتاج البحث خادم Java ويُستخدم فيه مشغّل PornFlip المضمّن.</p>
+    <p class="search-sub">ابحث في ديليموشن أو يوتيوب، أو استخدم PornFlip وePorner للبالغين فقط (18+) بعد إقرار ذاتي صريح. يتطلب البحث خادم Java؛ ويُشغّل كل مصدر بمشغّله المضمّن.</p>
 
     <div class="search-sources" id="searchSources" role="tablist" aria-label="مصدر البحث">
       <button class="source-tab is-active" type="button" role="tab" aria-selected="true" data-site="dailymotion">
@@ -64,7 +64,39 @@
               data-site="pornflip" aria-label="PornFlip — للبالغين فقط، 18 عامًا أو أكثر">
         <span class="ic" data-icon="film" data-size="17"></span> PornFlip <span class="source-tab__age">18+</span>
       </button>
+      <button class="source-tab source-tab--adult" type="button" role="tab" aria-selected="false"
+              data-site="eporner" aria-label="ePorner — للبالغين فقط، 18 عامًا أو أكثر">
+        <span class="ic" data-icon="film" data-size="17"></span> ePorner <span class="source-tab__age">18+</span>
+      </button>
     </div>
+
+    <details class="eporner-tools" id="epornerTools" hidden>
+      <summary>عمليات ePorner API الأخرى</summary>
+      <div class="eporner-tools__body">
+        <p class="eporner-tools__description">هذه واجهة للعمليات الثماني في مواصفة ePorner API v2.1.0. أرسل معاملات JSON كما هي موثقة؛ لا يعمل أي طلب قبل إقرار 18+، والخادم يفرض ذلك أيضاً.</p>
+        <div class="eporner-tools__row">
+          <label for="epornerOperation">العملية</label>
+          <select class="input eporner-tools__select" id="epornerOperation">
+            <option value="search">GET /video/search/ — البحث</option>
+            <option value="video">GET /video/id/ — بيانات فيديو</option>
+            <option value="removed">GET /video/removed/ — المحذوفة</option>
+            <option value="status">GET /video/status/ — حالة الفيديوهات</option>
+            <option value="categories">GET /categories/ — الفئات</option>
+            <option value="pornstars">GET /pornstars/ — المؤدّون</option>
+            <option value="oembed">GET /oembed/ — بيانات المشغّل</option>
+            <option value="openapi">GET /openapi/ — OpenAPI</option>
+          </select>
+        </div>
+        <label class="eporner-tools__label" for="epornerParams">المعاملات (JSON)</label>
+        <textarea class="input eporner-tools__params" id="epornerParams" rows="3" spellcheck="false">{}</textarea>
+        <p class="eporner-tools__help" id="epornerOperationHelp">يدعم جميع معاملات البحث الموثقة في ملف OpenAPI.</p>
+        <div class="eporner-tools__actions">
+          <button class="btn btn--primary" id="epornerRunOperation" type="button">تنفيذ العملية</button>
+          <a class="btn btn--ghost" href="docs/api/eporner-api-v2.openapi.json" target="_blank" rel="noopener noreferrer">فتح ملف OpenAPI الأصلي</a>
+        </div>
+        <pre class="eporner-tools__output" id="epornerOutput" role="status" aria-live="polite" hidden></pre>
+      </div>
+    </details>
 
     <div class="search-type-tabs" id="searchTypes" role="tablist" aria-label="نوع النتائج">
       <button class="search-type-tab is-active" type="button" role="tab" aria-selected="true" data-search-type="all">الكل</button>
@@ -123,8 +155,8 @@
   <dialog class="adult-gate" id="adultGate" aria-labelledby="adultGateTitle" aria-describedby="adultGateText">
     <div class="adult-gate__body">
       <span class="adult-gate__badge" aria-hidden="true">18+</span>
-      <h2 id="adultGateTitle">PornFlip — تأكيد العمر</h2>
-      <p id="adultGateText">هذا المصدر مخصص للبالغين فقط وقد يعرض نتائج أو صورًا ذات طابع جنسي صريح. لن يُرسل البحث أو تُحمّل أي نتيجة قبل اختيار المتابعة.</p>
+      <h2 id="adultGateTitle">مصدر بالغين — تأكيد العمر</h2>
+      <p id="adultGateText">هذا المصدر مخصص للبالغين فقط وقد يعرض محتوى جنسيًا صريحًا. لن يُرسل البحث أو تُحمّل أي نتيجة أو بيانات API قبل اختيار المتابعة.</p>
       <p class="adult-gate__notice">التأكيد إقرار ذاتي وليس تحققًا مستقلًا من العمر. لا تتابع إن كان عمرك أقل من 18 عامًا أو كان ذلك مخالفًا للقانون المحلي.</p>
       <div class="adult-gate__actions">
         <button class="btn btn--primary" id="adultGateAccept" type="button">أؤكد أن عمري 18+ وأتابع</button>
@@ -206,14 +238,15 @@
   </dialog>
 
   <script src="assets/js/config.js?v=3.8.2"></script>
-  <script src="assets/js/util.js?v=3.1.0"></script>
+  <script src="assets/js/util.js?v=3.3.0"></script>
   <script src="assets/js/server-probe.js?v=1.5.0"></script>
   <script src="assets/js/icons.js?v=3.2.0"></script>
   <script src="assets/js/auth.js?v=3.2.0"></script>
   <script src="assets/js/favorites.js?v=1.0.0"></script>
   <script src="assets/js/rooms.js?v=3.3.0"></script>
   <script src="assets/js/resolver.js?v=3.2.0"></script>
-  <script src="assets/js/search.js?v=1.11.0"></script>
+  <script src="assets/js/eporner.js?v=1.0.0"></script>
+  <script src="assets/js/search.js?v=1.13.0"></script>
   <script src="assets/js/site.js?v=1.0.2"></script>
 </body>
 </html>
