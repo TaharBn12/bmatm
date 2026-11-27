@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
   <meta name="theme-color" content="#080c14">
-  <meta name="description" content="ابحث في ديليموشن ويوتيوب وPornFlip وePorner. المصادر المخصصة للبالغين تتطلب إقرارًا ذاتيًا صريحًا 18+ قبل الطلب.">
+  <meta name="description" content="اكتشف ePorner عبر دليل الفئات والمؤدّين وكل عمليات API الموثّقة. يتطلب المحتوى المخصص للبالغين إقرارًا ذاتيًا صريحًا 18+ قبل أي طلب.">
   <meta name="color-scheme" content="dark">
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="apple-touch-icon" href="assets/icons/apple-touch-icon.png">
@@ -12,11 +12,11 @@
   <meta property="og:site_name" content="WatchTogether">
   <meta property="og:locale" content="ar_DZ">
   <meta property="og:title" content="البحث — WatchTogether">
-  <meta property="og:description" content="ابحث في ديليموشن ويوتيوب وePorner وPornFlip؛ تتطلب مصادر البالغين تأكيد 18+.">
+  <meta property="og:description" content="اكتشف ePorner والفئات والمؤدّين عبر WatchTogether؛ يتطلب أي طلب إقرارًا صريحًا 18+.">
   <meta property="og:image" content="assets/icons/icon-512.png">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="البحث — WatchTogether">
-  <meta name="twitter:description" content="ابحث في ديليموشن ويوتيوب وePorner وPornFlip؛ تتطلب مصادر البالغين تأكيد 18+.">
+  <meta name="twitter:description" content="اكتشف ePorner والفئات والمؤدّين عبر WatchTogether؛ يتطلب أي طلب إقرارًا صريحًا 18+.">
   <meta name="twitter:image" content="assets/icons/icon-512.png">
   <script src="assets/js/prefs.js?v=1.0.0"></script>
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
@@ -30,7 +30,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800;900&family=Grand+Hotel&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="assets/css/app.css?v=4.1.0">
   <link rel="stylesheet" href="assets/css/home.css?v=4.3.0">
-  <link rel="stylesheet" href="assets/css/search.css?v=1.5.0">
+  <link rel="stylesheet" href="assets/css/search.css?v=2.0.0">
   <link rel="stylesheet" href="assets/css/site.css?v=1.0.0">
 </head>
 <body class="home-page search-page">
@@ -45,57 +45,93 @@
           <span class="brand__sub">WATCH • TOGETHER</span>
         </span>
       </a>
-      <span class="search-badge" id="searchSourceBadge">ديليموشن</span>
+      <span class="search-badge" id="searchSourceBadge">ePorner · 18+</span>
     </div>
   </header>
 
   <main class="search-main">
-    <h1 class="search-title">ابحث في الفيديو والبث المباشر</h1>
-    <p class="search-sub">ابحث في ديليموشن أو يوتيوب، أو استخدم PornFlip وePorner للبالغين فقط (18+) بعد إقرار ذاتي صريح. يتطلب البحث خادم Java؛ ويُشغّل كل مصدر بمشغّله المضمّن.</p>
+    <section class="eporner-hero" id="epornerHero" aria-labelledby="searchTitle">
+      <div class="eporner-hero__copy">
+        <p class="eporner-hero__eyebrow"><span class="eporner-hero__pulse"></span> ePorner Discovery <span>API v2.1.0</span></p>
+        <h1 class="search-title" id="searchTitle">اكتشف أكثر. شاهدوا معًا.</h1>
+        <p class="search-sub">ابدأ من ePorner: ابحث بالعنوان أو الكلمات المفتاحية، استكشف دليلي الفئات والمؤدّين، واضبط كل معامل بحث كما توثّقه الواجهة.</p>
+        <div class="eporner-hero__metrics" aria-label="قدرات الاستكشاف">
+          <span><b>08</b><small>عمليات API</small></span>
+          <span><b>02</b><small>دليلا استكشاف</small></span>
+          <span><b>18+</b><small>إقرار مطلوب</small></span>
+        </div>
+      </div>
+      <div class="eporner-hero__art" aria-hidden="true">
+        <div class="eporner-hero__halo"></div>
+        <div class="eporner-hero__poster">
+          <div class="eporner-hero__poster-top"><span>WT / DISCOVERY</span><span>02.1</span></div>
+          <div class="eporner-hero__poster-mark">e<span>p</span></div>
+          <div class="eporner-hero__poster-play"><span></span></div>
+          <div class="eporner-hero__poster-lines"><i></i><i></i><i></i></div>
+          <div class="eporner-hero__poster-bottom"><span>SEARCH</span><span>WATCH TOGETHER</span></div>
+        </div>
+        <span class="eporner-hero__floating eporner-hero__floating--one">الفئات</span>
+        <span class="eporner-hero__floating eporner-hero__floating--two">المؤدّون</span>
+      </div>
+    </section>
+
+    <section class="search-generic-hero" id="searchGenericHero" hidden aria-labelledby="searchGenericTitle">
+      <h1 class="search-title" id="searchGenericTitle">ابحث في الفيديو والبث المباشر</h1>
+      <p class="search-sub">اختر مصدرًا للبحث. يتطلب محتوى ePorner وPornFlip إقرارًا صريحًا بأن عمرك 18 عامًا أو أكثر قبل أي طلب.</p>
+    </section>
 
     <div class="search-sources" id="searchSources" role="tablist" aria-label="مصدر البحث">
-      <button class="source-tab is-active" type="button" role="tab" aria-selected="true" data-site="dailymotion">
-        <span class="ic" data-icon="film" data-size="17"></span> ديليموشن
-      </button>
-      <button class="source-tab" type="button" role="tab" aria-selected="false" data-site="youtube">
-        <span class="ic" data-icon="play" data-size="17"></span> يوتيوب
+      <button class="source-tab source-tab--adult is-active" type="button" role="tab" aria-selected="true"
+              data-site="eporner" aria-label="ePorner — للبالغين فقط، 18 عامًا أو أكثر">
+        <span class="ic" data-icon="film" data-size="17"></span> ePorner <span class="source-tab__age">18+</span>
       </button>
       <button class="source-tab source-tab--adult" type="button" role="tab" aria-selected="false"
               data-site="pornflip" aria-label="PornFlip — للبالغين فقط، 18 عامًا أو أكثر">
         <span class="ic" data-icon="film" data-size="17"></span> PornFlip <span class="source-tab__age">18+</span>
       </button>
-      <button class="source-tab source-tab--adult" type="button" role="tab" aria-selected="false"
-              data-site="eporner" aria-label="ePorner — للبالغين فقط، 18 عامًا أو أكثر">
-        <span class="ic" data-icon="film" data-size="17"></span> ePorner <span class="source-tab__age">18+</span>
+      <button class="source-tab" type="button" role="tab" aria-selected="false" data-site="youtube">
+        <span class="ic" data-icon="play" data-size="17"></span> يوتيوب
+      </button>
+      <button class="source-tab" type="button" role="tab" aria-selected="false" data-site="dailymotion">
+        <span class="ic" data-icon="film" data-size="17"></span> ديليموشن
       </button>
     </div>
 
-    <details class="eporner-tools" id="epornerTools" hidden>
-      <summary>عمليات ePorner API الأخرى</summary>
-      <div class="eporner-tools__body">
-        <p class="eporner-tools__description">هذه واجهة للعمليات الثماني في مواصفة ePorner API v2.1.0. أرسل معاملات JSON كما هي موثقة؛ لا يعمل أي طلب قبل إقرار 18+، والخادم يفرض ذلك أيضاً.</p>
-        <div class="eporner-tools__row">
-          <label for="epornerOperation">العملية</label>
-          <select class="input eporner-tools__select" id="epornerOperation">
-            <option value="search">GET /video/search/ — البحث</option>
-            <option value="video">GET /video/id/ — بيانات فيديو</option>
-            <option value="removed">GET /video/removed/ — المحذوفة</option>
-            <option value="status">GET /video/status/ — حالة الفيديوهات</option>
-            <option value="categories">GET /categories/ — الفئات</option>
-            <option value="pornstars">GET /pornstars/ — المؤدّون</option>
-            <option value="oembed">GET /oembed/ — بيانات المشغّل</option>
-            <option value="openapi">GET /openapi/ — OpenAPI</option>
-          </select>
-        </div>
-        <label class="eporner-tools__label" for="epornerParams">المعاملات (JSON)</label>
-        <textarea class="input eporner-tools__params" id="epornerParams" rows="3" spellcheck="false">{}</textarea>
-        <p class="eporner-tools__help" id="epornerOperationHelp">يدعم جميع معاملات البحث الموثقة في ملف OpenAPI.</p>
-        <div class="eporner-tools__actions">
-          <button class="btn btn--primary" id="epornerRunOperation" type="button">تنفيذ العملية</button>
-          <a class="btn btn--ghost" href="docs/api/eporner-api-v2.openapi.json" target="_blank" rel="noopener noreferrer">فتح ملف OpenAPI الأصلي</a>
-        </div>
-        <pre class="eporner-tools__output" id="epornerOutput" role="status" aria-live="polite" hidden></pre>
+    <aside class="eporner-consent" id="epornerConsent" hidden>
+      <span class="eporner-consent__mark">18+</span>
+      <div class="eporner-consent__copy">
+        <strong>استكشاف ePorner مخصّص للبالغين</strong>
+        <span>لن تُحمّل فئات أو نتائج أو بيانات API قبل إقرارك الصريح بأن عمرك 18 عامًا أو أكثر.</span>
       </div>
+      <button class="btn btn--primary" id="epornerConsentOpen" type="button">تأكيد العمر والاستكشاف</button>
+    </aside>
+
+    <details class="eporner-filter-panel" id="epornerSearchFilters" hidden>
+      <summary><span><strong>ضبط البحث</strong><small>كل معاملات GET /video/search/ الموثّقة</small></span><span class="eporner-filter-panel__hint">خيارات API</span></summary>
+      <div class="eporner-filter-grid">
+        <label class="eporner-field"><span>ترتيب النتائج · order</span>
+          <select class="input" id="epornerOrder"><option value="latest" selected>الأحدث</option><option value="longest">الأطول</option><option value="shortest">الأقصر</option><option value="top-rated">الأعلى تقييمًا</option><option value="most-popular">الأكثر مشاهدة</option><option value="top-weekly">الأكثر مشاهدة هذا الأسبوع</option><option value="top-monthly">الأكثر مشاهدة هذا الشهر</option></select>
+        </label>
+        <label class="eporner-field"><span>عدد النتائج · per_page</span><input class="input" id="epornerPerPage" type="number" min="1" max="1000" step="1" value="30"></label>
+        <label class="eporner-field"><span>رقم الصفحة · page</span><input class="input" id="epornerPage" type="number" min="1" step="1" value="1"></label>
+        <label class="eporner-field"><span>المحتوى المثلي · gay</span><select class="input" id="epornerGay"><option value="0" selected>استبعاد · 0</option><option value="1">تضمين · 1</option><option value="2">هذا النوع فقط · 2</option></select></label>
+        <label class="eporner-field"><span>الجودة المنخفضة · lq</span><select class="input" id="epornerLq"><option value="0">استبعاد · 0</option><option value="1" selected>تضمين · 1</option><option value="2">هذا النوع فقط · 2</option></select></label>
+        <label class="eporner-field"><span>أقصر مدة · min_duration (ثانية)</span><input class="input" id="epornerMinDuration" type="number" min="0" max="86400" step="1" placeholder="بلا حد أدنى"></label>
+        <label class="eporner-field"><span>أطول مدة · max_duration (ثانية)</span><input class="input" id="epornerMaxDuration" type="number" min="0" max="86400" step="1" placeholder="بلا حد أعلى"></label>
+        <label class="eporner-field"><span>أُضيف بعد · added_after</span><input class="input" id="epornerAddedAfter" type="text" placeholder="YYYY-MM-DD أو RFC 3339 أو Unix"></label>
+        <label class="eporner-field"><span>أُضيف قبل · added_before</span><input class="input" id="epornerAddedBefore" type="text" placeholder="YYYY-MM-DD أو RFC 3339 أو Unix"></label>
+        <label class="eporner-field"><span>حجم الصورة · thumbsize</span><select class="input" id="epornerThumbsize"><option value="small">صغير · 190×152</option><option value="medium" selected>متوسط · 427×240</option><option value="big">كبير · 640×360</option></select></label>
+        <label class="eporner-field"><span>الصور المصغّرة · thumbs</span><select class="input" id="epornerThumbs"><option value="all" selected>كل الصور (الافتراضي)</option><option value="default">الصورة الافتراضية فقط</option><option value="none">من دون صور</option></select></label>
+        <label class="eporner-field"><span>لغة العنوان · lang</span><input class="input" id="epornerLang" type="text" maxlength="2" pattern="[a-z]{2}" placeholder="pl / fr / es"></label>
+        <label class="eporner-field"><span>صيغة الرد · format</span><select class="input" id="epornerFormat"><option value="json" selected>JSON · بطاقات تفاعلية</option><option value="xml">XML · نص خام</option></select></label>
+        <fieldset class="eporner-field eporner-field--wide eporner-fields-choice">
+          <legend>حقول إضافية · fields</legend>
+          <label><input id="epornerFieldCategories" type="checkbox" value="categories" checked> الفئات</label>
+          <label><input id="epornerFieldPornstars" type="checkbox" value="pornstars" checked> المؤدّون</label>
+          <label><input id="epornerFieldQuality" type="checkbox" value="quality" checked> الجودة وVR</label>
+        </fieldset>
+      </div>
+      <p class="eporner-filter-footnote">كل كلمة في query يجب أن تطابق. الحقول الاختيارية تزيد بيانات الرد؛ لا يوجد تصفية بحسب معرّف فئة أو مؤدٍ في OpenAPI.</p>
     </details>
 
     <div class="search-type-tabs" id="searchTypes" role="tablist" aria-label="نوع النتائج">
@@ -108,11 +144,11 @@
       </button>
     </div>
 
-    <form class="search-form" id="searchForm" role="search" autocomplete="off">
+    <form class="search-form eporner-search-form" id="searchForm" role="search" autocomplete="off">
       <div class="search-field">
         <span class="ic search-field__icon" data-icon="search" data-size="20"></span>
-        <input class="input search-input" id="searchInput" type="search" name="q" maxlength="80"
-               placeholder="اكتب كلمة البحث…" aria-label="كلمة البحث" enterkeyhint="search" spellcheck="false">
+        <input class="input search-input" id="searchInput" type="search" name="q"
+               placeholder="ابحث عن عنوان، كلمة مفتاحية، فئة أو مؤدٍ…" aria-label="كلمة البحث" enterkeyhint="search" spellcheck="false">
         <button class="search-clear" id="searchClear" type="button" aria-label="مسح" title="مسح" hidden>
           <span class="ic" data-icon="x" data-size="16"></span>
         </button>
@@ -123,6 +159,59 @@
     </form>
 
     <div class="search-chips" id="searchChips" aria-label="بحث سريع"></div>
+
+    <section class="eporner-discovery" id="epornerDiscovery" hidden aria-labelledby="epornerDiscoveryTitle">
+      <div class="eporner-discovery__heading">
+        <div><span class="eporner-section-kicker">DISCOVER / 02</span><h2 id="epornerDiscoveryTitle">ابدأ من الفئة أو المؤدّي</h2><p>تصفّح الدليلين الرسميين؛ زر البحث يمرّر الاسم في معامل query الموثّق.</p></div>
+        <span class="eporner-discovery__stamp">ePorner API</span>
+      </div>
+      <div class="eporner-discovery__grid">
+        <article class="eporner-directory-card eporner-directory-card--categories">
+          <header class="eporner-directory-card__head"><div><span class="eporner-section-kicker">01 / CATEGORIES</span><h3>الفئات</h3></div><button class="eporner-icon-button" id="epornerCategoriesReload" type="button" aria-label="تحديث الفئات" title="تحديث الفئات"><span class="ic" data-icon="sync" data-size="17"></span></button></header>
+          <label class="eporner-directory-filter"><span class="ic" data-icon="search" data-size="15"></span><input class="input" id="epornerCategoryFilter" type="search" placeholder="تصفية الفئات محليًا" aria-label="تصفية الفئات"></label>
+          <p class="eporner-directory-meta" id="epornerCategoriesMeta" role="status">بانتظار إقرار 18+.</p>
+          <div class="eporner-category-grid" id="epornerCategoryList" role="list" aria-live="polite"></div>
+        </article>
+        <article class="eporner-directory-card eporner-directory-card--performers">
+          <header class="eporner-directory-card__head"><div><span class="eporner-section-kicker">02 / PERFORMERS</span><h3>دليل المؤدّين</h3></div><button class="eporner-icon-button" id="epornerPornstarsReload" type="button" aria-label="تحميل المؤدّين" title="تحميل المؤدّين"><span class="ic" data-icon="sync" data-size="17"></span></button></header>
+          <div class="eporner-directory-controls"><label class="eporner-field"><span>لكل صفحة · per_page</span><input class="input" id="epornerPornstarsPerPage" type="number" min="1" max="1000" step="1" value="24"></label><span class="eporner-directory-meta" id="epornerPornstarsMeta">مرتّبون حسب الشعبية</span></div>
+          <div class="eporner-performer-grid" id="epornerPornstarList" role="list" aria-live="polite"></div>
+          <div class="eporner-pager"><button class="btn btn--ghost" id="epornerPornstarsPrev" type="button" disabled>السابق</button><span id="epornerPornstarsPageLabel">—</span><button class="btn btn--ghost" id="epornerPornstarsNext" type="button" disabled>التالي</button></div>
+        </article>
+      </div>
+      <p class="eporner-discovery__note"><span class="ic" data-icon="info" data-size="14"></span> لا يعرّف OpenAPI معاملًا لتصفية الفيديوهات بحسب معرّف الفئة أو المؤدّي؛ لا تُرسل الواجهة معاملات غير موثّقة.</p>
+    </section>
+
+    <details class="eporner-tools" id="epornerTools" hidden>
+      <summary><span><strong>مختبر عمليات ePorner API</strong><small>نماذج واضحة للعمليات الثماني؛ بلا حقل معاملات JSON</small></span><span class="eporner-tools__badge">GET / v2</span></summary>
+      <div class="eporner-tools__body">
+        <p class="eporner-tools__description">اختر عملية، املأ الحقول التي توثّقها المواصفة، ثم نفّذ الطلب. يتحقق الخادم أيضًا من الإقرار 18+ ومن اسم العملية ومعاملاتها.</p>
+        <div class="eporner-tools__selector">
+          <label class="eporner-field" for="epornerOperation">العملية الموثّقة</label>
+          <select class="input eporner-tools__select" id="epornerOperation">
+            <option value="search">بحث فيديوهات · /video/search/</option>
+            <option value="video">فيديو بمعرّف · /video/id/</option>
+            <option value="removed">الفيديوهات المحذوفة · /video/removed/</option>
+            <option value="status">حالة فيديوهات · /video/status/</option>
+            <option value="categories">كل الفئات · /categories/</option>
+            <option value="pornstars">دليل المؤدّين · /pornstars/</option>
+            <option value="oembed">بيانات المشغّل · /oembed/</option>
+            <option value="openapi">ملف OpenAPI · /openapi/</option>
+          </select>
+          <code class="eporner-tools__path" id="epornerOperationPath">GET /video/search/</code>
+        </div>
+        <p class="eporner-tools__help" id="epornerOperationHelp">كل معامل ظاهر هنا مأخوذ من OpenAPI v2.1.0.</p>
+        <form id="epornerOperationForm" class="eporner-operation-form" autocomplete="off">
+          <div class="eporner-operation-fields" id="epornerOperationFields"></div>
+          <button class="btn btn--primary" id="epornerRunOperation" type="submit"><span class="ic" data-icon="arrowLeft" data-size="16"></span> تنفيذ العملية</button>
+        </form>
+        <section class="eporner-output-wrap" id="epornerOutputWrap" hidden aria-labelledby="epornerOutputTitle">
+          <header><strong id="epornerOutputTitle">استجابة API</strong><span id="epornerOutputMeta"></span></header>
+          <pre class="eporner-tools__output" id="epornerOutput" role="status" aria-live="polite"></pre>
+        </section>
+        <div class="eporner-tools__footer"><span>المصدر: OpenAPI v2.1.0 المحفوظ في المشروع</span><a class="btn btn--ghost" href="docs/api/eporner-api-v2.openapi.json" target="_blank" rel="noopener noreferrer">فتح ملف OpenAPI الأصلي</a></div>
+      </div>
+    </details>
 
     <p class="search-status" id="searchStatus" role="status" hidden></p>
     <section class="search-browsebar" id="browseBar" aria-label="تصفّح القناة أو قائمة التشغيل" hidden>
@@ -246,7 +335,7 @@
   <script src="assets/js/rooms.js?v=3.3.0"></script>
   <script src="assets/js/resolver.js?v=3.2.0"></script>
   <script src="assets/js/eporner.js?v=1.0.0"></script>
-  <script src="assets/js/search.js?v=1.13.0"></script>
+  <script src="assets/js/search.js?v=2.0.0"></script>
   <script src="assets/js/site.js?v=1.0.2"></script>
 </body>
 </html>
