@@ -3,7 +3,7 @@
    ---------------------------------------------------------
    • المصادر: ديليموشن ويوتيوب وPornFlip (18+)، من سيرفر Java (/api/search).
    • PornFlip يتطلب إقراراً صريحاً بالعمر في كل جلسة قبل أي طلب؛ لا يُخزّن البحث في السجل.
-   • ديليموشن وPornFlip: يستخرج السيرفر رابط التشغيل عبر yt-dlp.
+   • ديليموشن: يستخرج السيرفر رابط التشغيل عبر yt-dlp؛ PornFlip يُشغَّل بمشغّله المضمّن.
    • يوتيوب: يُشغّل بمشغّله الرسمي داخل iframe (بلا مفتاح API).
    • من أي نتيجة: افتح غرفة، أو أضفها إلى قائمة انتظار غرفة
      موجودة (تُسلَّم عبر sessionStorage وتُقرأ في room.js).
@@ -138,6 +138,34 @@
       const host = new URL(safe).hostname.toLowerCase().replace(/^www\./, '');
       return host === 'pornflip.com' || host.endsWith('.pornflip.com') ? safe : '';
     } catch (_) { return ''; }
+  }
+
+  function pornFlipVideoId(raw) {
+    const safe = safePornFlipUrl(raw);
+    if (!safe) return '';
+    try {
+      const path = new URL(safe).pathname.split('/').filter(Boolean);
+      const id = /^(?:v|video|videos|sv|embed)$/i.test(path[0] || '') ? path[1] : path[0];
+      return /^[A-Za-z0-9_-]{8,32}$/.test(id || '') ? id : '';
+    } catch (_) { return ''; }
+  }
+
+  function pornFlipEmbedUrl(item) {
+    if (!item) return '';
+    const url = safePornFlipUrl(item.url);
+    const id = String(item.id || '').trim();
+    if (!url || !/^[A-Za-z0-9_-]{8,32}$/.test(id) || pornFlipVideoId(url) !== id) return '';
+    return 'https://www.pornflip.com/embed/' + encodeURIComponent(id);
+  }
+
+  function isPornFlipEmbedUrl(raw) {
+    const safe = safePornFlipUrl(raw);
+    if (!safe) return false;
+    try {
+      const url = new URL(safe);
+      return url.origin === 'https://www.pornflip.com' &&
+        /^\/embed\/[A-Za-z0-9_-]{8,32}\/?$/i.test(url.pathname) && !url.search && !url.hash;
+    } catch (_) { return false; }
   }
 
   function isAdultItem(item) {
@@ -468,7 +496,7 @@
     const siteMsg = state.site === 'youtube'
       ? 'بحث يوتيوب يحتاج سيرفر Java مع yt-dlp. '
       : state.site === 'pornflip'
-        ? 'بحث PornFlip يحتاج سيرفر Java؛ وتشغيل النتائج يتطلب yt-dlp. '
+        ? 'بحث PornFlip يحتاج سيرفر Java، ويُشغّل عبر مشغّله المضمّن. '
         : 'نتائج البحث تعمل، لكن استخراج رابط التشغيل المباشر يحتاج سيرفر Java مع yt-dlp. ';
     el.noteText.textContent = siteMsg + where;
   }
@@ -958,7 +986,7 @@
     el.spinner.hidden = false;
     el.spinnerText.textContent = item.site === 'youtube'
       ? 'جارٍ تجهيز المشغّل…'
-      : 'جارٍ استخراج رابط التشغيل المباشر…';
+      : item.site === 'pornflip' ? 'جارٍ فتح مشغّل PornFlip…' : 'جارٍ استخراج رابط التشغيل المباشر…';
     el.room.disabled = true;
     el.queue.disabled = true;
     el.copy.disabled = true;
@@ -994,7 +1022,17 @@
     el.copy.disabled = false;
     el.hint.hidden = false;
     el.hint.textContent = hint;
-    if (state.current.site === 'youtube') {
+    if (state.current.site === 'pornflip' && isPornFlipEmbedUrl(url)) {
+      const f = frame();
+      f.src = url;
+      f.hidden = false;
+      try { el.video.pause(); } catch (_) { }
+      el.video.removeAttribute('src');
+      el.video.hidden = true;
+      el.source.href = state.current.url;
+      el.source.hidden = false;
+      el.source.textContent = 'افتح على PornFlip';
+    } else if (state.current.site === 'youtube') {
       const f = frame();
       f.src = 'https://www.youtube.com/embed/' + state.current.id + '?rel=0&autoplay=1';
       f.hidden = false;
@@ -1021,6 +1059,21 @@
     if (item.site === 'youtube') {
       state.direct.set(item.id, item.url);
       ready(item.url, 'يُشغَّل يوتيوب بمشغّله الرسمي — لا حاجة لاستخراج رابط مباشر.');
+      return;
+    }
+    if (item.site === 'pornflip') {
+      /* PornFlip يقدّم DASH؛ استخدم مشغّل الموقع المضمّن بدلاً من تمرير MPD إلى <video>. */
+      const embedUrl = pornFlipEmbedUrl(item);
+      if (!embedUrl) {
+        showError('تعذّر التحقق من رابط PornFlip.');
+        el.hint.textContent = 'يمكنك فتح الرابط الأصلي على PornFlip من الزر بالأسفل.';
+        el.source.href = item.url;
+        el.source.hidden = false;
+        el.source.textContent = 'افتح على PornFlip';
+        return;
+      }
+      state.direct.set(item.id, embedUrl);
+      ready(embedUrl, 'يُشغَّل الفيديو بمشغّل PornFlip المضمّن. إذا منع المتصفح التضمين، استخدم زر «افتح على PornFlip».');
       return;
     }
     /* تيك توك/كيك/تويتش/ديليموشن: نحاول استخراج رابط التشغيل عبر السيرفر (yt-dlp).
